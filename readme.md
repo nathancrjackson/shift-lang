@@ -1,6 +1,8 @@
 # The Shift Project
 
-**Please note that this project is in its early development stage and breaking changes may occur**
+**Please note:**  
+This project is in its early development stage and breaking changes may occur.  
+[However, you can test drive the language here!](https://nathancrjackson.github.io/shift-lang/)
 
 ## The Mission
 
