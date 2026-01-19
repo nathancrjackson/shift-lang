@@ -54,14 +54,12 @@
         .sidebar-header {
             padding: 10px 15px;
             display: flex;
-            justify-content: space-between;
+            justify-content: flex-end; /* Align actions to the right */
             align-items: center;
             border-bottom: 1px solid var(--border);
             background: #2d2d2d;
-            font-size: 0.9rem;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            font-weight: 600;
+            height: 50px;
+            flex-shrink: 0;
         }
         
         .header-actions {
@@ -74,8 +72,8 @@
             border: 1px solid var(--border);
             color: var(--text);
             cursor: pointer;
-            width: 24px;
-            height: 24px;
+            width: 28px;
+            height: 28px;
             border-radius: 3px;
             display: flex;
             align-items: center;
@@ -84,19 +82,60 @@
         }
         .btn-icon:hover { background: #3c3c3c; }
 
-        #file-list {
-            list-style: none;
-            overflow-y: auto;
+        /* Explorer Content (Scrollable area for lists) */
+        #explorer-content {
             flex: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sidebar-section {
+            margin-bottom: 10px;
+        }
+
+        .sidebar-section-header {
+            padding: 8px 15px;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            font-weight: bold;
+            letter-spacing: 0.5px;
+            background: rgba(255,255,255,0.03);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .section-actions {
+            display: flex;
+            gap: 2px;
+        }
+
+        .btn-mini-action {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 14px;
+            padding: 2px 6px;
+            line-height: 1;
+            border-radius: 3px;
+        }
+        .btn-mini-action:hover { color: var(--text); background: rgba(255,255,255,0.1); }
+
+        .file-list {
+            list-style: none;
+            padding: 0;
         }
 
         .file-item {
-            padding: 8px 15px;
+            padding: 6px 15px;
             cursor: pointer;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            border-bottom: 1px solid #2d2d2d;
+            border-bottom: 1px solid transparent; /* invisible border for sizing */
             font-size: 0.9rem;
             transition: background 0.1s;
         }
@@ -104,17 +143,23 @@
         .file-item:hover { background: #2a2d2e; }
         .file-item.active { background: #37373d; border-left: 3px solid var(--accent); }
         
-        .delete-btn { 
+        .file-actions {
+            display: none;
+            gap: 5px;
+        }
+        
+        .file-item:hover .file-actions { display: flex; }
+
+        .action-icon-btn { 
             background: none; 
             border: none; 
             color: #666; 
             cursor: pointer; 
-            display: none; /* Hidden by default */
-            font-weight: bold;
-            font-size: 1.1rem;
-            padding: 0 5px;
+            font-size: 1rem;
+            padding: 0 2px;
         }
-        .file-item:hover .delete-btn { display: block; color: var(--danger); }
+        .action-icon-btn:hover { color: #ccc; }
+        .action-icon-btn.delete:hover { color: var(--danger); }
 
         /* Main Area */
         .editor-area {
@@ -158,6 +203,12 @@
             flex-shrink: 0;
         }
         .btn-primary:hover { opacity: 0.9; }
+        .btn-primary:disabled {
+            background-color: #444;
+            color: #888;
+            cursor: not-allowed;
+            opacity: 1; /* override hover opacity */
+        }
 
         /* Split View */
         .split-view {
@@ -173,20 +224,47 @@
             min-width: 0;
         }
 
-        .code-pane { border-right: 1px solid var(--border); }
+        .code-pane { 
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: row; /* For line numbers */
+            position: relative;
+        }
+
+        /* Line Numbers */
+        .line-numbers {
+            width: 45px;
+            background: #252526;
+            color: #6e7681;
+            text-align: right;
+            padding: 15px 5px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 14px;
+            line-height: 1.5;
+            border-right: 1px solid #333;
+            user-select: none;
+            overflow: hidden; /* Hide scrollbar */
+            white-space: pre;
+        }
+
+        textarea {
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 14px;
+            line-height: 1.5;
+            white-space: pre;
+            outline: none;
+            resize: none;
+            tab-size: 4;
+        }
 
         textarea#code-editor {
-            width: 100%;
+            flex: 1;
             height: 100%;
             background: var(--bg-editor);
             color: #dcdcdc;
             border: none;
-            resize: none;
-            padding: 15px;
-            font-family: 'Consolas', 'Monaco', monospace;
-            font-size: 14px;
-            line-height: 1.5;
-            outline: none;
+            padding: 15px 10px;
+            overflow: auto; /* Allow scroll */
         }
         /* Style when disabled */
         textarea#code-editor:disabled {
@@ -234,15 +312,63 @@
             background: #1e1e1e;
             font-family: 'Consolas', monospace;
             font-size: 0.9rem;
+            position: relative;
         }
 
         .tab-content.active { display: block; }
 
-        /* Console Styling */
-        .log-line { /*border-bottom: 1px solid #2a2a2a;*/ padding: 4px 0; display: flex; }
-        /*.log-line::before { content: "›"; color: var(--text-muted); margin-right: 8px; }*/
+        .config-tab-content {
+            display: none;
+            flex: 1;
+            overflow: hidden; /* Important for flex child */
+            flex-direction: column;
+        }
+        .config-tab-content.active {
+            display: flex;
+        }
+
+        /* AST Download Button */
+        .ast-download-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: #333;
+            color: #ccc;
+            border: 1px solid #555;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            opacity: 0.7;
+            transition: opacity 0.2s;
+        }
+        .ast-download-btn:hover { opacity: 1; background: #444; }
+
+        /* Console/Output Styling */
+        .log-line { padding: 4px 0; display: flex; }
         .log-error { color: #ff6b6b; }
-        /*.log-error::before { content: "⨯"; color: #ff6b6b; }*/
+        .log-info { color: #007acc; font-style: italic; }
+        
+        /* CSV Table Styling */
+        .csv-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+            margin-bottom: 10px;
+        }
+        .csv-table th, .csv-table td {
+            border: 1px solid #444;
+            padding: 5px 10px;
+            text-align: left;
+        }
+        .csv-table th {
+            background-color: #2d2d2d;
+            font-weight: bold;
+            color: #fff;
+        }
+        .csv-table tr:nth-child(even) {
+            background-color: #252526;
+        }
         
         /* Modal Styles */
         .modal-overlay {
@@ -270,6 +396,23 @@
             flex-direction: column;
         }
 
+        /* Large Modal for Config */
+        .modal-content.large {
+            width: 800px;
+            height: 80%;
+            display: flex;
+            flex-direction: column;
+            padding: 0; /* Remove padding to allow tabs to hit edges if desired, but we'll add padding inside */
+        }
+        
+        .modal-content-inner {
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            overflow: hidden;
+        }
+
         .modal-content h3 { margin-bottom: 15px; color: white; font-weight: 500;}
         .modal-content p { margin-bottom: 10px; color: #ccc; line-height: 1.4; }
         .highlight-text { color: #fff; font-weight: bold; background: #333; padding: 2px 5px; border-radius: 3px;}
@@ -295,6 +438,14 @@
             font-family: inherit;
         }
         .modal-input:focus { outline: 1px solid var(--accent); }
+        
+        select.modal-input {
+            appearance: none;
+            background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23dcdcdc%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E");
+            background-repeat: no-repeat;
+            background-position: right .7em top 50%;
+            background-size: .65em auto;
+        }
 
         .checkbox-group {
             display: flex;
@@ -309,6 +460,12 @@
             justify-content: flex-end;
             gap: 10px;
             margin-top: 20px;
+        }
+        
+        .modal-actions-left {
+            margin-right: auto;
+            display: flex;
+            gap: 10px;
         }
 
         .btn-secondary {
@@ -338,6 +495,65 @@
 
         .about-text a {
             color: #fff;
+        }
+
+        /* Config Editor wrapper (for line numbers) */
+        .config-pane {
+            display: flex;
+            flex: 1;
+            border: 1px solid var(--border);
+            position: relative;
+            overflow: hidden;
+            background: var(--input-bg);
+            margin-bottom: 10px;
+            min-height: 0; /* Important for firefox flex child */
+        }
+
+        #config-editor {
+            flex: 1;
+            background: transparent;
+            color: #dcdcdc;
+            border: none;
+            padding: 10px;
+            resize: none;
+            outline: none;
+            height: 100%;
+            overflow: auto;
+        }
+
+        .read-only-viewer {
+            flex: 1;
+            background: var(--bg-editor);
+            color: #9cdcfe;
+            border: 1px solid var(--border);
+            padding: 15px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 13px;
+            resize: none;
+            outline: none;
+            white-space: pre;
+            overflow: auto;
+            margin-bottom: 10px;
+        }
+        
+        .backup-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            padding: 10px 0;
+        }
+        
+        .backup-section {
+            border: 1px solid var(--border);
+            padding: 15px;
+            border-radius: 4px;
+            background: rgba(0,0,0,0.2);
+        }
+        
+        .backup-section h4 {
+            color: #fff;
+            margin-bottom: 10px;
+            font-size: 0.9rem;
         }
 
         /* --- MOBILE & RESPONSIVE STYLES --- */
@@ -404,6 +620,15 @@
             .tab-btn {
                 padding: 8px 12px;
             }
+
+            .modal-content.large {
+                width: 95%;
+                height: 90%;
+            }
+            
+            .modal-actions {
+                flex-wrap: wrap;
+            }
         }
 
         /* Scrollbars */
@@ -422,15 +647,45 @@
     <!-- Sidebar -->
     <aside id="sidebar" class="sidebar">
         <div class="sidebar-header">
-            <span>Shift Playground</span>
+            <!-- Name removed -->
             <div class="header-actions">
+                <button id="btn-export-file" class="btn-icon" title="Export Active File (Download)">⭳</button>
+                <button id="btn-config" class="btn-icon" title="Configuration">⚙</button>
                 <button id="btn-about" class="btn-icon" title="About">?</button>
-                <button id="btn-open-new-modal" class="btn-icon" title="Create New File">+</button>
+            </div>
+            <!-- Hidden file inputs -->
+            <input type="file" id="file-input-import-source" style="display: none;" accept=".shift,.txt">
+            <input type="file" id="file-input-import-data" style="display: none;" accept=".csv,.json,.txt,.xml,.log,.tsv">
+            <input type="file" id="file-input-stdlib" style="display: none;" accept=".shift,.txt">
+            <input type="file" id="file-input-restore" style="display: none;" accept=".json">
+        </div>
+        
+        <div id="explorer-content">
+            <div class="sidebar-section">
+                <div class="sidebar-section-header">
+                    <span>Source Files</span>
+                    <div class="section-actions">
+                        <button id="btn-import-source" class="btn-mini-action" title="Import Source File (Upload)">⭱</button>
+                        <button id="btn-new-source" class="btn-mini-action" title="Create new source file">+</button>
+                    </div>
+                </div>
+                <ul id="file-list-source" class="file-list">
+                    <!-- Source Files injected here -->
+                </ul>
+            </div>
+            <div class="sidebar-section">
+                <div class="sidebar-section-header">
+                    <span>Data Files</span>
+                    <div class="section-actions">
+                        <button id="btn-import-data" class="btn-mini-action" title="Import Data File (Upload)">⭱</button>
+                        <button id="btn-new-data" class="btn-mini-action" title="Create new data file">+</button>
+                    </div>
+                </div>
+                <ul id="file-list-data" class="file-list">
+                    <!-- Data Files injected here -->
+                </ul>
             </div>
         </div>
-        <ul id="file-list">
-            <!-- Files injected here -->
-        </ul>
     </aside>
 
     <!-- Main Editor Area -->
@@ -448,14 +703,15 @@
         <div class="split-view">
             <!-- Code Input -->
             <div class="pane code-pane">
+                <div id="line-numbers" class="line-numbers">1</div>
                 <textarea id="code-editor" spellcheck="false" placeholder="// Select or create a file to start coding..." disabled></textarea>
             </div>
 
             <!-- Output Pane -->
             <div class="pane output-pane">
                 <div class="tabs">
-                    <button class="tab-btn active" data-target="console">Console</button>
-                    <button class="tab-btn" data-target="debug">JSON AST</button>
+                    <button class="tab-btn active" data-target="console">Output</button>
+                    <button class="tab-btn" data-target="debug">Debug</button>
                     <button id="btn-clear" class="action-btn" title="Clear Output">Clear</button>
                 </div>
                 
@@ -463,6 +719,7 @@
                     <div id="console-output"></div>
                 </div>
                 <div id="view-debug" class="tab-content">
+                    <button id="btn-download-ast" class="ast-download-btn" style="display: none;">Download JSON</button>
                     <pre id="debug-output"></pre>
                 </div>
             </div>
@@ -483,6 +740,21 @@
     </div>
 </div>
 
+<!-- Rename Modal -->
+<div id="rename-modal" class="modal-overlay hidden">
+    <div class="modal-content">
+        <h3>Rename File</h3>
+        <div class="modal-input-group">
+            <label for="rename-file-input">New Filename</label>
+            <input type="text" id="rename-file-input" class="modal-input">
+        </div>
+        <div class="modal-actions">
+            <button id="btn-cancel-rename" class="btn-secondary">Cancel</button>
+            <button id="btn-confirm-rename" class="btn-primary">Rename</button>
+        </div>
+    </div>
+</div>
+
 <!-- New File Modal -->
 <div id="new-file-modal" class="modal-overlay hidden">
     <div class="modal-content">
@@ -491,10 +763,24 @@
             <label for="new-file-name">Filename</label>
             <input type="text" id="new-file-name" class="modal-input" placeholder="untitled.shift" value="untitled.shift">
         </div>
-        <div class="checkbox-group">
-            <input type="checkbox" id="include-demo-code" checked>
-            <label for="include-demo-code">Include starter code</label>
+        
+        <!-- Source Options -->
+        <div id="new-file-source-options" class="checkbox-group">
+            <input type="checkbox" id="include-demo-code">
+            <label for="include-demo-code" id="label-include-demo">Include starter code</label>
         </div>
+
+        <!-- Data Options -->
+        <div id="new-file-data-options" class="modal-input-group" style="display:none;">
+            <label for="data-template-select">Template</label>
+            <select id="data-template-select" class="modal-input">
+                <option value="none">Empty</option>
+                <option value="csv">CSV Sample</option>
+                <option value="json">JSON Sample</option>
+                <option value="tsv">TSV Sample</option>
+            </select>
+        </div>
+
         <div class="modal-actions">
             <button id="btn-cancel-new" class="btn-secondary">Cancel</button>
             <button id="btn-confirm-new" class="btn-primary">Create File</button>
@@ -502,16 +788,119 @@
     </div>
 </div>
 
+<!-- Config Modal (Standard Library) -->
+<div id="config-modal" class="modal-overlay hidden">
+    <div class="modal-content large">
+        <div class="tabs">
+            <button class="tab-btn active" data-config-target="csv">CSV Settings</button>
+            <button class="tab-btn" data-config-target="source">Shift Source</button>
+            <button class="tab-btn" data-config-target="native">Native Functions</button>
+            <button class="tab-btn" data-config-target="structs">Native Structs</button>
+            <button class="tab-btn" data-config-target="backup">Backup / Restore</button>
+        </div>
+
+        <div class="modal-content-inner">
+            <!-- CSV Settings Tab (Now First) -->
+            <div id="config-tab-csv" class="config-tab-content active">
+                <div class="backup-controls">
+                    <div class="backup-section">
+                        <h4>CSV Parser Settings</h4>
+                        <div class="modal-input-group">
+                            <label for="csv-delimiter">Delimiter</label>
+                            <select id="csv-delimiter" class="modal-input">
+                                <option value=",">Comma (,)</option>
+                                <option value=";">Semicolon (;)</option>
+                                <option value="|">Pipe (|)</option>
+                            </select>
+                        </div>
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="csv-header" checked>
+                            <label for="csv-header">File has Header Row</label>
+                        </div>
+                        <p style="margin-top: 15px; font-size: 0.8rem; color: #aaa; font-style: italic;">
+                            Note: These settings affect the Data File preview only. The preview parser is lightweight and does not support newlines within fields or complex escape sequences.
+                        </p>
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button id="btn-dismiss-config-csv" class="btn-secondary">Close without saving</button>
+                    <button id="btn-save-config-csv" class="btn-primary">Save & Close</button>
+                </div>
+            </div>
+
+            <!-- Source Tab -->
+            <div id="config-tab-source" class="config-tab-content">
+                <p>Edit the standard library code loaded with every script.</p>
+                <div class="config-pane">
+                    <div id="config-line-numbers" class="line-numbers">1</div>
+                    <textarea id="config-editor" spellcheck="false"></textarea>
+                </div>
+                <div class="modal-actions">
+                    <div class="modal-actions-left">
+                        <button id="btn-import-stdlib" class="btn-secondary" title="Import Library">Import</button>
+                        <button id="btn-export-stdlib" class="btn-secondary" title="Export Library">Export</button>
+                        <button id="btn-revert-stdlib" class="btn-secondary" title="Revert to Default">Revert</button>
+                    </div>
+                    <button id="btn-dismiss-config" class="btn-secondary">Close without saving</button>
+                    <button id="btn-save-config" class="btn-primary">Save & Close</button>
+                </div>
+            </div>
+
+            <!-- Native Functions Tab -->
+            <div id="config-tab-native" class="config-tab-content">
+                <p>Review the read-only native functions (intrinsics) available to the runtime.</p>
+                <div id="config-native-viewer" class="read-only-viewer"></div>
+                <div class="modal-actions">
+                    <button id="btn-close-config-native" class="btn-primary">Close</button>
+                </div>
+            </div>
+
+            <!-- Native Structs Tab -->
+            <div id="config-tab-structs" class="config-tab-content">
+                <p>Review the read-only native structures available to the runtime.</p>
+                <div id="config-structs-viewer" class="read-only-viewer"></div>
+                <div class="modal-actions">
+                    <button id="btn-close-config-structs" class="btn-primary">Close</button>
+                </div>
+            </div>
+
+            <!-- Backup / Restore Tab -->
+            <div id="config-tab-backup" class="config-tab-content">
+                <div class="backup-controls">
+                    <div class="backup-section">
+                        <h4>Backup</h4>
+                        <p>Download a JSON file containing all your source code, data files, and standard library customization.</p>
+                        <button id="btn-backup-download" class="btn-secondary">Download Backup</button>
+                    </div>
+                    <div class="backup-section">
+                        <h4>Restore</h4>
+                        <p>Restore your environment from a backup file. <strong>Warning: This will overwrite your current files.</strong></p>
+                        <button id="btn-backup-restore" class="btn-secondary">Restore from File</button>
+                    </div>
+                    <div class="backup-section">
+                        <h4>Danger Zone</h4>
+                        <p>Reset the playground completely. All files and settings will be lost.</p>
+                        <button id="btn-wipe-all" class="btn-danger">Wipe Everything</button>
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button id="btn-close-config-backup" class="btn-primary">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- About Modal -->
 <div id="about-modal" class="modal-overlay hidden">
     <div class="modal-content">
-        <h3>About the Shift Playground</h3>
+        <h3>The Shift Playground</h3>
         <div class="about-text">
             <p>Welcome to the official playground environment for the Shift Language.</p>
             <p>The Shift Project is currently hosted on Github.<br><a href="https://github.com/nathancrjackson/shift-lang">Please visit it here to learn more</a>.</p>
             <p>This tool allows you to write, edit, and execute custom scripts directly in your browser using the Virtual File System.</p>
             <p>The Shift project is managed by <a href="https://njit.io">Nathan Jackson</a> and is sponsored by <a href="https://dtc.group">DTC Group</a></p>
-            <p style="margin-top: 15px; font-size: 0.85em; color: #888;">Version 1.0.0</p>
+            <p style="margin-top: 15px; font-size: 0.85em; color: #888;">Version 1.1.0</p>
         </div>
         <div class="modal-actions">
             <button id="btn-close-about" class="btn-secondary">Close</button>
@@ -520,9 +909,7 @@
 </div>
 
 <script>
-/*
-START SHIFT.js
-*/
+// --- Source: token_enums.mjs ---
 const TokenType = {
 	// Keywords
 	FUNCTION: "FUNCTION", RETURN: "RETURN", STRUCT: "STRUCT",
@@ -624,6 +1011,8 @@ const KEYWORDS = {
     "nullable": TokenType.TYPE_NULLABLE
 };
 
+// --- Source: lexer.mjs ---
+
 class Lexer
 {
 	constructor(source)
@@ -656,21 +1045,21 @@ class Lexer
 		);
 
 		return { 
-			tokens: this.tokens, 
-			errors: this.errors 
-		};
+            tokens: this.tokens, 
+            errors: this.errors 
+        };
 	}
 
 	addError(message)
 	{
-		this.errors.push(
+        this.errors.push(
 			{
 				startline: this.startline,
 				endline: this.currentline,
 				message: message
 			}
 		);
-	}
+    }
 
 	scanToken()
 	{
@@ -692,8 +1081,8 @@ class Lexer
 			case '-': this.addToken(TokenType.MINUS, "-"); break;
 			case '*': this.addToken(TokenType.STAR, "*"); break;
 			case '%': this.addToken(TokenType.PERCENT, "%"); break;
-			case '|': this.addToken(TokenType.PIPE, "|"); break;
-			case '$': this.magicVariable(); break;
+            case '|': this.addToken(TokenType.PIPE, "|"); break;
+            case '$': this.magicVariable(); break;
 
 			// Could it be generic definition or could it be a comparison?
 			case '<':
@@ -740,15 +1129,15 @@ class Lexer
 					this.addToken(TokenType.ASSIGN, "=");
 				}
 				break;
-			
-			// Concatenation or Logic?
-			case '&':
-				if (this.match('&')) {
-					this.addToken(TokenType.AMPERSAND_AMPERSAND, "&&");
-				} else {
-					this.addToken(TokenType.AMPERSAND, "&");
-				}
-				break;
+            
+            // Concatenation or Logic?
+            case '&':
+                if (this.match('&')) {
+                    this.addToken(TokenType.AMPERSAND_AMPERSAND, "&&");
+                } else {
+                    this.addToken(TokenType.AMPERSAND, "&");
+                }
+                break;
 			
 			// Is it a comment or a math division?
 			case '/':
@@ -831,13 +1220,13 @@ class Lexer
 			if (this.peek() === '\\')
 			{
 				this.advance(); // Consume slash
-				
-				// Track newline if we are escaping a line break
-				if (this.peek() === '\n') {
-					this.currentline++;
-				}
+                
+                // Track newline if we are escaping a line break
+                if (this.peek() === '\n') {
+                    this.currentline++;
+                }
 
-				this.advance(); // Consume escaped character
+                this.advance(); // Consume escaped character
 				continue;
 			}
 
@@ -864,31 +1253,31 @@ class Lexer
 
 		// Extract raw content and unescape it
 		const raw = this.source.substring(this.startindex + 1, this.currentindex - 1);
-		const value = this.unescapeString(raw);
+        const value = this.unescapeString(raw);
 		
 		this.addToken(TokenType.STRING, value);
 	}
 
-	unescapeString(str) {
-		let result = "";
-		for (let i = 0; i < str.length; i++) {
-			if (str[i] === '\\') {
-				i++;
-				if (i >= str.length) break;
-				switch (str[i]) {
-					case '"': result += '"'; break;
-					case '\\': result += '\\'; break;
-					case 'n': result += '\n'; break;
-					case 'r': result += '\r'; break;
-					case 't': result += '\t'; break;
-					default: result += str[i]; // Unknown escape, keep literal
-				}
-			} else {
-				result += str[i];
-			}
-		}
-		return result;
-	}
+    unescapeString(str) {
+        let result = "";
+        for (let i = 0; i < str.length; i++) {
+            if (str[i] === '\\') {
+                i++;
+                if (i >= str.length) break;
+                switch (str[i]) {
+                    case '"': result += '"'; break;
+                    case '\\': result += '\\'; break;
+                    case 'n': result += '\n'; break;
+                    case 'r': result += '\r'; break;
+                    case 't': result += '\t'; break;
+                    default: result += str[i]; // Unknown escape, keep literal
+                }
+            } else {
+                result += str[i];
+            }
+        }
+        return result;
+    }
 
 	skipBlockComment()
 	{
@@ -979,15 +1368,15 @@ class Lexer
 	}
 
 	magicVariable() {
-		// We already consumed the '$', now consume the rest
-		while (this.isAlphaNumeric(this.peek())) {
-			this.advance();
-		}
+        // We already consumed the '$', now consume the rest
+        while (this.isAlphaNumeric(this.peek())) {
+            this.advance();
+        }
 
-		const text = this.source.substring(this.startindex, this.currentindex);
+        const text = this.source.substring(this.startindex, this.currentindex);
 
-		this.addToken(TokenType.MAGIC_VAR, text);
-	}
+        this.addToken(TokenType.MAGIC_VAR, text);
+    }
 
 	isAtEnd()
 	{
@@ -1017,615 +1406,619 @@ class Lexer
 	}
 }
 
+// --- Source: expression_parser.mjs ---
+
 class ExpressionParser {
-	constructor(parser) {
-		this.parser = parser; 
-	}
-
-	parse() {
-		return this.assignment();
-	}
-
-	// Level 0: Assignment (a = b)
-	assignment() {
-		const expr = this.pipeline();
-
-		if (this.parser.match(TokenType.ASSIGN)) {
-			const equalsToken = this.parser.previous();
-			const value = this.pipeline();
-
-			if (expr.type === "Variable") {
-				const varName = expr.name;
-				const varType = this.parser.getVariable(varName);
-
-				if (!varType) {
-					throw this.parser.addError(equalsToken, "Undefined variable.");
-				}
-
-				// USE CENTRALIZED VALIDATION
-				try {
-					this.parser.validateAssignment(varType, value, equalsToken);
-				} catch(e) {
-					// Errors already added by validator
-				}
-				
-				return { type: "Assignment", name: varName, value: value };
-			}
-			else if (expr.type === "IndexExpression") {
-				
-				let depth = 0;
-				let root = expr;
-
-				// 1. Drill down to find the root Variable
-				while (root.type === "IndexExpression") {
-					depth++;
-					root = root.object;
-				}
-
-				if (root.type === "Variable") {
-					const varName = root.name;
-					const varType = this.parser.getVariable(varName);
-
-					// --- STRUCT VALIDATION ---
-					if (varType && varType.type === "StructType") {
-						 // Validate assignment to a struct field
-						 
-						 const containerTypeName = this.parser.inferType(expr.object);
-						 
-						 if (this.parser.structDefinitions.has(containerTypeName)) {
-							 const def = this.parser.structDefinitions.get(containerTypeName);
-							 
-							 // 1. Validate Key (Must be literal string)
-							 if (expr.index.type !== "Literal" || typeof expr.index.value !== "string") {
-								 throw this.parser.addError(equalsToken, "Struct keys must be string literals.");
-							 }
-							 
-							 const fieldName = expr.index.value;
-							 const field = def.fields.find(f => f.name === fieldName);
-							 
-							 // 2. Validate Schema Existence
-							 if (!field) {
-								 throw this.parser.addError(expr.index, "Cannot set Struct element that is not in its defined schema");
-							 }
-
-							 // 3. IMMUTABILITY CHECK
-							 if (field.name.startsWith('$')) {
-								 throw this.parser.addError(equalsToken, `Cannot assign to immutable field '${field.name}'.`);
-							 }
-							 
-							 // 4. Validate Value Type (USING CENTRALIZED LOGIC)
-							 // Note: Field type is the target, value is the expression
-							 try {
-								 // Struct fields expect specific message if type check fails
-								 this.parser.validateAssignment(field.type, value, equalsToken, "Struct field type mismatch.");
-							 } catch(e) {
-								 // Suppress internal throw
-							 }
-						 }
-					}
-					// --- END STRUCT VALIDATION ---
-
-					else if (varType && varType.generic) {
-						
-						let currentGeneric = varType.generic;
-						let currentDepth = depth;
-						
-						while (currentDepth > 1 && currentGeneric && currentGeneric.generic) {
-							currentGeneric = currentGeneric.generic;
-							currentDepth--;
-						}
-
-						// MAP CHECKS
-						if (varType.name === "map" && depth === 1) {
-							if (expr.index === null) {
-								throw this.parser.addError(equalsToken, "Cannot push to Map without a key.");
-							}
-							const inferredKey = this.parser.inferType(expr.index);
-							if (inferredKey !== "any" && inferredKey !== "string") {
-								throw this.parser.addError(equalsToken, "Map keys must be strings.");
-							}
-						}
-
-						// VALUE TYPE CHECK (USING CENTRALIZED LOGIC)
-						// The target type is 'currentGeneric' (the type held inside the list/map)
-						try {
-							const errorMsg = varType.name === "map" 
-								? "Map value type mismatch." 
-								: "List variable assignment type mismatch.";
-								
-							this.parser.validateAssignment(currentGeneric, value, equalsToken, errorMsg);
-						} catch (e) {
-							// Suppress internal throw, errors are in parser.errors
-						}
-					}
-				}
-				
-				return { 
-					type: "IndexAssignment", 
-					object: expr.object, 
-					index: expr.index, 
-					value: value 
-				};
-			}
-
-			throw this.parser.addError(equalsToken, "Invalid assignment target.");
-		}
-
-		return expr;
-	}
-
-	// Level 0.5: Pipeline (|)
-	pipeline() {
-		let expr = this.logicalOr();
-
-		while (this.parser.match(TokenType.PIPE)) {
-			const operatorToken = this.parser.previous();
-			const right = this.logicalOr(); 
-
-			expr = {
-				type: "PipelineExpression",
-				left: expr,
-				right: right
-			};
-		}
-
-		return expr;
-	}
-
-	// Level 1: Logical OR
-	logicalOr() {
-		let expr = this.logicalAnd();
-
-		while (this.parser.match(TokenType.LOGICAL_OR)) {
-			const operatorToken = this.parser.previous();
-			const right = this.logicalAnd();
-
-			expr = {
-				type: "BinaryExpression",
-				operator: operatorToken.v,
-				left: expr,
-				right: right
-			};
-		}
-
-		return expr;
-	}
-
-	// Level 2: Logical AND
-	logicalAnd() {
-		let expr = this.logicalXor();
-
-		while (this.parser.match(TokenType.LOGICAL_AND)) {
-			const operatorToken = this.parser.previous();
-			const right = this.logicalXor();
-
-			expr = {
-				type: "BinaryExpression",
-				operator: operatorToken.v,
-				left: expr,
-				right: right
-			};
-		}
-
-		return expr;
-	}
-
-	// Level 3: Logical XOR
-	logicalXor() {
-		let expr = this.equality();
-
-		while (this.parser.match(TokenType.LOGICAL_XOR)) {
-			const operatorToken = this.parser.previous();
-			const right = this.equality();
-
-			expr = {
-				type: "BinaryExpression",
-				operator: operatorToken.v,
-				left: expr,
-				right: right
-			};
-		}
-
-		return expr;
-	}
-
-	// Level 4: Equality (==, !=)
-	equality() {
-		let expr = this.comparison();
-
-		while (this.parser.match(TokenType.BANG_EQUAL) || this.parser.match(TokenType.EQUAL_EQUAL)) {
-			const operatorToken = this.parser.previous();
-			const right = this.comparison();
-
-			// TYPE CHECK FOR EQUALITY
-			const leftType = this.parser.inferType(expr);
-			const rightType = this.parser.inferType(right);
-
-			if (leftType !== "any" && rightType !== "any") {
-				let match = false;
-				if (leftType === rightType) match = true;
-				if (leftType === "null" || rightType === "null") match = true; 
-				if (leftType === "nullable" || rightType === "nullable") match = true;
-
-				if (!match) {
-					 throw this.parser.addError(operatorToken, `Cannot compare different types: ${leftType} and ${rightType}`);
-				}
-			}
-
-
-			expr = {
-				type: "BinaryExpression",
-				operator: operatorToken.v,
-				left: expr,
-				right: right
-			};
-		}
-
-		return expr;
-	}
-
-	// Level 5: Comparison (<, >, <=, >=, has, search)
-	comparison() {
-		let expr = this.concatenation();
-
-		while (this.parser.match(TokenType.LANGLE) || this.parser.match(TokenType.RANGLE) || 
-			this.parser.match(TokenType.LESS_EQUAL) || this.parser.match(TokenType.GREATER_EQUAL) ||
-			this.parser.match(TokenType.HAS) || this.parser.match(TokenType.SEARCH)) {
-			const operatorToken = this.parser.previous();
-			const right = this.concatenation();
-
-			if (operatorToken.t === TokenType.SEARCH) {
-				const leftType = this.parser.inferType(expr);
-				const rightType = this.parser.inferType(right);
-
-				// 1. Data must be string
-				if (leftType !== "any" && leftType !== "string") {
-					throw this.parser.addError(operatorToken, "Search data must be a string.");
-				}
-
-				// 2. Pattern must be string
-				if (rightType !== "any" && rightType !== "string") {
-					throw this.parser.addError(operatorToken, "Search expression must be a string.");
-				}
-
-				// 3. Pattern literal validation (heuristics)
-				if (right.type === "Literal" && typeof right.value === "string") {
-					if (!right.value.startsWith("/")) {
-						throw this.parser.addError(operatorToken, "Search expression must be a valid regular expression.");
-					}
-				}
-			}
-
-			expr = {
-				type: "BinaryExpression",
-				operator: operatorToken.v,
-				left: expr,
-				right: right
-			};
-		}
-
-		return expr;
-	}
-
-	// Level 5.5: Concatenation (&)
-	concatenation() {
-		let expr = this.term();
-
-		while (this.parser.match(TokenType.AMPERSAND)) {
-			const operatorToken = this.parser.previous();
-			const right = this.term();
-
-			expr = {
-				type: "BinaryExpression",
-				operator: operatorToken.v,
-				left: expr,
-				right: right
-			};
-		}
-
-		return expr;
-	}
-
-	// Level 6: Term (+, -) 
-	term() {
-		let expr = this.factor(); 
-
-		while (this.parser.match(TokenType.PLUS) || this.parser.match(TokenType.MINUS)) {
-			const operatorToken = this.parser.previous();
-			const right = this.factor();
-
-			expr = {
-				type: "BinaryExpression",
-				operator: operatorToken.v,
-				left: expr,
-				right: right
-			};
-		}
-		return expr;
-	}
-
-	// Level 7: Factor (*, /, %)
-	factor() {
-		let expr = this.unary();
-
-		while (this.parser.match(TokenType.SLASH) || this.parser.match(TokenType.STAR) || this.parser.match(TokenType.PERCENT)) {
-			const operatorToken = this.parser.previous();
-			const right = this.unary();
-
-			if (operatorToken.v === '/' || operatorToken.v === '%') {
-				if (right.type === "Literal" && right.value === 0) {
-					const isMod = operatorToken.v === '%';
-					throw this.parser.addError(operatorToken, isMod ? "Explicit attempt to modulus by zero" : "Explicit attempt to divide by zero");
-				}
-			}
-
-			expr = {
-				type: "BinaryExpression",
-				operator: operatorToken.v,
-				left: expr,
-				right: right
-			};
-		}
-
-		return expr;
-	}
-
-	// Level 8: Unary (not, -, inspect, pack, unpack, size of, type of)
-	unary() {
-		if (this.parser.match(TokenType.NOT) || this.parser.match(TokenType.MINUS)) {
-			const operatorToken = this.parser.previous();
-			const right = this.unary();
-
-			return {
-				type: "UnaryExpression",
-				operator: operatorToken.v,
-				argument: right
-			};
-		}
-
-		// inspect <expr>
-		if (this.parser.match(TokenType.INSPECT)) {
-			const right = this.unary();
-			return { type: "InspectExpression", argument: right };
-		}
-
-		// pack <expr>
-		if (this.parser.match(TokenType.PACK)) {
-			const right = this.unary();
-			return { type: "PackExpression", argument: right };
-		}
-
-		// unpack <expr>
-		if (this.parser.match(TokenType.UNPACK)) {
-			const right = this.unary();
-			return { type: "UnpackExpression", argument: right };
-		}
-
-		// size of <expr>
-		if (this.parser.match(TokenType.SIZE)) {
-			this.parser.consume(TokenType.OF, "Expect 'of' after 'size'.");
-			const right = this.unary();
-			
-			const argType = this.parser.inferType(right);
-			if (["number", "bool", "null", "none", "nullable"].includes(argType)) {
-				 throw this.parser.addError(this.parser.previous(), "Cannot get size of primitive types");
-			}
-
-			return { type: "SizeOfExpression", argument: right };
-		}
-
-		// type of <expr>
-		if (this.parser.match(TokenType.TYPE)) {
-			this.parser.consume(TokenType.OF, "Expect 'of' after 'type'.");
-			const right = this.unary();
-			return { type: "TypeOfExpression", argument: right };
-		}
-
-		return this.cast();
-	}
-
-	// Level 8.5: Cast (as)
-	cast() {
-		let expr = this.primary();
-
-		while(this.parser.match(TokenType.AS)) {
-			const asToken = this.parser.previous();
-			const typeInfo = this.parser.parseType(); 
-			
-			let fromType = this.parser.inferType(expr);
-			const toType = typeInfo.name;
-
-			let fromGeneric = null;
-			if (expr.type === "Variable") {
-				const varDef = this.parser.getVariable(expr.name);
-				if (varDef && varDef.generic) {
-					fromGeneric = varDef.generic.name;
-				}
-			}
-
-			let checkFrom = fromType;
-			let checkTo = toType;
-
-			if (fromType === "nullable" && fromGeneric) {
-				checkFrom = fromGeneric;
-			}
-			if (toType === "nullable" && typeInfo.generic) {
-				checkTo = typeInfo.generic.name;
-			}
-
-			if (checkFrom !== "any" && checkTo !== "any") { 
-				const fromName = fromType === "nullable" && fromGeneric ? `nullable<${fromGeneric}>` : fromType;
-
-				if (checkFrom === "bool") {
-					if (checkTo === "list") throw this.parser.addError(asToken, `Error cannot cast from ${fromName} to list`);
-					if (checkTo === "map") throw this.parser.addError(asToken, `Error cannot cast from ${fromName} to map`);
-				}
-
-				if (checkFrom === "number") {
-					if (checkTo === "list") {
-						 const sub = typeInfo.generic ? typeInfo.generic.name : "unknown";
-						 throw this.parser.addError(asToken, `Cannot cast from ${fromName} to list<${sub}>`);
-					}
-					if (checkTo === "map") throw this.parser.addError(asToken, `Error cannot cast from ${fromName} to map`);
-				}
-
-				if (checkFrom === "string") {
-					if (checkTo === "map") throw this.parser.addError(asToken, `Error cannot cast from ${fromName} to map`);
-				}
-
-				if (checkFrom === "list") {
-					if (checkTo === "map") throw this.parser.addError(asToken, `Error cannot cast from ${fromName} to map`);
-					if (checkTo === "bool") throw this.parser.addError(asToken, `Error cannot cast from ${fromName} to bool`);
-					if (checkTo === "number") {
-						if (fromGeneric === "bool") throw this.parser.addError(asToken, `Error cannot cast from list<bool> to number`);
-						if (fromGeneric === "number") throw this.parser.addError(asToken, `Error cannot cast from list<number> to number`);
-					}
-				}
-
-				if (checkFrom === "map") {
-					if (checkTo === "bool") throw this.parser.addError(asToken, `Error cannot cast from ${fromName} to bool`);
-					if (checkTo === "list") throw this.parser.addError(asToken, `Error cannot cast from ${fromName} to list`);
-					if (checkTo === "number") throw this.parser.addError(asToken, `Error cannot cast from ${fromName} to number`);
-					if (checkTo === "string") throw this.parser.addError(asToken, `Error cannot cast from ${fromName} to string`);
-				}
-			}
-
-			expr = {
-				type: "CastExpression",
-				value: expr,
-				targetType: typeInfo
-			};
-		}
-
-		return expr;
-	}
-
-	// Level 9: Primary (Atomic values)
-	primary() {
-		if (this.parser.match(TokenType.FALSE)) return { type: "Literal", value: false };
-		if (this.parser.match(TokenType.TRUE)) return { type: "Literal", value: true };
-		if (this.parser.match(TokenType.TYPE_NULL)) return { type: "Literal", value: null };
-
-		if (this.parser.match(TokenType.MAGIC_VAR)) {
-			// FIX: Capture the line number from the token
-			const token = this.parser.previous();
-			return { type: "MagicVariable", name: token.v, line: token.l };
-		}
-
-		if (this.parser.match(TokenType.NUMBER)) {
-			return { type: "Literal", value: parseFloat(this.parser.previous().v) };
-		}
-
-		if (this.parser.match(TokenType.STRING)) {
-			return { type: "Literal", value: this.parser.previous().v };
-		}
-
-		if (this.parser.match(TokenType.LBRACKET)) {
-			return this.collectionLiteral();
-		}
-
-		if (this.parser.match(TokenType.IDENTIFIER)) {
-			const name = this.parser.previous().v;
-			
-			const symbol = this.parser.getVariable(name);
-			if (!symbol) {
-				throw this.parser.addError(this.parser.previous(), "Undefined variable.");
-			}
-
-			let expr;
-
-			if (this.parser.match(TokenType.LPAREN)) {
-				expr = this.finishCall(name);
-			} else {
-				expr = { type: "Variable", name: name };
-			}
-
-			while (this.parser.match(TokenType.LBRACKET)) {
-				expr = this.finishIndex(expr);
-			}
-
-			return expr;
-		}
-
-		if (this.parser.match(TokenType.LPAREN)) {
-			const expr = this.parse(); 
-			this.parser.consume(TokenType.RPAREN, "Expect ')' after expression.");
-			return { type: "Grouping", expression: expr };
-		}
-
-		throw this.parser.addError(this.parser.peek(), "Expect expression.");
-	}
-
-	collectionLiteral() {
-		if (this.parser.check(TokenType.RBRACKET)) {
-			this.parser.consume(TokenType.RBRACKET, "Compiler error");
-			return { type: "ListLiteral", elements: [] };
-		}
-
-		const firstExpr = this.parse();
-		
-		if (this.parser.match(TokenType.COLON)) {
-			const entries = [];
-			
-			const firstValue = this.parse();
-			entries.push({ key: firstExpr, value: firstValue });
-
-			while (this.parser.match(TokenType.COMMA)) {
-				const key = this.parse();
-				this.parser.consume(TokenType.COLON, "Expect ':' in map entry.");
-				const value = this.parse();
-				entries.push({ key: key, value: value });
-			}
-
-			this.parser.consume(TokenType.RBRACKET, "Expect ']' after map literal.");
-			return { type: "MapLiteral", entries: entries };
-		}
-
-		const elements = [firstExpr];
-
-		while (this.parser.match(TokenType.COMMA)) {
-			elements.push(this.parse());
-		}
-
-		this.parser.consume(TokenType.RBRACKET, "Expect ']' after list literal.");
-		return { type: "ListLiteral", elements: elements };
-	}
-
-	finishCall(calleeName) {
-		// Track that this function is used
-		this.parser.markFunctionUsed(calleeName);
-
-		const args = [];
-		if (!this.parser.check(TokenType.RPAREN)) {
-			do {
-				args.push(this.parse()); 
-			} while (this.parser.match(TokenType.COMMA));
-		}
-
-		this.parser.consume(TokenType.RPAREN, "Expect ')' after arguments.");
-
-		return {
-			type: "CallExpression",
-			callee: calleeName,
-			arguments: args
-		};
-	}
-
-	finishIndex(objectExpr) {
-		let index = null;
-		if (!this.parser.check(TokenType.RBRACKET)) {
-			index = this.parse();
-		}
-
-		this.parser.consume(TokenType.RBRACKET, "Expect ']' after index.");
-
-		return {
-			type: "IndexExpression",
-			object: objectExpr,
-			index: index
-		};
-	}
+    constructor(parser) {
+        this.parser = parser; 
+    }
+
+    parse() {
+        return this.assignment();
+    }
+
+    // Level 0: Assignment (a = b)
+    assignment() {
+        const expr = this.pipeline();
+
+        if (this.parser.match(TokenType.ASSIGN)) {
+            const equalsToken = this.parser.previous();
+            const value = this.pipeline();
+
+            if (expr.type === "Variable") {
+                const varName = expr.name;
+                const varType = this.parser.getVariable(varName);
+
+                if (!varType) {
+                    throw this.parser.addError(equalsToken, "Undefined variable.");
+                }
+
+                // USE CENTRALIZED VALIDATION
+                try {
+                    this.parser.validateAssignment(varType, value, equalsToken);
+                } catch(e) {
+                    // Errors already added by validator
+                }
+                
+                return { type: "Assignment", name: varName, value: value };
+            }
+            else if (expr.type === "IndexExpression") {
+                
+                let depth = 0;
+                let root = expr;
+
+                // 1. Drill down to find the root Variable
+                while (root.type === "IndexExpression") {
+                    depth++;
+                    root = root.object;
+                }
+
+                if (root.type === "Variable") {
+                    const varName = root.name;
+                    const varType = this.parser.getVariable(varName);
+
+                    // --- STRUCT VALIDATION ---
+                    if (varType && varType.type === "StructType") {
+                         // Validate assignment to a struct field
+                         
+                         const containerTypeName = this.parser.inferType(expr.object);
+                         
+                         if (this.parser.structDefinitions.has(containerTypeName)) {
+                             const def = this.parser.structDefinitions.get(containerTypeName);
+                             
+                             // 1. Validate Key (Must be literal string)
+                             if (expr.index.type !== "Literal" || typeof expr.index.value !== "string") {
+                                 throw this.parser.addError(equalsToken, "Struct keys must be string literals.");
+                             }
+                             
+                             const fieldName = expr.index.value;
+                             const field = def.fields.find(f => f.name === fieldName);
+                             
+                             // 2. Validate Schema Existence
+                             if (!field) {
+                                 throw this.parser.addError(expr.index, "Cannot set Struct element that is not in its defined schema");
+                             }
+
+                             // 3. IMMUTABILITY CHECK
+                             if (field.name.startsWith('$')) {
+                                 throw this.parser.addError(equalsToken, `Cannot assign to immutable field '${field.name}'.`);
+                             }
+                             
+                             // 4. Validate Value Type (USING CENTRALIZED LOGIC)
+                             // Note: Field type is the target, value is the expression
+                             try {
+                                 // Struct fields expect specific message if type check fails
+                                 this.parser.validateAssignment(field.type, value, equalsToken, "Struct field type mismatch.");
+                             } catch(e) {
+                                 // Suppress internal throw
+                             }
+                         }
+                    }
+                    // --- END STRUCT VALIDATION ---
+
+                    else if (varType && varType.generic) {
+                        
+                        let currentGeneric = varType.generic;
+                        let currentDepth = depth;
+                        
+                        while (currentDepth > 1 && currentGeneric && currentGeneric.generic) {
+                            currentGeneric = currentGeneric.generic;
+                            currentDepth--;
+                        }
+
+                        // MAP CHECKS
+                        if (varType.name === "map" && depth === 1) {
+                            if (expr.index === null) {
+                                throw this.parser.addError(equalsToken, "Cannot push to Map without a key.");
+                            }
+                            const inferredKey = this.parser.inferType(expr.index);
+                            if (inferredKey !== "any" && inferredKey !== "string") {
+                                throw this.parser.addError(equalsToken, "Map keys must be strings.");
+                            }
+                        }
+
+                        // VALUE TYPE CHECK (USING CENTRALIZED LOGIC)
+                        // The target type is 'currentGeneric' (the type held inside the list/map)
+                        try {
+                            const errorMsg = varType.name === "map" 
+                                ? "Map value type mismatch." 
+                                : "List variable assignment type mismatch.";
+                                
+                            this.parser.validateAssignment(currentGeneric, value, equalsToken, errorMsg);
+                        } catch (e) {
+                            // Suppress internal throw, errors are in parser.errors
+                        }
+                    }
+                }
+                
+                return { 
+                    type: "IndexAssignment", 
+                    object: expr.object, 
+                    index: expr.index, 
+                    value: value 
+                };
+            }
+
+            throw this.parser.addError(equalsToken, "Invalid assignment target.");
+        }
+
+        return expr;
+    }
+
+    // Level 0.5: Pipeline (|)
+    pipeline() {
+        let expr = this.logicalOr();
+
+        while (this.parser.match(TokenType.PIPE)) {
+            const operatorToken = this.parser.previous();
+            const right = this.logicalOr(); 
+
+            expr = {
+                type: "PipelineExpression",
+                left: expr,
+                right: right
+            };
+        }
+
+        return expr;
+    }
+
+    // Level 1: Logical OR
+    logicalOr() {
+        let expr = this.logicalAnd();
+
+        while (this.parser.match(TokenType.LOGICAL_OR)) {
+            const operatorToken = this.parser.previous();
+            const right = this.logicalAnd();
+
+            expr = {
+                type: "BinaryExpression",
+                operator: operatorToken.v,
+                left: expr,
+                right: right
+            };
+        }
+
+        return expr;
+    }
+
+    // Level 2: Logical AND
+    logicalAnd() {
+        let expr = this.logicalXor();
+
+        while (this.parser.match(TokenType.LOGICAL_AND)) {
+            const operatorToken = this.parser.previous();
+            const right = this.logicalXor();
+
+            expr = {
+                type: "BinaryExpression",
+                operator: operatorToken.v,
+                left: expr,
+                right: right
+            };
+        }
+
+        return expr;
+    }
+
+    // Level 3: Logical XOR
+    logicalXor() {
+        let expr = this.equality();
+
+        while (this.parser.match(TokenType.LOGICAL_XOR)) {
+            const operatorToken = this.parser.previous();
+            const right = this.equality();
+
+            expr = {
+                type: "BinaryExpression",
+                operator: operatorToken.v,
+                left: expr,
+                right: right
+            };
+        }
+
+        return expr;
+    }
+
+    // Level 4: Equality (==, !=)
+    equality() {
+        let expr = this.comparison();
+
+        while (this.parser.match(TokenType.BANG_EQUAL) || this.parser.match(TokenType.EQUAL_EQUAL)) {
+            const operatorToken = this.parser.previous();
+            const right = this.comparison();
+
+            // TYPE CHECK FOR EQUALITY
+            const leftType = this.parser.inferType(expr);
+            const rightType = this.parser.inferType(right);
+
+            if (leftType !== "any" && rightType !== "any") {
+                let match = false;
+                if (leftType === rightType) match = true;
+                if (leftType === "null" || rightType === "null") match = true; 
+                if (leftType === "nullable" || rightType === "nullable") match = true;
+
+                if (!match) {
+                     throw this.parser.addError(operatorToken, `Cannot compare different types: ${leftType} and ${rightType}`);
+                }
+            }
+
+
+            expr = {
+                type: "BinaryExpression",
+                operator: operatorToken.v,
+                left: expr,
+                right: right
+            };
+        }
+
+        return expr;
+    }
+
+    // Level 5: Comparison (<, >, <=, >=, has, search)
+    comparison() {
+        let expr = this.concatenation();
+
+        while (this.parser.match(TokenType.LANGLE) || this.parser.match(TokenType.RANGLE) || 
+            this.parser.match(TokenType.LESS_EQUAL) || this.parser.match(TokenType.GREATER_EQUAL) ||
+            this.parser.match(TokenType.HAS) || this.parser.match(TokenType.SEARCH)) {
+            const operatorToken = this.parser.previous();
+            const right = this.concatenation();
+
+            if (operatorToken.t === TokenType.SEARCH) {
+                const leftType = this.parser.inferType(expr);
+                const rightType = this.parser.inferType(right);
+
+                // 1. Data must be string
+                if (leftType !== "any" && leftType !== "string") {
+                    throw this.parser.addError(operatorToken, "Search data must be a string.");
+                }
+
+                // 2. Pattern must be string
+                if (rightType !== "any" && rightType !== "string") {
+                    throw this.parser.addError(operatorToken, "Search expression must be a string.");
+                }
+
+                // 3. Pattern literal validation (heuristics)
+                if (right.type === "Literal" && typeof right.value === "string") {
+                    if (!right.value.startsWith("/")) {
+                        throw this.parser.addError(operatorToken, "Search expression must be a valid regular expression.");
+                    }
+                }
+            }
+
+            expr = {
+                type: "BinaryExpression",
+                operator: operatorToken.v,
+                left: expr,
+                right: right
+            };
+        }
+
+        return expr;
+    }
+
+    // Level 5.5: Concatenation (&)
+    concatenation() {
+        let expr = this.term();
+
+        while (this.parser.match(TokenType.AMPERSAND)) {
+            const operatorToken = this.parser.previous();
+            const right = this.term();
+
+            expr = {
+                type: "BinaryExpression",
+                operator: operatorToken.v,
+                left: expr,
+                right: right
+            };
+        }
+
+        return expr;
+    }
+
+    // Level 6: Term (+, -) 
+    term() {
+        let expr = this.factor(); 
+
+        while (this.parser.match(TokenType.PLUS) || this.parser.match(TokenType.MINUS)) {
+            const operatorToken = this.parser.previous();
+            const right = this.factor();
+
+            expr = {
+                type: "BinaryExpression",
+                operator: operatorToken.v,
+                left: expr,
+                right: right
+            };
+        }
+        return expr;
+    }
+
+    // Level 7: Factor (*, /, %)
+    factor() {
+        let expr = this.unary();
+
+        while (this.parser.match(TokenType.SLASH) || this.parser.match(TokenType.STAR) || this.parser.match(TokenType.PERCENT)) {
+            const operatorToken = this.parser.previous();
+            const right = this.unary();
+
+            if (operatorToken.v === '/' || operatorToken.v === '%') {
+                if (right.type === "Literal" && right.value === 0) {
+                    const isMod = operatorToken.v === '%';
+                    throw this.parser.addError(operatorToken, isMod ? "Explicit attempt to modulus by zero" : "Explicit attempt to divide by zero");
+                }
+            }
+
+            expr = {
+                type: "BinaryExpression",
+                operator: operatorToken.v,
+                left: expr,
+                right: right
+            };
+        }
+
+        return expr;
+    }
+
+    // Level 8: Unary (not, -, inspect, pack, unpack, size of, type of)
+    unary() {
+        if (this.parser.match(TokenType.NOT) || this.parser.match(TokenType.MINUS)) {
+            const operatorToken = this.parser.previous();
+            const right = this.unary();
+
+            return {
+                type: "UnaryExpression",
+                operator: operatorToken.v,
+                argument: right
+            };
+        }
+
+        // inspect <expr>
+        if (this.parser.match(TokenType.INSPECT)) {
+            const right = this.unary();
+            return { type: "InspectExpression", argument: right };
+        }
+
+        // pack <expr>
+        if (this.parser.match(TokenType.PACK)) {
+            const right = this.unary();
+            return { type: "PackExpression", argument: right };
+        }
+
+        // unpack <expr>
+        if (this.parser.match(TokenType.UNPACK)) {
+            const right = this.unary();
+            return { type: "UnpackExpression", argument: right };
+        }
+
+        // size of <expr>
+        if (this.parser.match(TokenType.SIZE)) {
+            this.parser.consume(TokenType.OF, "Expect 'of' after 'size'.");
+            const right = this.unary();
+            
+            const argType = this.parser.inferType(right);
+            if (["number", "bool", "null", "none", "nullable"].includes(argType)) {
+                 throw this.parser.addError(this.parser.previous(), "Cannot get size of primitive types");
+            }
+
+            return { type: "SizeOfExpression", argument: right };
+        }
+
+        // type of <expr>
+        if (this.parser.match(TokenType.TYPE)) {
+            this.parser.consume(TokenType.OF, "Expect 'of' after 'type'.");
+            const right = this.unary();
+            return { type: "TypeOfExpression", argument: right };
+        }
+
+        return this.cast();
+    }
+
+    // Level 8.5: Cast (as)
+    cast() {
+        let expr = this.primary();
+
+        while(this.parser.match(TokenType.AS)) {
+            const asToken = this.parser.previous();
+            const typeInfo = this.parser.parseType(); 
+            
+            let fromType = this.parser.inferType(expr);
+            const toType = typeInfo.name;
+
+            let fromGeneric = null;
+            if (expr.type === "Variable") {
+                const varDef = this.parser.getVariable(expr.name);
+                if (varDef && varDef.generic) {
+                    fromGeneric = varDef.generic.name;
+                }
+            }
+
+            let checkFrom = fromType;
+            let checkTo = toType;
+
+            if (fromType === "nullable" && fromGeneric) {
+                checkFrom = fromGeneric;
+            }
+            if (toType === "nullable" && typeInfo.generic) {
+                checkTo = typeInfo.generic.name;
+            }
+
+            if (checkFrom !== "any" && checkTo !== "any") { 
+                const fromName = fromType === "nullable" && fromGeneric ? `nullable<${fromGeneric}>` : fromType;
+
+                if (checkFrom === "bool") {
+                    if (checkTo === "list") throw this.parser.addError(asToken, `Error cannot cast from ${fromName} to list`);
+                    if (checkTo === "map") throw this.parser.addError(asToken, `Error cannot cast from ${fromName} to map`);
+                }
+
+                if (checkFrom === "number") {
+                    if (checkTo === "list") {
+                         const sub = typeInfo.generic ? typeInfo.generic.name : "unknown";
+                         throw this.parser.addError(asToken, `Cannot cast from ${fromName} to list<${sub}>`);
+                    }
+                    if (checkTo === "map") throw this.parser.addError(asToken, `Error cannot cast from ${fromName} to map`);
+                }
+
+                if (checkFrom === "string") {
+                    if (checkTo === "map") throw this.parser.addError(asToken, `Error cannot cast from ${fromName} to map`);
+                }
+
+                if (checkFrom === "list") {
+                    if (checkTo === "map") throw this.parser.addError(asToken, `Error cannot cast from ${fromName} to map`);
+                    if (checkTo === "bool") throw this.parser.addError(asToken, `Error cannot cast from ${fromName} to bool`);
+                    if (checkTo === "number") {
+                        if (fromGeneric === "bool") throw this.parser.addError(asToken, `Error cannot cast from list<bool> to number`);
+                        if (fromGeneric === "number") throw this.parser.addError(asToken, `Error cannot cast from list<number> to number`);
+                    }
+                }
+
+                if (checkFrom === "map") {
+                    if (checkTo === "bool") throw this.parser.addError(asToken, `Error cannot cast from ${fromName} to bool`);
+                    if (checkTo === "list") throw this.parser.addError(asToken, `Error cannot cast from ${fromName} to list`);
+                    if (checkTo === "number") throw this.parser.addError(asToken, `Error cannot cast from ${fromName} to number`);
+                    if (checkTo === "string") throw this.parser.addError(asToken, `Error cannot cast from ${fromName} to string`);
+                }
+            }
+
+            expr = {
+                type: "CastExpression",
+                value: expr,
+                targetType: typeInfo
+            };
+        }
+
+        return expr;
+    }
+
+    // Level 9: Primary (Atomic values)
+    primary() {
+        if (this.parser.match(TokenType.FALSE)) return { type: "Literal", value: false };
+        if (this.parser.match(TokenType.TRUE)) return { type: "Literal", value: true };
+        if (this.parser.match(TokenType.TYPE_NULL)) return { type: "Literal", value: null };
+
+        if (this.parser.match(TokenType.MAGIC_VAR)) {
+            // FIX: Capture the line number from the token
+            const token = this.parser.previous();
+            return { type: "MagicVariable", name: token.v, line: token.l };
+        }
+
+        if (this.parser.match(TokenType.NUMBER)) {
+            return { type: "Literal", value: parseFloat(this.parser.previous().v) };
+        }
+
+        if (this.parser.match(TokenType.STRING)) {
+            return { type: "Literal", value: this.parser.previous().v };
+        }
+
+        if (this.parser.match(TokenType.LBRACKET)) {
+            return this.collectionLiteral();
+        }
+
+        if (this.parser.match(TokenType.IDENTIFIER)) {
+            const name = this.parser.previous().v;
+            
+            const symbol = this.parser.getVariable(name);
+            if (!symbol) {
+                throw this.parser.addError(this.parser.previous(), "Undefined variable.");
+            }
+
+            let expr;
+
+            if (this.parser.match(TokenType.LPAREN)) {
+                expr = this.finishCall(name);
+            } else {
+                expr = { type: "Variable", name: name };
+            }
+
+            while (this.parser.match(TokenType.LBRACKET)) {
+                expr = this.finishIndex(expr);
+            }
+
+            return expr;
+        }
+
+        if (this.parser.match(TokenType.LPAREN)) {
+            const expr = this.parse(); 
+            this.parser.consume(TokenType.RPAREN, "Expect ')' after expression.");
+            return { type: "Grouping", expression: expr };
+        }
+
+        throw this.parser.addError(this.parser.peek(), "Expect expression.");
+    }
+
+    collectionLiteral() {
+        if (this.parser.check(TokenType.RBRACKET)) {
+            this.parser.consume(TokenType.RBRACKET, "Compiler error");
+            return { type: "ListLiteral", elements: [] };
+        }
+
+        const firstExpr = this.parse();
+        
+        if (this.parser.match(TokenType.COLON)) {
+            const entries = [];
+            
+            const firstValue = this.parse();
+            entries.push({ key: firstExpr, value: firstValue });
+
+            while (this.parser.match(TokenType.COMMA)) {
+                const key = this.parse();
+                this.parser.consume(TokenType.COLON, "Expect ':' in map entry.");
+                const value = this.parse();
+                entries.push({ key: key, value: value });
+            }
+
+            this.parser.consume(TokenType.RBRACKET, "Expect ']' after map literal.");
+            return { type: "MapLiteral", entries: entries };
+        }
+
+        const elements = [firstExpr];
+
+        while (this.parser.match(TokenType.COMMA)) {
+            elements.push(this.parse());
+        }
+
+        this.parser.consume(TokenType.RBRACKET, "Expect ']' after list literal.");
+        return { type: "ListLiteral", elements: elements };
+    }
+
+    finishCall(calleeName) {
+        // Track that this function is used
+        this.parser.markFunctionUsed(calleeName);
+
+        const args = [];
+        if (!this.parser.check(TokenType.RPAREN)) {
+            do {
+                args.push(this.parse()); 
+            } while (this.parser.match(TokenType.COMMA));
+        }
+
+        this.parser.consume(TokenType.RPAREN, "Expect ')' after arguments.");
+
+        return {
+            type: "CallExpression",
+            callee: calleeName,
+            arguments: args
+        };
+    }
+
+    finishIndex(objectExpr) {
+        let index = null;
+        if (!this.parser.check(TokenType.RBRACKET)) {
+            index = this.parse();
+        }
+
+        this.parser.consume(TokenType.RBRACKET, "Expect ']' after index.");
+
+        return {
+            type: "IndexExpression",
+            object: objectExpr,
+            index: index
+        };
+    }
 }
+
+// --- Source: parser.mjs ---
 
 class Parser
 {
@@ -1634,163 +2027,163 @@ class Parser
 		this.current = 0;
 		this.errors = [];
 		this.expressionParser = new ExpressionParser(this);
-		
-		this.currentReturnType = null; 
-		this.loopDepth = 0;
+        
+        this.currentReturnType = null; 
+        this.loopDepth = 0;
 
-		this.scopes = [];
-		this.enterScope(); 
-		
-		// Base types only. Standard Library types/structs must be loaded externally.
-		this.knownTypes = new Set(["string", "number", "bool", "list", "map", "any", "null", "none", "nullable"]);
-		this.structDefinitions = new Map();
-		
-		// Tracking used functions for tree-shaking
-		this.usedFunctions = new Set();
+        this.scopes = [];
+        this.enterScope(); 
+        
+        // Base types only. Standard Library types/structs must be loaded externally.
+        this.knownTypes = new Set(["string", "number", "bool", "list", "map", "any", "null", "none", "nullable"]);
+        this.structDefinitions = new Map();
+        
+        // Tracking used functions for tree-shaking
+        this.usedFunctions = new Set();
 	}
 
-	markFunctionUsed(name) {
-		this.usedFunctions.add(name);
-	}
+    markFunctionUsed(name) {
+        this.usedFunctions.add(name);
+    }
 
 	preScan() {
-		const startPos = this.current;
-		
-		// PASS 1: Struct Discovery
-		this.current = 0;
-		while (!this.isAtEnd()) {
-			if (this.match(TokenType.STRUCT)) {
-				try {
-					this.preParseStruct();
-				} catch (e) {
-					this.synchronize();
-				}
-			} else {
-				this.advance();
-			}
-		}
+        const startPos = this.current;
+        
+        // PASS 1: Struct Discovery
+        this.current = 0;
+        while (!this.isAtEnd()) {
+            if (this.match(TokenType.STRUCT)) {
+                try {
+                    this.preParseStruct();
+                } catch (e) {
+                    this.synchronize();
+                }
+            } else {
+                this.advance();
+            }
+        }
 
-		// PASS 2: Function Discovery
-		this.current = 0;
-		while (!this.isAtEnd()) {
-			if (this.match(TokenType.FUNCTION)) {
-				try {
-					this.preParseFunction();
-				} catch (e) {
-					this.synchronize();
-				}
-			} else {
-				this.advance();
-			}
-		}
+        // PASS 2: Function Discovery
+        this.current = 0;
+        while (!this.isAtEnd()) {
+            if (this.match(TokenType.FUNCTION)) {
+                try {
+                    this.preParseFunction();
+                } catch (e) {
+                    this.synchronize();
+                }
+            } else {
+                this.advance();
+            }
+        }
 
-		this.current = startPos;
-	}
+        this.current = startPos;
+    }
 
-	preParseFunction() {
-		const nameToken = this.consume(TokenType.IDENTIFIER, "Expect function name.");
-		this.consume(TokenType.LPAREN, "Expect '(' after function name.");
-		
-		// Parse parameters to advance the cursor past them correctly
-		if (!this.check(TokenType.RPAREN)) {
-			do {
-				this.parseType(); // Parse type (handles generics)
-				this.consume(TokenType.IDENTIFIER, "Expect parameter name.");
-			} while (this.match(TokenType.COMMA));
-		}
-		
-		this.consume(TokenType.RPAREN, "Expect ')' after parameters.");
+    preParseFunction() {
+        const nameToken = this.consume(TokenType.IDENTIFIER, "Expect function name.");
+        this.consume(TokenType.LPAREN, "Expect '(' after function name.");
+        
+        // Parse parameters to advance the cursor past them correctly
+        if (!this.check(TokenType.RPAREN)) {
+            do {
+                this.parseType(); // Parse type (handles generics)
+                this.consume(TokenType.IDENTIFIER, "Expect parameter name.");
+            } while (this.match(TokenType.COMMA));
+        }
+        
+        this.consume(TokenType.RPAREN, "Expect ')' after parameters.");
 
-		// Parse Return Type strictly with specific error messages
-		const returnType = this.parseType("Expect function return type.", "Invalid function return type.");
-		
-		// Register the function with the CORRECT return type
-		this.defineVariable(nameToken.v, { 
-			type: "Type", 
-			name: returnType.name, 
-			initialized: true 
-		});
+        // Parse Return Type strictly with specific error messages
+        const returnType = this.parseType("Expect function return type.", "Invalid function return type.");
+        
+        // Register the function with the CORRECT return type
+        this.defineVariable(nameToken.v, { 
+            type: "Type", 
+            name: returnType.name, 
+            initialized: true 
+        });
 
-		this.consume(TokenType.LBRACE, "Expect '{' before function body.");
-		this.skipBlock(); 
-	}
+        this.consume(TokenType.LBRACE, "Expect '{' before function body.");
+        this.skipBlock(); 
+    }
 
-	preParseStruct() {
-		const nameToken = this.consume(TokenType.IDENTIFIER, "Expect struct name.");
-		this.knownTypes.add(nameToken.v); 
+    preParseStruct() {
+        const nameToken = this.consume(TokenType.IDENTIFIER, "Expect struct name.");
+        this.knownTypes.add(nameToken.v); 
 
-		this.consume(TokenType.LBRACKET, "Expect '[' to begin struct fields.");
-		this.skipList(); 
-	}
+        this.consume(TokenType.LBRACKET, "Expect '[' to begin struct fields.");
+        this.skipList(); 
+    }
 
-	skipBlock() {
-		let braceDepth = 1;
-		while (braceDepth > 0 && !this.isAtEnd()) {
-			if (this.check(TokenType.LBRACE)) braceDepth++;
-			else if (this.check(TokenType.RBRACE)) braceDepth--;
-			this.advance();
-		}
-	}
+    skipBlock() {
+        let braceDepth = 1;
+        while (braceDepth > 0 && !this.isAtEnd()) {
+            if (this.check(TokenType.LBRACE)) braceDepth++;
+            else if (this.check(TokenType.RBRACE)) braceDepth--;
+            this.advance();
+        }
+    }
 
-	skipList() {
-		let bracketDepth = 1;
-		while (bracketDepth > 0 && !this.isAtEnd()) {
-			if (this.check(TokenType.LBRACKET)) bracketDepth++;
-			else if (this.check(TokenType.RBRACKET)) bracketDepth--;
-			this.advance();
-		}
-	}
+    skipList() {
+        let bracketDepth = 1;
+        while (bracketDepth > 0 && !this.isAtEnd()) {
+            if (this.check(TokenType.LBRACKET)) bracketDepth++;
+            else if (this.check(TokenType.RBRACKET)) bracketDepth--;
+            this.advance();
+        }
+    }
 
 	inferType(expr) {
-		if (!expr) return "null";
+        if (!expr) return "null";
 
-		switch (expr.type) {
+        switch (expr.type) {
 			case "ListLiteral": return "list";
-			case "MapLiteral":  return "map";
+            case "MapLiteral":  return "map";
 
-			case "InspectExpression": return "InspectionResult"; // Hardcoded expectation of StdLib struct
-			case "PackExpression": return "string";
-			case "UnpackExpression": return "list";
-			case "SizeOfExpression": return "number";
-			case "TypeOfExpression": return "string";
+            case "InspectExpression": return "InspectionResult"; // Hardcoded expectation of StdLib struct
+            case "PackExpression": return "string";
+            case "UnpackExpression": return "list";
+            case "SizeOfExpression": return "number";
+            case "TypeOfExpression": return "string";
 
-			case "PipelineExpression": return this.inferType(expr.right);
+            case "PipelineExpression": return this.inferType(expr.right);
 
-			case "Literal":
-				if (typeof expr.value === 'number') return "number";
-				if (typeof expr.value === 'string') return "string";
-				if (typeof expr.value === 'boolean') return "bool";
-				if (expr.value === null) return "null";
-				return "any";
+            case "Literal":
+                if (typeof expr.value === 'number') return "number";
+                if (typeof expr.value === 'string') return "string";
+                if (typeof expr.value === 'boolean') return "bool";
+                if (expr.value === null) return "null";
+                return "any";
 
-			case "BinaryExpression":
-				if (["==", "!=", "<", ">", "<=", ">=", "and", "or", "xor", "has"].includes(expr.operator)) return "bool";
-				if (["-", "*", "/", "%", "+"].includes(expr.operator)) return "number";
-				if (expr.operator === "&") return "string";
-				if (expr.operator === "search") return "list";
-				return "any";
-			
-			case "UnaryExpression":
-				if (expr.operator === "!" || expr.operator === "not") return "bool";
-				if (expr.operator === "-") return "number";
-				return "any";
+            case "BinaryExpression":
+                if (["==", "!=", "<", ">", "<=", ">=", "and", "or", "xor", "has"].includes(expr.operator)) return "bool";
+                if (["-", "*", "/", "%", "+"].includes(expr.operator)) return "number";
+                if (expr.operator === "&") return "string";
+                if (expr.operator === "search") return "list";
+                return "any";
+            
+            case "UnaryExpression":
+                if (expr.operator === "!" || expr.operator === "not") return "bool";
+                if (expr.operator === "-") return "number";
+                return "any";
 
-			case "CallExpression":
-				const funcType = this.getVariable(expr.callee);
-				if (funcType) return funcType.name;
-				return "any";
+            case "CallExpression":
+                const funcType = this.getVariable(expr.callee);
+                if (funcType) return funcType.name;
+                return "any";
 
-			case "Variable":
-				 const varType = this.getVariable(expr.name);
-				 if (varType) return varType.name;
-				 return "any";
-			
-			case "CastExpression":
-				return expr.targetType.name;
+            case "Variable":
+                 const varType = this.getVariable(expr.name);
+                 if (varType) return varType.name;
+                 return "any";
+            
+            case "CastExpression":
+                return expr.targetType.name;
 
 			case "IndexExpression": {
 				let root = expr;
-				let chain = [];
+                let chain = [];
 				while (root.type === "IndexExpression") {
 					chain.unshift(root.index); 
 					root = root.object;
@@ -1798,105 +2191,105 @@ class Parser
 
 				if (root.type === "Variable") {
 					let currentType = this.getVariable(root.name);
-					if (!currentType) return "any";
+                    if (!currentType) return "any";
 
-					let isNullableResult = false;
+                    let isNullableResult = false;
 
-					for (const keyNode of chain) {
-						if (currentType.name === "any") return "any";
+                    for (const keyNode of chain) {
+                        if (currentType.name === "any") return "any";
 
-						// Unwrap nullable, but mark result as nullable
-						while (currentType.name === "nullable" && currentType.generic) {
-							 isNullableResult = true;
-							 currentType = currentType.generic;
-						}
+                        // Unwrap nullable, but mark result as nullable
+                        while (currentType.name === "nullable" && currentType.generic) {
+                             isNullableResult = true;
+                             currentType = currentType.generic;
+                        }
 
-						if (currentType.generic) {
-							currentType = currentType.generic;
-						}
-						else if (currentType.type === "StructType") {
-							const def = this.structDefinitions.get(currentType.name);
-							if (!def) return "any";
+                        if (currentType.generic) {
+                            currentType = currentType.generic;
+                        }
+                        else if (currentType.type === "StructType") {
+                            const def = this.structDefinitions.get(currentType.name);
+                            if (!def) return "any";
 
-							if (keyNode.type === "Literal" && typeof keyNode.value === "string") {
-								const field = def.fields.find(f => f.name === keyNode.value);
-								if (field) {
-									currentType = field.type;
-								} else {
-									return "any"; 
-								}
-							} else {
-								return "any"; 
-							}
-						} 
-						else {
-							return "any"; 
-						}
-					}
-					
-					// If we traversed through a nullable, the result must be nullable
-					if (isNullableResult && currentType.name !== "nullable") {
-						return "nullable"; 
-					}
+                            if (keyNode.type === "Literal" && typeof keyNode.value === "string") {
+                                const field = def.fields.find(f => f.name === keyNode.value);
+                                if (field) {
+                                    currentType = field.type;
+                                } else {
+                                    return "any"; 
+                                }
+                            } else {
+                                return "any"; 
+                            }
+                        } 
+                        else {
+                            return "any"; 
+                        }
+                    }
+                    
+                    // If we traversed through a nullable, the result must be nullable
+                    if (isNullableResult && currentType.name !== "nullable") {
+                        return "nullable"; 
+                    }
 
-					return currentType.name;
+                    return currentType.name;
 				}
 				return "any";
 			}
 
-			default: return "any";
-		}
-	}
+            default: return "any";
+        }
+    }
 
-	enterScope() { this.scopes.push(new Map()); }
-	exitScope() { this.scopes.pop(); }
+    enterScope() { this.scopes.push(new Map()); }
+    exitScope() { this.scopes.pop(); }
 
 	defineVariable(name, typeInfo, checkShadowing = false) {
-		if (this.scopes.length > 0) {
-			if (checkShadowing) {
-				for (let i = this.scopes.length - 1; i > 0; i--) {
-					if (this.scopes[i].has(name)) {
-						throw new Error("Variable cannot be redeclared inside the same function.");
-					}
-				}
-			}
-			this.scopes[this.scopes.length - 1].set(name, typeInfo);
-		}
-	}
+        if (this.scopes.length > 0) {
+            if (checkShadowing) {
+                for (let i = this.scopes.length - 1; i > 0; i--) {
+                    if (this.scopes[i].has(name)) {
+                        throw new Error("Variable cannot be redeclared inside the same function.");
+                    }
+                }
+            }
+            this.scopes[this.scopes.length - 1].set(name, typeInfo);
+        }
+    }
 
-	getVariable(name) {
-		for (let i = this.scopes.length - 1; i >= 0; i--) {
-			if (this.scopes[i].has(name)) {
-				return this.scopes[i].get(name);
-			}
-		}
-		return null;
-	}
+    getVariable(name) {
+        for (let i = this.scopes.length - 1; i >= 0; i--) {
+            if (this.scopes[i].has(name)) {
+                return this.scopes[i].get(name);
+            }
+        }
+        return null;
+    }
 
 	parse() {
-		// Ensure preScan has been called if not already manually invoked
-		// Note: In our new architecture, preScan is called manually after loading definitions
-		
+        // Ensure preScan has been called if not already manually invoked
+        // Note: In our new architecture, preScan is called manually after loading definitions
+        
 		const program = { 
-			type: "Program", 
-			structs: [], 
-			functions: [] 
-		};
+            type: "Program", 
+            structs: [], 
+            functions: [] 
+        };
 
-		this.errors = [];
+        this.errors = [];
 
 		while (!this.isAtEnd()) {
 			try {
-				if (this.match(TokenType.STRUCT)) {
-					const structDecl = this.structDeclaration();
-					program.structs.push(structDecl);
-				} else if (this.match(TokenType.FUNCTION)) {
-					const funcDecl = this.functionDeclaration();
-					program.functions.push(funcDecl);
-				} else {
-					this.addError(this.peek(), "Expect 'function' or 'struct' at top level.");
-					this.advance();
-				}
+                if (this.match(TokenType.STRUCT)) {
+                    const structDecl = this.structDeclaration();
+                    program.structs.push(structDecl);
+                } else if (this.match(TokenType.FUNCTION)) {
+                    const funcDecl = this.functionDeclaration();
+                    program.functions.push(funcDecl);
+                } else {
+                    this.addError(this.peek(), "Expect 'function' or 'struct' at top level.");
+                    this.advance();
+                }
 			} catch (error) {
 				this.synchronize();
 			}
@@ -1904,49 +2297,49 @@ class Parser
 		return { ast: program, errors: this.errors };
 	}
 
-	structDeclaration() {
-		const nameToken = this.consume(TokenType.IDENTIFIER, "Expect struct name.");
-		// Removed assignment '=' check
-		this.consume(TokenType.LBRACKET, "Expect '[' to begin struct fields.");
+    structDeclaration() {
+        const nameToken = this.consume(TokenType.IDENTIFIER, "Expect struct name.");
+        // Removed assignment '=' check
+        this.consume(TokenType.LBRACKET, "Expect '[' to begin struct fields.");
 
-		const fields = [];
+        const fields = [];
 
-		if (!this.check(TokenType.RBRACKET)) {
-			do {
-				if (this.check(TokenType.STRUCT)) {
-					throw this.addError(this.peek(), "Nested structs are not allowed. Define types at top level.");
-				}
+        if (!this.check(TokenType.RBRACKET)) {
+            do {
+                if (this.check(TokenType.STRUCT)) {
+                    throw this.addError(this.peek(), "Nested structs are not allowed. Define types at top level.");
+                }
 
-				const typeInfo = this.parseType();
-				
-				let fieldNameToken;
-				if (this.match(TokenType.MAGIC_VAR)) {
-					fieldNameToken = this.previous();
-				} else {
-					fieldNameToken = this.consume(TokenType.IDENTIFIER, "Expect field name.");
-				}
-				
-				fields.push({
-					name: fieldNameToken.v,
-					type: typeInfo
-				});
+                const typeInfo = this.parseType();
+                
+                let fieldNameToken;
+                if (this.match(TokenType.MAGIC_VAR)) {
+                    fieldNameToken = this.previous();
+                } else {
+                    fieldNameToken = this.consume(TokenType.IDENTIFIER, "Expect field name.");
+                }
+                
+                fields.push({
+                    name: fieldNameToken.v,
+                    type: typeInfo
+                });
 
-			} while (this.match(TokenType.COMMA));
-		}
+            } while (this.match(TokenType.COMMA));
+        }
 
-		this.consume(TokenType.RBRACKET, "Expect ']' after struct fields.");
+        this.consume(TokenType.RBRACKET, "Expect ']' after struct fields.");
 
-		this.structDefinitions.set(nameToken.v, { fields });
+        this.structDefinitions.set(nameToken.v, { fields });
 
-		return {
-			type: "StructDeclaration",
-			name: nameToken.v,
-			fields: fields
-		};
-	}
+        return {
+            type: "StructDeclaration",
+            name: nameToken.v,
+            fields: fields
+        };
+    }
 
 	functionDeclaration() {
-		const line = this.tokens[this.current - 1].l;
+        const line = this.tokens[this.current - 1].l;
 
 		const nameToken = this.consume(TokenType.IDENTIFIER, "Expect function name.");
 		this.consume(TokenType.LPAREN, "Expect '(' after function name.");
@@ -1962,8 +2355,8 @@ class Parser
 		
 		this.consume(TokenType.RPAREN, "Expect ')' after parameters.");
 		
-		// Pass specific error messages for return types
-		const returnType = this.parseType("Expect function return type.", "Invalid function return type.");
+        // Pass specific error messages for return types
+        const returnType = this.parseType("Expect function return type.", "Invalid function return type.");
 
 		this.defineVariable(nameToken.v, { 
 			type: "Type", 
@@ -1972,22 +2365,22 @@ class Parser
 		});
 
 		this.consume(TokenType.LBRACE, "Expect '{' before function body.");
-		this.enterScope(); 
+        this.enterScope(); 
 
 		params.forEach(p => {
-			try {
-				this.defineVariable(p.name, p.dataType, true);
-			} catch (e) {
-				this.addError({ l: line, v: p.name }, "Duplicate parameter name.");
-			}
-		});
+            try {
+                this.defineVariable(p.name, p.dataType, true);
+            } catch (e) {
+                this.addError({ l: line, v: p.name }, "Duplicate parameter name.");
+            }
+        });
 
-		const previousReturnType = this.currentReturnType;
-		this.currentReturnType = returnType.name; 
+        const previousReturnType = this.currentReturnType;
+        this.currentReturnType = returnType.name; 
 
 		const body = this.parseBlock();
-		this.currentReturnType = previousReturnType;
-		this.exitScope(); 
+        this.currentReturnType = previousReturnType;
+        this.exitScope(); 
 
 		return {
 			line: line,
@@ -2002,45 +2395,45 @@ class Parser
 	parseType(missingMsg = "Expect valid type name.", invalidMsg = "Expect valid type name.") {
 		const base_keyword = this.matchTypeKeyword();
 		if (base_keyword) {
-			const baseTypeToken = this.consume(base_keyword, "Compiler error");
-			let generic = null;
+            const baseTypeToken = this.consume(base_keyword, "Compiler error");
+            let generic = null;
 
-			if (this.match(TokenType.LANGLE)) {
-				generic = this.parseType();
-				this.consume(TokenType.RANGLE, "Expect '>' after generic type.");
-				
-				if (base_keyword != TokenType.TYPE_LIST && 
-					base_keyword != TokenType.TYPE_MAP && 
-					base_keyword != TokenType.TYPE_NULLABLE) {
-					this.addError(baseTypeToken, "Base type does not support generics.");
-				}
-			}
-			return { type: "Type", name: baseTypeToken.v, generic: generic };
-		}
+            if (this.match(TokenType.LANGLE)) {
+                generic = this.parseType();
+                this.consume(TokenType.RANGLE, "Expect '>' after generic type.");
+                
+                if (base_keyword != TokenType.TYPE_LIST && 
+                    base_keyword != TokenType.TYPE_MAP && 
+                    base_keyword != TokenType.TYPE_NULLABLE) {
+                    this.addError(baseTypeToken, "Base type does not support generics.");
+                }
+            }
+            return { type: "Type", name: baseTypeToken.v, generic: generic };
+        }
 
-		if (this.check(TokenType.IDENTIFIER)) {
-			const token = this.peek();
-			if (this.knownTypes.has(token.v)) {
-				this.advance();
-				return { type: "StructType", name: token.v };
-			}
-			// It IS an identifier, but NOT a known type -> Invalid Type
-			throw this.addError(this.peek(), invalidMsg);
-		}
+        if (this.check(TokenType.IDENTIFIER)) {
+            const token = this.peek();
+            if (this.knownTypes.has(token.v)) {
+                this.advance();
+                return { type: "StructType", name: token.v };
+            }
+            // It IS an identifier, but NOT a known type -> Invalid Type
+            throw this.addError(this.peek(), invalidMsg);
+        }
 
-		// It is NOT a type keyword AND NOT an identifier -> Missing Type
-		throw this.addError(this.peek(), missingMsg);
+        // It is NOT a type keyword AND NOT an identifier -> Missing Type
+        throw this.addError(this.peek(), missingMsg);
 	}
 
 	parseBlock() {
-		this.enterScope();
+        this.enterScope();
 		const statements = [];
 		while (!this.check(TokenType.RBRACE) && !this.isAtEnd()) {
 			const statement = this.parseStatement();
 			if (statement) statements.push(statement);
 		}
 		this.consume(TokenType.RBRACE, "Expect '}' after block.");
-		this.exitScope();
+        this.exitScope();
 		return { type: "Block", statements: statements };
 	}
 
@@ -2049,17 +2442,17 @@ class Parser
 			if (this.match(TokenType.RETURN)) return this.returnStatement();
 			if (this.match(TokenType.IF)) return this.ifStatement();
 			if (this.match(TokenType.FOR)) return this.forStatement();
-			if (this.match(TokenType.WHILE)) return this.whileStatement();
+            if (this.match(TokenType.WHILE)) return this.whileStatement();
 			if (this.match(TokenType.BREAK)) return this.breakStatement();
-			if (this.match(TokenType.SKIP)) return this.skipStatement();
+            if (this.match(TokenType.SKIP)) return this.skipStatement();
 			if (this.match(TokenType.TRY)) return this.tryStatement();
 			if (this.match(TokenType.THROW)) return this.throwStatement();
-			if (this.match(TokenType.DELETE)) return this.deleteStatement();
+            if (this.match(TokenType.DELETE)) return this.deleteStatement();
 			if (this.matchTypeKeyword()) return this.variableDeclaration();
-			
-			if (this.check(TokenType.IDENTIFIER) && this.knownTypes.has(this.peek().v)) {
-				return this.variableDeclaration();
-			}
+            
+            if (this.check(TokenType.IDENTIFIER) && this.knownTypes.has(this.peek().v)) {
+                return this.variableDeclaration();
+            }
 
 			return this.expressionStatement();
 		} catch (error) {
@@ -2068,104 +2461,104 @@ class Parser
 		}
 	}
 
-	whileStatement() {
-		const keyword = this.previous();
-		this.consume(TokenType.LPAREN, "Expect '(' after 'while'.");
-		const condition = this.parseExpression();
-		this.consume(TokenType.RPAREN, "Expect ')' after while condition.");
-		this.consume(TokenType.LBRACE, "Expect '{' before loop body.");
-		
-		this.loopDepth++;
-		const body = this.parseBlock();
-		this.loopDepth--;
+    whileStatement() {
+        const keyword = this.previous();
+        this.consume(TokenType.LPAREN, "Expect '(' after 'while'.");
+        const condition = this.parseExpression();
+        this.consume(TokenType.RPAREN, "Expect ')' after while condition.");
+        this.consume(TokenType.LBRACE, "Expect '{' before loop body.");
+        
+        this.loopDepth++;
+        const body = this.parseBlock();
+        this.loopDepth--;
 
-		return { type: "WhileStatement", condition: condition, body: body, line: keyword.l };
-	}
+        return { type: "WhileStatement", condition: condition, body: body, line: keyword.l };
+    }
 
 	breakStatement() {
-		const keyword = this.previous();
-		if (this.loopDepth === 0) this.addError(keyword, "'break' can only be used inside a loop.");
-		this.consume(TokenType.SEMICOLON, "Expect ';' after 'break'.");
-		return { type: "BreakStatement", line: keyword.l };
-	}
+        const keyword = this.previous();
+        if (this.loopDepth === 0) this.addError(keyword, "'break' can only be used inside a loop.");
+        this.consume(TokenType.SEMICOLON, "Expect ';' after 'break'.");
+        return { type: "BreakStatement", line: keyword.l };
+    }
 
-	skipStatement() {
-		const keyword = this.previous();
-		if (this.loopDepth === 0) this.addError(keyword, "'skip' can only be used inside a loop.");
-		this.consume(TokenType.SEMICOLON, "Expect ';' after 'skip'.");
-		return { type: "SkipStatement", line: keyword.l };
-	}
+    skipStatement() {
+        const keyword = this.previous();
+        if (this.loopDepth === 0) this.addError(keyword, "'skip' can only be used inside a loop.");
+        this.consume(TokenType.SEMICOLON, "Expect ';' after 'skip'.");
+        return { type: "SkipStatement", line: keyword.l };
+    }
 
 	tryStatement() {
-		const keyword = this.previous();
-		this.consume(TokenType.LBRACE, "Expect '{' before try block.");
-		const tryBlock = this.parseBlock();
-		
-		this.consume(TokenType.CATCH, "Expect 'catch' after try block.");
-		this.consume(TokenType.LBRACE, "Expect '{' before catch block.");
-		
-		this.enterScope();
-		this.defineVariable("$thrown_message", { type: "Type", name: "string", initialized: true });
-		const catchBlock = this.parseBlock();
-		this.exitScope();
+        const keyword = this.previous();
+        this.consume(TokenType.LBRACE, "Expect '{' before try block.");
+        const tryBlock = this.parseBlock();
+        
+        this.consume(TokenType.CATCH, "Expect 'catch' after try block.");
+        this.consume(TokenType.LBRACE, "Expect '{' before catch block.");
+        
+        this.enterScope();
+        this.defineVariable("$thrown_message", { type: "Type", name: "string", initialized: true });
+        const catchBlock = this.parseBlock();
+        this.exitScope();
 
-		let reviewBlock = null;
-		if (this.match(TokenType.REVIEW)) {
-			this.consume(TokenType.LBRACE, "Expect '{' before review block.");
-			this.enterScope();
-			this.defineVariable("$thrown_message", { type: "Type", name: "string", initialized: true });
-			reviewBlock = this.parseBlock();
-			this.exitScope();
-		}
+        let reviewBlock = null;
+        if (this.match(TokenType.REVIEW)) {
+            this.consume(TokenType.LBRACE, "Expect '{' before review block.");
+            this.enterScope();
+            this.defineVariable("$thrown_message", { type: "Type", name: "string", initialized: true });
+            reviewBlock = this.parseBlock();
+            this.exitScope();
+        }
 
-		return {
-			type: "TryStatement",
-			tryBlock: tryBlock,
-			catchIdentifier: "$thrown_message",
-			catchBlock: catchBlock,
-			reviewBlock: reviewBlock,
-			line: keyword.l
-		};
-	}
+        return {
+            type: "TryStatement",
+            tryBlock: tryBlock,
+            catchIdentifier: "$thrown_message",
+            catchBlock: catchBlock,
+            reviewBlock: reviewBlock,
+            line: keyword.l
+        };
+    }
 
 	throwStatement() {
-		const keyword = this.previous();
-		
-		let severity = "error";
-		if (this.check(TokenType.IDENTIFIER)) {
-			const severityToken = this.advance();
-			if (["alert", "error", "critical"].includes(severityToken.v)) {
-				severity = severityToken.v;
-			} else {
-				this.addError(severityToken, "Expected 'alert', 'error', or 'critical' after throw.");
-			}
-		} else {
-			 this.addError(this.peek(), "Expected severity level (alert, error, critical) after throw.");
-		}
+        const keyword = this.previous();
+        
+        let severity = "error";
+        if (this.check(TokenType.IDENTIFIER)) {
+            const severityToken = this.advance();
+            if (["alert", "error", "critical"].includes(severityToken.v)) {
+                severity = severityToken.v;
+            } else {
+                this.addError(severityToken, "Expected 'alert', 'error', or 'critical' after throw.");
+            }
+        } else {
+             this.addError(this.peek(), "Expected severity level (alert, error, critical) after throw.");
+        }
 
-		const value = this.parseExpression();
-		this.consume(TokenType.SEMICOLON, "Expect ';' after throw value.");
-		return { type: "ThrowStatement", severity: severity, argument: value, line: keyword.l };
-	}
+        const value = this.parseExpression();
+        this.consume(TokenType.SEMICOLON, "Expect ';' after throw value.");
+        return { type: "ThrowStatement", severity: severity, argument: value, line: keyword.l };
+    }
 
-	deleteStatement() {
-		const keyword = this.previous();
-		const expr = this.parseExpression();
-		
-		if (expr.type !== "IndexExpression") {
-			this.addError(keyword, "Invalid delete target. Expected index expression (e.g. collection[key]).");
-		} else {
-			// Check if we are deleting from a Struct
-			const inferredObj = this.inferType(expr.object);
-			const structDef = this.structDefinitions.get(inferredObj);
-			if (structDef) {
-				this.addError(keyword, "Cannot delete Struct elements");
-			}
-		}
+    deleteStatement() {
+        const keyword = this.previous();
+        const expr = this.parseExpression();
+        
+        if (expr.type !== "IndexExpression") {
+            this.addError(keyword, "Invalid delete target. Expected index expression (e.g. collection[key]).");
+        } else {
+            // Check if we are deleting from a Struct
+            const inferredObj = this.inferType(expr.object);
+            const structDef = this.structDefinitions.get(inferredObj);
+            if (structDef) {
+                this.addError(keyword, "Cannot delete Struct elements");
+            }
+        }
 
-		this.consume(TokenType.SEMICOLON, "Expect ';' after delete statement.");
-		return { type: "DeleteStatement", target: expr, line: keyword.l };
-	}
+        this.consume(TokenType.SEMICOLON, "Expect ';' after delete statement.");
+        return { type: "DeleteStatement", target: expr, line: keyword.l };
+    }
 
 	parseExpression() { return this.expressionParser.parse(); }
 
@@ -2176,25 +2569,25 @@ class Parser
 		this.consume(TokenType.SEMICOLON, "Expect ';' after return value.");
 
 		if (this.currentReturnType !== null && this.currentReturnType !== "any") {
-			if (value === null) {
-				if (this.currentReturnType !== "none") {
-					this.addError(keyword, "Return type mismatch.");
-				}
-			} else {
-				const inferredType = this.inferType(value);
-				
-				if (this.currentReturnType === "none") {
-					 this.addError(keyword, "Return type mismatch.");
-				}
-				
-				const isNull = inferredType === "null";
-				const isPrimitive = ["number", "bool"].includes(this.currentReturnType);
-				if (isNull && !isPrimitive) { /* Allowed */ } 
-				else if (inferredType !== "any" && inferredType !== this.currentReturnType) {
-					this.addError(keyword, "Return type mismatch.");
-				}
-			}
-		}
+            if (value === null) {
+                if (this.currentReturnType !== "none") {
+                    this.addError(keyword, "Return type mismatch.");
+                }
+            } else {
+                const inferredType = this.inferType(value);
+                
+                if (this.currentReturnType === "none") {
+                     this.addError(keyword, "Return type mismatch.");
+                }
+                
+                const isNull = inferredType === "null";
+                const isPrimitive = ["number", "bool"].includes(this.currentReturnType);
+                if (isNull && !isPrimitive) { /* Allowed */ } 
+                else if (inferredType !== "any" && inferredType !== this.currentReturnType) {
+                    this.addError(keyword, "Return type mismatch.");
+                }
+            }
+        }
 		return { line: keyword.l, type: "ReturnStatement", value: value };
 	}
 
@@ -2218,241 +2611,241 @@ class Parser
 	}
 
 	forStatement() {
-		const keyword = this.previous();
-		this.consume(TokenType.LPAREN, "Expect '(' after 'for'.");
-		const iteratorToken = this.consume(TokenType.IDENTIFIER, "Expect iterator variable name.");
-		this.consume(TokenType.IN, "Expect 'in' after variable name.");
-		const startOrCollection = this.parseExpression();
-		let isRange = false;
-		let endValue = null;
-		if (this.match(TokenType.TO)) {
-			isRange = true;
-			endValue = this.parseExpression(); 
-		}
-		this.consume(TokenType.RPAREN, "Expect ')' after for clauses.");
-		this.consume(TokenType.LBRACE, "Expect '{' before loop body.");
-		this.enterScope();
+        const keyword = this.previous();
+        this.consume(TokenType.LPAREN, "Expect '(' after 'for'.");
+        const iteratorToken = this.consume(TokenType.IDENTIFIER, "Expect iterator variable name.");
+        this.consume(TokenType.IN, "Expect 'in' after variable name.");
+        const startOrCollection = this.parseExpression();
+        let isRange = false;
+        let endValue = null;
+        if (this.match(TokenType.TO)) {
+            isRange = true;
+            endValue = this.parseExpression(); 
+        }
+        this.consume(TokenType.RPAREN, "Expect ')' after for clauses.");
+        this.consume(TokenType.LBRACE, "Expect '{' before loop body.");
+        this.enterScope();
 
-		let iterType = "any";
-		
-		if (isRange) {
-			iterType = "number";
-		} else {
-			const collectionType = this.inferType(startOrCollection);
+        let iterType = "any";
+        
+        if (isRange) {
+            iterType = "number";
+        } else {
+            const collectionType = this.inferType(startOrCollection);
 
-			if (["list", "any"].includes(collectionType)) {
-				 iterType = "any"; 
-			}
-			else if (["map"].includes(collectionType) || this.structDefinitions.has(collectionType)) {
-				 iterType = "string"; // Keys 
-			}
-			else if (collectionType === "string") {
-				 this.addError(keyword, "Strings are not directly iterable. Use 'string as list<string>'.");
-			} 
-			else {
-				 this.addError(keyword, `Type '${collectionType}' is not iterable.`);
-			}
-		}
+            if (["list", "any"].includes(collectionType)) {
+                 iterType = "any"; 
+            }
+            else if (["map"].includes(collectionType) || this.structDefinitions.has(collectionType)) {
+                 iterType = "string"; // Keys 
+            }
+            else if (collectionType === "string") {
+                 this.addError(keyword, "Strings are not directly iterable. Use 'string as list<string>'.");
+            } 
+            else {
+                 this.addError(keyword, `Type '${collectionType}' is not iterable.`);
+            }
+        }
 
-		this.defineVariable(iteratorToken.v, { type: "Type", name: iterType, initialized: true });
+        this.defineVariable(iteratorToken.v, { type: "Type", name: iterType, initialized: true });
 		this.loopDepth++;
-		const body = this.parseBlock();
+        const body = this.parseBlock();
 		this.loopDepth--;
-		this.exitScope();
-		if (isRange) {
-			return { type: "ForRangeStatement", iterator: iteratorToken.v, startValue: startOrCollection, endValue: endValue, body: body, line: keyword.l };
-		} else {
-			return { type: "ForInStatement", iterator: iteratorToken.v, collection: startOrCollection, body: body, line: keyword.l };
-		}
-	}
+        this.exitScope();
+        if (isRange) {
+            return { type: "ForRangeStatement", iterator: iteratorToken.v, startValue: startOrCollection, endValue: endValue, body: body, line: keyword.l };
+        } else {
+            return { type: "ForInStatement", iterator: iteratorToken.v, collection: startOrCollection, body: body, line: keyword.l };
+        }
+    }
 
 	getDefaultValue(typeInfo, visited = new Set()) {
-		switch (typeInfo.name) {
-			case "number": return { type: "Literal", value: 0 };
-			case "string": return { type: "Literal", value: "" };
-			case "bool":   return { type: "Literal", value: false };
-			case "list":   return { type: "ListLiteral", elements: [] };
-			case "map":    return { type: "MapLiteral", entries: [] };
-			case "null":   return { type: "Literal", value: null };
-			case "none":   return { type: "Literal", value: null };
-			case "nullable": return { type: "Literal", value: null };
-			default:       
-				if (typeInfo.type === "StructType") {
-					if (visited.has(typeInfo.name)) {
-						const path = Array.from(visited);
-						const parent = path[path.length - 1];
-						
-						if (parent === typeInfo.name) {
-							 throw new Error(`Recursive struct definition detected for '${typeInfo.name}'. Use 'nullable<${typeInfo.name}>' or 'list<${typeInfo.name}>' to break the cycle.`);
-						} else {
-							 const cycle = [...path, typeInfo.name].join(" -> ");
-							 throw new Error(`Circular struct definition detected: ${cycle}. Use 'nullable' or 'list' generics to break the cycle.`);
-						}
-					}
+        switch (typeInfo.name) {
+            case "number": return { type: "Literal", value: 0 };
+            case "string": return { type: "Literal", value: "" };
+            case "bool":   return { type: "Literal", value: false };
+            case "list":   return { type: "ListLiteral", elements: [] };
+            case "map":    return { type: "MapLiteral", entries: [] };
+            case "null":   return { type: "Literal", value: null };
+            case "none":   return { type: "Literal", value: null };
+            case "nullable": return { type: "Literal", value: null };
+            default:       
+                if (typeInfo.type === "StructType") {
+                    if (visited.has(typeInfo.name)) {
+                        const path = Array.from(visited);
+                        const parent = path[path.length - 1];
+                        
+                        if (parent === typeInfo.name) {
+                             throw new Error(`Recursive struct definition detected for '${typeInfo.name}'. Use 'nullable<${typeInfo.name}>' or 'list<${typeInfo.name}>' to break the cycle.`);
+                        } else {
+                             const cycle = [...path, typeInfo.name].join(" -> ");
+                             throw new Error(`Circular struct definition detected: ${cycle}. Use 'nullable' or 'list' generics to break the cycle.`);
+                        }
+                    }
 
-					const structDef = this.structDefinitions.get(typeInfo.name);
-					if (structDef) {
-						const newVisited = new Set(visited);
-						newVisited.add(typeInfo.name);
+                    const structDef = this.structDefinitions.get(typeInfo.name);
+                    if (structDef) {
+                        const newVisited = new Set(visited);
+                        newVisited.add(typeInfo.name);
 
-						const missingRequired = structDef.fields.find(f => f.name.startsWith('$'));
-						if (missingRequired) {
-							throw new Error(`Cannot zero-initialize struct '${typeInfo.name}' because required field '${missingRequired.name}' is missing.`);
-						}
+                        const missingRequired = structDef.fields.find(f => f.name.startsWith('$'));
+                        if (missingRequired) {
+                            throw new Error(`Cannot zero-initialize struct '${typeInfo.name}' because required field '${missingRequired.name}' is missing.`);
+                        }
 
-						const entries = structDef.fields.map(field => ({
-							key: { type: "Literal", value: field.name },
-							value: this.getDefaultValue(field.type, newVisited) 
-						}));
-						return { type: "MapLiteral", entries: entries };
-					}
-				}
-				return { type: "Literal", value: null }; 
-		}
-	}
+                        const entries = structDef.fields.map(field => ({
+                            key: { type: "Literal", value: field.name },
+                            value: this.getDefaultValue(field.type, newVisited) 
+                        }));
+                        return { type: "MapLiteral", entries: entries };
+                    }
+                }
+                return { type: "Literal", value: null }; 
+        }
+    }
 
-	// CENTRALIZED ASSIGNMENT LOGIC
-	validateAssignment(targetType, valueExpr, token, customMismatchError = null) {
-		const inferredVal = this.inferType(valueExpr);
-		let typeMatch = false;
+    // CENTRALIZED ASSIGNMENT LOGIC
+    validateAssignment(targetType, valueExpr, token, customMismatchError = null) {
+        const inferredVal = this.inferType(valueExpr);
+        let typeMatch = false;
 
-		// 1. Any check (Strict: Any variable can take anything, Any value can go anywhere)
-		if (inferredVal === "any" || targetType.name === "any") {
-			typeMatch = true;
-		}
-		// 2. Exact match
-		else if (inferredVal === targetType.name) {
-			typeMatch = true;
-		}
-		// 3. Struct Initialization via Map Literal
-		else if (targetType.type === "StructType" && inferredVal === "map") {
-			typeMatch = true;
-			if (valueExpr.type === "MapLiteral") {
-				this.validateStructLiteral(valueExpr, targetType.name, token);
-			}
-		}
-		// 4. Nullable Handling
-		else if (targetType.name === "nullable" && targetType.generic) {
-			if (inferredVal === targetType.generic.name || inferredVal === "null") {
-				typeMatch = true;
-				if (inferredVal === targetType.generic.name && valueExpr.type === "MapLiteral") {
-					 this.validateStructLiteral(valueExpr, targetType.generic.name, token);
-				}
-			}
-		}
+        // 1. Any check (Strict: Any variable can take anything, Any value can go anywhere)
+        if (inferredVal === "any" || targetType.name === "any") {
+            typeMatch = true;
+        }
+        // 2. Exact match
+        else if (inferredVal === targetType.name) {
+            typeMatch = true;
+        }
+        // 3. Struct Initialization via Map Literal
+        else if (targetType.type === "StructType" && inferredVal === "map") {
+            typeMatch = true;
+            if (valueExpr.type === "MapLiteral") {
+                this.validateStructLiteral(valueExpr, targetType.name, token);
+            }
+        }
+        // 4. Nullable Handling
+        else if (targetType.name === "nullable" && targetType.generic) {
+            if (inferredVal === targetType.generic.name || inferredVal === "null") {
+                typeMatch = true;
+                if (inferredVal === targetType.generic.name && valueExpr.type === "MapLiteral") {
+                     this.validateStructLiteral(valueExpr, targetType.generic.name, token);
+                }
+            }
+        }
 
-		if (!typeMatch) {
-			if (targetType.name === "list" && inferredVal === "map") {
-				this.addError(token, "List cannot be set using map.");
-			} else if (targetType.name === "map" && inferredVal === "list") {
-				this.addError(token, "Map cannot be set using list.");
-			} else if (targetType.name === "nullable") {
-				this.addError(token, "Nullable variable assignment type mismatch.");
-			} else {
-				// Use custom error if provided, otherwise default
-				this.addError(token, customMismatchError || "Variable assignment type mismatch.");
-			}
-			throw new Error("Assignment validation failed"); // Short circuit
-		}
-	}
+        if (!typeMatch) {
+            if (targetType.name === "list" && inferredVal === "map") {
+                this.addError(token, "List cannot be set using map.");
+            } else if (targetType.name === "map" && inferredVal === "list") {
+                this.addError(token, "Map cannot be set using list.");
+            } else if (targetType.name === "nullable") {
+                this.addError(token, "Nullable variable assignment type mismatch.");
+            } else {
+                // Use custom error if provided, otherwise default
+                this.addError(token, customMismatchError || "Variable assignment type mismatch.");
+            }
+            throw new Error("Assignment validation failed"); // Short circuit
+        }
+    }
 
-	validateStructLiteral(literal, structName, token) {
-		const def = this.structDefinitions.get(structName);
-		if (!def) return; 
+    validateStructLiteral(literal, structName, token) {
+        const def = this.structDefinitions.get(structName);
+        if (!def) return; 
 
-		def.fields.forEach(field => {
-			const entry = literal.entries.find(e => e.key.value === field.name);
-			
-			// MISSING FIELD LOGIC
-			if (!entry) {
-				if (field.name.startsWith('$')) {
-					this.addError(token, `Missing required struct field: '${field.name}'.`);
-				} else {
-					// Auto-inject default value for non-required fields
-					try {
-						const defaultVal = this.getDefaultValue(field.type, new Set([structName])); 
-						literal.entries.push({
-							key: { type: "Literal", value: field.name },
-							value: defaultVal
-						});
-					} catch (e) {
-						 this.addError(token, e.message);
-					}
-				}
-			} else {
-				const valType = this.inferType(entry.value);
-				let typeMatch = false;
+        def.fields.forEach(field => {
+            const entry = literal.entries.find(e => e.key.value === field.name);
+            
+            // MISSING FIELD LOGIC
+            if (!entry) {
+                if (field.name.startsWith('$')) {
+                    this.addError(token, `Missing required struct field: '${field.name}'.`);
+                } else {
+                    // Auto-inject default value for non-required fields
+                    try {
+                        const defaultVal = this.getDefaultValue(field.type, new Set([structName])); 
+                        literal.entries.push({
+                            key: { type: "Literal", value: field.name },
+                            value: defaultVal
+                        });
+                    } catch (e) {
+                         this.addError(token, e.message);
+                    }
+                }
+            } else {
+                const valType = this.inferType(entry.value);
+                let typeMatch = false;
 
-				if (valType === "any" || field.type.name === "any" || valType === field.type.name) {
-					typeMatch = true;
-				} else if (field.type.type === "StructType" && valType === "map") {
-					typeMatch = true;
-					if (entry.value.type === "MapLiteral") {
-						this.validateStructLiteral(entry.value, field.type.name, token);
-					}
-				} 
-				else if (field.type.name === "nullable" && field.type.generic) {
-					if (valType === field.type.generic.name || valType === "null") {
-						typeMatch = true;
-						if (valType === field.type.generic.name && entry.value.type === "MapLiteral") {
-							 this.validateStructLiteral(entry.value, field.type.generic.name, token);
-						}
-					}
-				}
+                if (valType === "any" || field.type.name === "any" || valType === field.type.name) {
+                    typeMatch = true;
+                } else if (field.type.type === "StructType" && valType === "map") {
+                    typeMatch = true;
+                    if (entry.value.type === "MapLiteral") {
+                        this.validateStructLiteral(entry.value, field.type.name, token);
+                    }
+                } 
+                else if (field.type.name === "nullable" && field.type.generic) {
+                    if (valType === field.type.generic.name || valType === "null") {
+                        typeMatch = true;
+                        if (valType === field.type.generic.name && entry.value.type === "MapLiteral") {
+                             this.validateStructLiteral(entry.value, field.type.generic.name, token);
+                        }
+                    }
+                }
 
-				if (!typeMatch) {
-					this.addError(token, "Struct value type mismatch.");
-				}
-			}
-		});
-		
-		literal.entries.forEach(entry => {
-			if (!def.fields.find(f => f.name === entry.key.value)) {
-				this.addError(token, `Unknown field in struct initialization: '${entry.key.value}'.`);
-			}
-		});
-	}
+                if (!typeMatch) {
+                    this.addError(token, "Struct value type mismatch.");
+                }
+            }
+        });
+        
+        literal.entries.forEach(entry => {
+            if (!def.fields.find(f => f.name === entry.key.value)) {
+                this.addError(token, `Unknown field in struct initialization: '${entry.key.value}'.`);
+            }
+        });
+    }
 
 	variableDeclaration() {
-		const typeInfo = this.parseType();
-		const nameToken = this.consume(TokenType.IDENTIFIER, "Expect variable name.");
+        const typeInfo = this.parseType();
+        const nameToken = this.consume(TokenType.IDENTIFIER, "Expect variable name.");
 
-		if (typeInfo.name === "any") {
-			 this.addError(nameToken, "Type 'any' is not allowed for variable declarations.");
-		}
-		
-		if (typeInfo.name === "nullable" && typeInfo.generic && typeInfo.generic.name === "any") {
-			 this.addError(nameToken, "Type 'nullable<any>' is not allowed.");
-		}
+        if (typeInfo.name === "any") {
+             this.addError(nameToken, "Type 'any' is not allowed for variable declarations.");
+        }
+        
+        if (typeInfo.name === "nullable" && typeInfo.generic && typeInfo.generic.name === "any") {
+             this.addError(nameToken, "Type 'nullable<any>' is not allowed.");
+        }
 
-		let initializer = null;
+        let initializer = null;
 		let isInitialized = true;
 
-		if (this.match(TokenType.ASSIGN)) {
-			initializer = this.parseExpression();
-			try {
-				this.validateAssignment(typeInfo, initializer, nameToken);
-			} catch (e) {
-				// Validation failed, errors already added
-			}
-		} else {
-			try {
-				initializer = this.getDefaultValue(typeInfo);
-			} catch(e) {
-				this.addError(nameToken, e.message); 
-			}
-		}
+        if (this.match(TokenType.ASSIGN)) {
+            initializer = this.parseExpression();
+            try {
+                this.validateAssignment(typeInfo, initializer, nameToken);
+            } catch (e) {
+                // Validation failed, errors already added
+            }
+        } else {
+            try {
+                initializer = this.getDefaultValue(typeInfo);
+            } catch(e) {
+                this.addError(nameToken, e.message); 
+            }
+        }
 
-		this.consume(TokenType.SEMICOLON, "Expect ';' after variable declaration.");
+        this.consume(TokenType.SEMICOLON, "Expect ';' after variable declaration.");
 
 		try {
-			this.defineVariable(nameToken.v, { ...typeInfo, initialized: isInitialized }, true); 
-		} catch (e) {
-			this.addError(nameToken, e.message);
-		}
+            this.defineVariable(nameToken.v, { ...typeInfo, initialized: isInitialized }, true); 
+        } catch (e) {
+            this.addError(nameToken, e.message);
+        }
 
 		return { line: nameToken.l, type: "VariableDeclaration", varType: typeInfo, name: nameToken.v, initializer: initializer };
-	}
+    }
 
 	expressionStatement() {
 		const expr = this.parseExpression();
@@ -2526,44 +2919,45 @@ class Parser
 	{
 		this.advance();
 
-		let braceDepth = 0;
+        let braceDepth = 0;
 
 		while (!this.isAtEnd()) {
-			const token = this.peek();
+            const token = this.peek();
 
-			if (token.t === TokenType.LBRACE) {
-				braceDepth++;
-			} 
-			else if (token.t === TokenType.RBRACE) {
-				if (braceDepth > 0) {
-					braceDepth--;
-					this.advance();
-					if (braceDepth === 0) return;
-					continue; 
-				} else {
-					return;
-				}
-			}
+            if (token.t === TokenType.LBRACE) {
+                braceDepth++;
+            } 
+            else if (token.t === TokenType.RBRACE) {
+                if (braceDepth > 0) {
+                    braceDepth--;
+                    this.advance();
+                    if (braceDepth === 0) return;
+                    continue; 
+                } else {
+                    return;
+                }
+            }
 
 			if (this.previous().t === TokenType.SEMICOLON && braceDepth === 0) return;
 
-			if (braceDepth === 0) {
-				switch (token.t) {
-					case TokenType.FUNCTION:
-					case TokenType.STRUCT:
-					case TokenType.FOR:
-					case TokenType.WHILE:
-					case TokenType.IF:
-					case TokenType.RETURN:
-						return;
-				}
-			}
+            if (braceDepth === 0) {
+                switch (token.t) {
+                    case TokenType.FUNCTION:
+                    case TokenType.STRUCT:
+                    case TokenType.FOR:
+                    case TokenType.WHILE:
+                    case TokenType.IF:
+                    case TokenType.RETURN:
+                        return;
+                }
+            }
 
 			this.advance();
 		}
 	}
 }
 
+// --- Source: runtime.mjs ---
 // Signals for control flow (internal use only)
 class BreakSignal {}
 class SkipSignal {}
@@ -3314,6 +3708,7 @@ class Runtime {
     }
 }
 
+// --- Source: standard_library.mjs ---
 // Helper to convert JS structure (Object/Array) to Shift structure (Map/List)
 function toShift(val) {
     if (val === null) return null;
@@ -3345,9 +3740,48 @@ function toJS(val) {
     return val;
 }
 
+// Helper to create a DateTime struct from a JS Date object
+function create_dt_struct(date) {
+    const dt = new Map();
+    dt.set("year", date.getFullYear());
+    dt.set("month", date.getMonth() + 1); // JS months are 0-indexed
+    dt.set("day", date.getDate());
+    dt.set("hour", date.getHours());
+    dt.set("minute", date.getMinutes());
+    dt.set("second", date.getSeconds());
+    dt.set("millisecond", date.getMilliseconds());
+    dt.set("offset_minutes", date.getTimezoneOffset());
+    
+    // Simple timezone extraction (heuristic)
+    try {
+        const str = date.toString(); 
+        // e.g. "Mon Jan 19 2026 10:55:00 GMT+1100 (Australian Eastern Daylight Time)"
+        const match = str.match(/\(([^)]+)\)$/);
+        dt.set("timezone", match ? match[1] : "UTC");
+    } catch(e) {
+        dt.set("timezone", "UTC");
+    }
+    
+    return dt;
+}
+
 const StandardLibrary = {
     // 1. Struct Definitions (Schema)
     structs: [
+        {
+            name: "DateTime",
+            fields: [
+                { name: "year", type: "number" },
+                { name: "month", type: "number" },
+                { name: "day", type: "number" },
+                { name: "hour", type: "number" },
+                { name: "minute", type: "number" },
+                { name: "second", type: "number" },
+                { name: "millisecond", type: "number" },
+                { name: "offset_minutes", type: "number" },
+                { name: "timezone", type: "string" }
+            ]
+        },
         {
             name: "RegexResult",
             fields: [
@@ -3367,13 +3801,12 @@ const StandardLibrary = {
     ],
 
     // 2. Intrinsics (Native JS Implementations)
-    // These must be registered in Parser (as Types) and Runtime (as Functions)
     intrinsics: {
         "print_line": { 
             returnType: "none", 
-            func: (args, runtime) => { uiConsoleLog(args[0]); return null; } 
+            func: (args, runtime) => { console.log(args[0]); return null; } 
         },
-        "convert_jsonstringtomap": {
+        "convert_jsonstring_to_map": {
             returnType: "map",
             generic: "any",
             func: (args) => {
@@ -3389,7 +3822,7 @@ const StandardLibrary = {
                 return toShift(json);
             }
         },
-        "convert_jsonstringtolist": {
+        "convert_jsonstring_to_list": {
             returnType: "list",
             generic: "any",
             func: (args) => {
@@ -3405,7 +3838,7 @@ const StandardLibrary = {
                 return toShift(json);
             }
         },
-        "convert_maptojsonstring": {
+        "convert_map_to_jsonstring": {
             returnType: "string",
             func: (args) => {
                 const val = args[0];
@@ -3415,7 +3848,7 @@ const StandardLibrary = {
                 return JSON.stringify(toJS(val));
             }
         },
-        "convert_listtojsonstring": {
+        "convert_list_to_jsonstring": {
             returnType: "string",
             func: (args) => {
                 const val = args[0];
@@ -3424,13 +3857,89 @@ const StandardLibrary = {
                 }
                 return JSON.stringify(toJS(val));
             }
+        },
+        
+        // Random
+        "generate_randomnumber": {
+            returnType: "number",
+            func: (args) => Math.random()
+        },
+        "generate_randomint_from_range": {
+            returnType: "number",
+            func: (args) => {
+                const min = Math.ceil(args[0]);
+                const max = Math.floor(args[1]);
+                return Math.floor(Math.random() * (max - min + 1)) + min;
+            }
+        },
+
+        // DateTime Intrinsics
+        "get_datetime": {
+            returnType: "DateTime",
+            func: (args) => create_dt_struct(new Date())
+        },
+        "get_datetime_as_unixtime": {
+            returnType: "number",
+            func: (args) => Math.floor(Date.now() / 1000)
+        },
+        "get_datetime_as_iso8601": {
+            returnType: "string",
+            func: (args) => new Date().toISOString()
+        },
+        "convert_unixtime_to_datetime": {
+            returnType: "DateTime",
+            func: (args) => create_dt_struct(new Date(args[0] * 1000))
+        },
+        "convert_iso8601_to_datetime": {
+            returnType: "DateTime",
+            func: (args) => {
+                const d = new Date(args[0]);
+                if (isNaN(d.getTime())) throw new Error("Runtime Error: Invalid ISO8601 date string.");
+                return create_dt_struct(d);
+            }
+        },
+        "convert_datetime_to_unixtime": {
+            returnType: "number",
+            func: (args) => {
+                const dt = args[0];
+                if (!(dt instanceof Map)) throw new Error("Runtime Error: Expected DateTime struct.");
+                
+                // Construct Date object from struct fields
+                // Note: JS Date(year, monthIndex, day, hours, minutes, seconds, milliseconds)
+                const d = new Date(
+                    dt.get("year"),
+                    dt.get("month") - 1, // 0-indexed month
+                    dt.get("day"),
+                    dt.get("hour"),
+                    dt.get("minute"),
+                    dt.get("second"),
+                    dt.get("millisecond")
+                );
+                return Math.floor(d.getTime() / 1000);
+            }
+        },
+        "convert_datetime_to_iso8601": {
+            returnType: "string",
+            func: (args) => {
+                const dt = args[0];
+                if (!(dt instanceof Map)) throw new Error("Runtime Error: Expected DateTime struct.");
+                
+                const d = new Date(
+                    dt.get("year"),
+                    dt.get("month") - 1,
+                    dt.get("day"),
+                    dt.get("hour"),
+                    dt.get("minute"),
+                    dt.get("second"),
+                    dt.get("millisecond")
+                );
+                return d.toISOString();
+            }
         }
     },
 
     // 3. Shift Standard Library (Written in Shift)
-    // We implicitly trust that the parser/runtime can handle this code
-    source: `
-function get_substring(string input_str, number start_index, nullable<number> end_index) string {
+    source: `function get_substring(string input_str, number start_index, nullable<number> end_index) string {
     list<number> unpacked_str = unpack input_str;
     list<number> substring_list;
     number true_end = size of input_str;
@@ -3447,7 +3956,7 @@ function get_substring(string input_str, number start_index, nullable<number> en
     return pack substring_list;
 }
 
-function ansitransform_toupper(string input_str) string {
+function transform_ansistring_to_uppercase(string input_str) string {
     list<number> charnum_list = unpack input_str;
 
     for (index in 0 to (size of charnum_list - 1))
@@ -3461,7 +3970,7 @@ function ansitransform_toupper(string input_str) string {
     return pack charnum_list;
 }
 
-function ansitransform_tolower(string input_str) string {
+function transform_ansistring_to_lowercase(string input_str) string {
     list<number> charnum_list = unpack input_str;
 
     for (index in 0 to (size of charnum_list - 1))
@@ -3506,7 +4015,7 @@ function trim_string(string input_str) string {
     return exploded_input as string;
 }
 
-function split_stringtolist(string input_str, string split_str) list<string> {
+function split_string_to_list(string input_str, string split_str) list<string> {
     list<string> exploded_input = input_str as list<string>;
     list<string> exploded_split = split_str as list<string>;
     list<string> resulting_list;
@@ -3549,24 +4058,106 @@ function split_stringtolist(string input_str, string split_str) list<string> {
     resulting_list[] = current_string;
 
     return resulting_list;
-}
-`,
+}`,
 
-    // --- Loading Logic ---
-
-    // Load Definitions into Parser (so it knows these functions/structs exist)
     loadDefinitions(parser) {
-        // Load Structs
         this.structs.forEach(s => {
             parser.knownTypes.add(s.name);
-            
-            // Map simple JSON fields to Parser Internal Type Structure
             const fields = s.fields.map(f => {
                 let typeObj = { type: "Type", name: f.type, generic: null };
                 if (f.generic) {
                     typeObj.generic = { type: "Type", name: f.generic, generic: null };
                 }
-                // Handle complex nullable wrapper for InspectionResult
+                if (f.type === "nullable" && f.generic) {
+                     typeObj = { 
+                         type: "Type", 
+                         name: "nullable", 
+                         generic: { type: "Type", name: f.generic, generic: null } 
+                     };
+                }
+                return { name: f.name, type: typeObj };
+            });
+            parser.structDefinitions.set(s.name, { fields });
+        });
+
+        for (const [name, def] of Object.entries(this.intrinsics)) {
+            let typeObj = { type: "Type", name: def.returnType, generic: null, initialized: true };
+            if (def.generic) {
+                typeObj.generic = { type: "Type", name: def.generic, generic: null };
+            }
+            parser.defineVariable(name, typeObj);
+        }
+    },
+
+    loadIntrinsics(runtime) {
+        for (const [name, def] of Object.entries(this.intrinsics)) {
+            runtime.addIntrinsic(name, def.func);
+        }
+    }
+};
+
+// --- Source: shift.mjs ---
+
+class Shift {
+    /**
+     * @param {string|null} stdLibCode - Custom standard library code (Shift). Pass null to use default.
+     * @param {Object|null} stdLibIntrinsics - Custom intrinsics map. Pass null to use default StandardLibrary.intrinsics.
+     */
+    constructor(stdLibCode = null, stdLibIntrinsics = null) {
+        this.stdLibAST = null;
+        this.stdLibErrors = [];
+        
+        // If stdLibIntrinsics is provided, use it. Otherwise use the default.
+        const baseIntrinsics = stdLibIntrinsics !== null ? stdLibIntrinsics : StandardLibrary.intrinsics;
+        this.intrinsics = new Map(Object.entries(baseIntrinsics));
+        
+        this._initStandardLibrary(stdLibCode);
+    }
+
+    /**
+     * Registers a new intrinsic function for use in scripts.
+     * @param {string} name - Function name.
+     * @param {Object} definition - { returnType: string, generic?: string, func: Function }
+     */
+    registerIntrinsic(name, definition) {
+        this.intrinsics.set(name, definition);
+    }
+
+    _initStandardLibrary(stdLibCode) {
+        // Use provided code or default to StandardLibrary.source
+        const source = stdLibCode !== null ? stdLibCode : StandardLibrary.source;
+
+        // Compile the Standard Library (Shift code part) once during initialization
+        const stdLexer = new Lexer(source);
+        const stdTokens = stdLexer.tokenize().tokens;
+        const stdParser = new Parser(stdTokens);
+
+        // Load Definitions manually (Structs + Active Intrinsics)
+        this._loadStructs(stdParser);
+        this._loadIntrinsics(stdParser);
+        
+        // Scan and parse
+        stdParser.preScan();
+        const result = stdParser.parse();
+        
+        this.stdLibAST = result.ast;
+        this.stdLibErrors = result.errors;
+        
+        if (this.stdLibErrors.length > 0) {
+            console.error("Shift Internal Error: Standard Library failed to compile.");
+            this.stdLibErrors.forEach(e => console.error(`Line ${e.line}: ${e.message}`));
+        }
+    }
+
+    _loadStructs(parser) {
+        StandardLibrary.structs.forEach(s => {
+            parser.knownTypes.add(s.name);
+            
+            const fields = s.fields.map(f => {
+                let typeObj = { type: "Type", name: f.type, generic: null };
+                if (f.generic) {
+                    typeObj.generic = { type: "Type", name: f.generic, generic: null };
+                }
                 if (f.type === "nullable" && f.generic) {
                      typeObj = { 
                          type: "Type", 
@@ -3579,201 +4170,411 @@ function split_stringtolist(string input_str, string split_str) list<string> {
 
             parser.structDefinitions.set(s.name, { fields });
         });
+    }
 
-        // Load Intrinsic Signatures
-        for (const [name, def] of Object.entries(this.intrinsics)) {
+    _loadIntrinsics(parser) {
+        for (const [name, def] of this.intrinsics) {
             let typeObj = { type: "Type", name: def.returnType, generic: null, initialized: true };
             if (def.generic) {
                 typeObj.generic = { type: "Type", name: def.generic, generic: null };
             }
             parser.defineVariable(name, typeObj);
         }
-    },
+    }
 
-    // Load Implementations into Runtime
-    loadIntrinsics(runtime) {
-        for (const [name, def] of Object.entries(this.intrinsics)) {
+    _loadIntrinsicsIntoRuntime(runtime) {
+        for (const [name, def] of this.intrinsics) {
             runtime.addIntrinsic(name, def.func);
         }
     }
-};
 
-class Shift {
-	constructor() {
-		this.stdLibAST = null;
-		this.stdLibErrors = [];
-		this._initStandardLibrary();
-	}
+    /**
+     * Executes a Shift script.
+     * @param {string} sourceCode - The Shift source code.
+     * @param {string} entryPoint - The name of the function to call (default: "main").
+     * @param {Array} args - Arguments to pass to the entry point function.
+     * @returns {*} The return value of the executed function.
+     */
+    run(sourceCode, entryPoint = "main", args = []) {
+        if (this.stdLibErrors.length > 0) {
+            throw new Error("Cannot run script due to internal Standard Library errors.");
+        }
 
-	_initStandardLibrary() {
-		// Compile the Standard Library (Shift code part) once during initialization
-		const stdLexer = new Lexer(StandardLibrary.source);
-		const stdTokens = stdLexer.tokenize().tokens;
-		const stdParser = new Parser(stdTokens);
-		const finalAST = null;
+        // 1. Lexer
+        const lexer = new Lexer(sourceCode);
+        const lexResult = lexer.tokenize();
+        
+        if (lexResult.errors.length > 0) {
+            const firstError = lexResult.errors[0];
+            const line = firstError.line || firstError.endline || firstError.startline;
+            throw new Error(`Lexer Error: ${firstError.message} (Line ${line})`);
+        }
 
-		// Load definitions so the stdlib parser understands its own types/intrinsics
-		StandardLibrary.loadDefinitions(stdParser);
-		
-		// Scan and parse
-		stdParser.preScan();
-		const result = stdParser.parse();
-		
-		this.stdLibAST = result.ast;
-		this.stdLibErrors = result.errors;
-		
-		if (this.stdLibErrors.length > 0) {
-			console.error("Shift Internal Error: Standard Library failed to compile.");
-			this.stdLibErrors.forEach(e => console.error(`Line ${e.line}: ${e.message}`));
-		}
-	}
+        // 2. Parser
+        const parser = new Parser(lexResult.tokens);
+        
+        // A. Load Definitions
+        this._loadStructs(parser);
+        this._loadIntrinsics(parser);
 
-	/**
-	 * Executes a Shift script.
-	 * @param {string} sourceCode - The Shift source code.
-	 * @param {string} entryPoint - The name of the function to call (default: "main").
-	 * @param {Array} args - Arguments to pass to the entry point function.
-	 * @returns {*} The return value of the executed function.
-	 */
-	run(sourceCode, entryPoint = "main", args = []) {
-		if (this.stdLibErrors.length > 0) {
-			throw new Error("Cannot run script due to internal Standard Library errors.");
-		}
+        // B. Load Signatures from StdLib AST (functions written in Shift)
+        if (this.stdLibAST) {
+            this.stdLibAST.functions.forEach(func => {
+                parser.defineVariable(func.name, {
+                    type: "Type",
+                    name: func.returnType.name,
+                    initialized: true
+                });
+            });
+        }
 
-		// 1. Lexer
-		const lexer = new Lexer(sourceCode);
-		const lexResult = lexer.tokenize();
-		
-		if (lexResult.errors.length > 0) {
-			const firstError = lexResult.errors[0];
-			const line = firstError.line || firstError.endline || firstError.startline;
-			throw new Error(`Lexer Error: ${firstError.message} (Line ${line})`);
-		}
+        // C. Parse User Code
+        parser.preScan();
+        const parseResult = parser.parse();
 
-		// 2. Parser
-		const parser = new Parser(lexResult.tokens);
-		
-		// A. Load Definitions (Structs & Intrinsic Signatures)
-		StandardLibrary.loadDefinitions(parser);
+        if (parseResult.errors.length > 0) {
+            const firstError = parseResult.errors[0];
+            throw new Error(`Parser Error: ${firstError.message} (Line ${firstError.line})`);
+        }
 
-		// B. Load Signatures from StdLib AST (functions written in Shift)
-		// This ensures the parser knows about functions like 'get_stringlength' for type checking
-		if (this.stdLibAST) {
-			this.stdLibAST.functions.forEach(func => {
-				parser.defineVariable(func.name, {
-					type: "Type",
-					name: func.returnType.name,
-					initialized: true
-				});
-			});
-		}
+        // 3. Tree Shaking / Linking
+        // Merge used Standard Library functions into the User AST
+        const finalAST = parseResult.ast;
+        if (this.stdLibAST) {
+            this.stdLibAST.functions.forEach(func => {
+                if (parser.usedFunctions.has(func.name)) {
+                    finalAST.functions.push(func);
+                }
+            });
+        }
 
-		// C. Parse User Code
-		parser.preScan();
-		const parseResult = parser.parse();
+        // 4. Runtime Initialization
+        const runtime = new Runtime(finalAST);
+        
+        // Load Intrinsic Implementations
+        this._loadIntrinsicsIntoRuntime(runtime);
 
-		if (parseResult.errors.length > 0) {
-			const firstError = parseResult.errors[0];
-			throw new Error(`Parser Error: ${firstError.message} (Line ${firstError.line})`);
-		}
-
-		// 3. Tree Shaking / Linking
-		// Merge used Standard Library functions into the User AST
-		const finalAST = parseResult.ast;
-		this.finalAST = JSON.stringify(finalAST, null, 2);
-		if (this.stdLibAST) {
-			this.stdLibAST.functions.forEach(func => {
-				if (parser.usedFunctions.has(func.name)) {
-					finalAST.functions.push(func);
-				}
-			});
-		}
-
-		// 4. Runtime Initialization
-		const runtime = new Runtime(finalAST);
-		
-		// Load Intrinsic Implementations (Native JS functions)
-		StandardLibrary.loadIntrinsics(runtime);
-
-		// 5. Execution
-		try {
-			return runtime.runFunction(entryPoint, args);
-		} catch (e) {
-			// Ensure runtime errors are propagated cleanly
-			throw e;
-		}
-	}
+        // 5. Execution
+        try {
+            return runtime.runFunction(entryPoint, args);
+        } catch (e) {
+            // Ensure runtime errors are propagated cleanly
+            throw e;
+        }
+    }
 }
-
-/*
-END SHIFT.js
-*/
-
 
     // --- 1. State Management ---
     const STORAGE_KEY = 'shift_playground_files';
+    const STD_LIB_STORAGE_KEY = 'shift_playground_stdlib';
+    const VISITED_KEY = 'shift_playground_visited';
+    const CSV_SETTINGS_KEY = 'shift_playground_csv';
+
     let files = [];
     let activeFileId = null;
     let fileIdToDelete = null;
+    let fileIdToRename = null; // For rename modal
+    let newFileMode = 'source'; // 'source' or 'data'
+    
+    // Default CSV Settings
+    let csvSettings = { delimiter: ',', hasHeader: true };
+
+    // --- DEFAULT CONTENT ---
+
+    const demoCode = `struct User [
+	number id,
+	string name,
+	string role,
+	bool has_loggedin
+]
+
+function main() number {
+	if (check_datafile_exists("logins.csv") == false) {
+		print_line("Could not find logins.csv please create data file with this name using the CSV Sample");
+		return 1;
+	}
+
+	if (check_datafile_exists("users.json") == false) {
+		print_line("Could not find users.json please create data file with this name using the JSON Sample");
+		return 1;
+	}
+
+	if (check_datafile_exists("auditlist.tsv") == false) {
+		print_line("Could not find auditlist.tsv please create data file with this name using the TSV Sample");
+		return 1;
+	}
+
+	string user_data = read_datafile_from_env("users.json");
+	string login_data = read_datafile_from_env("logins.csv");
+	string audit_list = read_datafile_from_env("auditlist.tsv");
+
+	try {
+		// Use inbuilt JSON support
+		list<any> users_as_rawlist = convert_jsonstring_to_list(user_data );
+		map<User> my_users = process_user_list(users_as_rawlist)
+			| update_user_logins($pipe_value, login_data);
+
+		map<User> my_users_to_audit = filter_user_to_audit(my_users, audit_list);
+		list<User> users_failed_audit = get_inactive_users_list(my_users_to_audit);
+
+		string audit_result = "User count: " & (size of my_users) as string & "\\n"
+				& "Users to audit: " & (size of my_users_to_audit) as string & "\\n"
+				& "Inactive audited user count: " & (size of users_failed_audit) as string;
+
+		print_line(audit_result);
+
+		if ((size of users_failed_audit) > 0)
+		{
+			write_datafile_to_env("audit_user_result.json", convert_list_to_jsonstring(users_failed_audit));
+			print_line("Please see audit_user_result.json for failed user list");
+		}
+
+	} catch {
+		print_line($thrown_message);
+		return 1;
+	}
+
+	return 0;
+}
+
+function process_user_list(list<any> users) map<User> {
+	map<User> result;
+
+	for (item in users) {
+		result[item["name"]] = [
+			"id": item["id"],
+			"name": item["name"],
+			"role": item["role"]
+		];
+	}
+
+	return result;
+}
+
+function update_user_logins(map<User> user_list, string login_csv) map<User> {
+	list<string> login_rows = split_string_to_list(login_csv, "\\n");
+
+	number index = -1;
+	for (login_row in login_rows) {
+		index = index + 1;
+
+		if (index == 0) { skip; } // Header
+		list<string> login_details = split_string_to_list(login_row, ",");
+		string username = login_details[1];
+
+		if (user_list has username)
+		{
+			User user = user_list[username];
+			user["has_loggedin"] = true;
+		}
+	}
+
+	return user_list;
+}
+
+function filter_user_to_audit(map<User> users, string audit_list) map<User> {
+	map<User> result;
+	list<string> user_rows = split_string_to_list(audit_list, "\\n");
+
+	number index = -1;
+	for (user_row in user_rows) {
+		index = index + 1;
+
+		if (index == 0) { skip; } // Header
+		list<string> audit_details = split_string_to_list(user_row , "\\t");
+		string username = audit_details[0];
+		string do_audit = audit_details[1] | transform_ansistring_to_uppercase($pipe_value);
+		if (do_audit == "YES")
+		{
+			result[username] = users[username];
+		}
+	}
+
+	return result;
+}
+
+function get_inactive_users_list(map<User> users) list<User> {
+	list<User> inactive_users;
+	
+	for (key in users) {
+		User current_user = users[key];
+		if (current_user["has_loggedin"] == false) {
+			inactive_users[] = current_user;
+		}
+	}
+
+	return inactive_users;
+}`;
+
+    const demoCsv = `sessionid,username,server
+1,Daniel,RDSH1
+2,Alice,RDSH1
+3,Alice,DC1
+4,Charlie,RDSH2
+5,Daniel,RDSH1`;
+
+    const demoJson = `[
+  { "id": 1, "name": "Alice", "role": "Admin" },
+  { "id": 2, "name": "Bob", "role": "Admin" },
+  { "id": 3, "name": "Charlie", "role": "User" },
+  { "id": 4, "name": "Daniel", "role": "User" },
+  { "id": 5, "name": "Emily", "role": "User" }
+]`;
+
+    const demoTsv = `username\taudit
+Alice\tyes
+Bob\tyes
+Charlie\tno
+Daniel\tno
+Emily\tno`;
+
+    // Retrieved from global StandardLibrary object as requested
+    const DEFAULT_STD_LIB_SRC = (typeof StandardLibrary !== 'undefined') ? StandardLibrary.source : '';
+    const DEFAULT_STD_LIB_INT = (typeof StandardLibrary !== 'undefined') ? StandardLibrary.intrinsics : {};
+    const DEFAULT_STD_LIB_STRUCTS = (typeof StandardLibrary !== 'undefined') ? StandardLibrary.structs : [];
+
+    // Override the default print_line native function
+    DEFAULT_STD_LIB_INT["print_line"] = { 
+        returnType: "none", 
+        func: (args, runtime) => { uiConsoleLog(args[0]); return null; } 
+    };
+
+    // --- Data File Intrinsics ---
+
+    // write_datafile_to_env(string file_name, string content) none;
+    DEFAULT_STD_LIB_INT["write_datafile_to_env"] = { 
+        returnType: "none", 
+        func: (args, runtime) => { 
+            const filename = args[0];
+            const content = args[1] || "";
+            
+            const existing = files.find(f => f.name === filename);
+            if (existing) {
+                existing.code = content;
+            } else {
+                files.push({
+                    id: Date.now().toString(),
+                    name: filename,
+                    code: content
+                });
+            }
+            saveFiles();
+            renderFileList();
+            if (activeFileId && existing && existing.id === activeFileId) {
+                 elEditor.value = content;
+                 updateLineNumbers();
+            }
+            return null;
+        } 
+    };
+
+    // read_datafile_from_env(string file_name) string;
+    DEFAULT_STD_LIB_INT["read_datafile_from_env"] = { 
+        returnType: "string", 
+        func: (args, runtime) => { 
+            const filename = args[0];
+            const file = files.find(f => f.name === filename);
+            if (!file) return ""; // Or error
+            return file.code;
+        } 
+    };
+
+    // delete_datafile_from_env(string file_name) none;
+    DEFAULT_STD_LIB_INT["delete_datafile_from_env"] = { 
+        returnType: "none", 
+        func: (args, runtime) => { 
+            const filename = args[0];
+            const idx = files.findIndex(f => f.name === filename);
+            if (idx !== -1) {
+                const deletedId = files[idx].id;
+                files.splice(idx, 1);
+                saveFiles();
+                renderFileList();
+                
+                if (activeFileId === deletedId) {
+                    elEditor.value = "";
+                    elEditor.disabled = true;
+                    elFilename.innerText = "No File Selected";
+                    activeFileId = null;
+                    updateLineNumbers();
+                }
+            }
+            return null;
+        } 
+    };
+
+    // check_datafile_exists(string file_name) bool;
+    DEFAULT_STD_LIB_INT["check_datafile_exists"] = { 
+        returnType: "bool", 
+        func: (args, runtime) => { 
+            const filename = args[0];
+            return files.some(f => f.name === filename);
+        } 
+    };
+
 
     // DOM Elements
-    const elFileList = document.getElementById('file-list');
     const elEditor = document.getElementById('code-editor');
+    const elLineNumbers = document.getElementById('line-numbers');
     const elFilename = document.getElementById('current-filename');
     const elConsole = document.getElementById('console-output');
     const elDebug = document.getElementById('debug-output');
+    const elBtnRun = document.getElementById('btn-run');
+    
+    // Sidebar Lists
+    const elSourceList = document.getElementById('file-list-source');
+    const elDataList = document.getElementById('file-list-data');
     
     // Sidebar & Mobile Elements
     const elSidebar = document.getElementById('sidebar');
     const elBtnToggleSidebar = document.getElementById('btn-toggle-sidebar');
     const elMobileBackdrop = document.getElementById('mobile-backdrop');
+    
+    // Header Actions
+    const btnExport = document.getElementById('btn-export-file');
+    const btnConfig = document.getElementById('btn-config');
+    const fileInputImportSource = document.getElementById('file-input-import-source');
+    const fileInputImportData = document.getElementById('file-input-import-data');
+    const fileInputStdLib = document.getElementById('file-input-stdlib');
+    const fileInputRestore = document.getElementById('file-input-restore');
 
-    // Delete Modal
+    // Section Actions
+    const btnNewSource = document.getElementById('btn-new-source');
+    const btnNewData = document.getElementById('btn-new-data');
+    const btnImportSource = document.getElementById('btn-import-source');
+    const btnImportData = document.getElementById('btn-import-data');
+
+    // Modals
     const elDeleteModal = document.getElementById('delete-modal');
-    const elDeleteModalFilename = document.getElementById('modal-filename');
-
-    // New File Modal
+    const elRenameModal = document.getElementById('rename-modal'); // New
     const elNewFileModal = document.getElementById('new-file-modal');
+    const elAboutModal = document.getElementById('about-modal');
+    const elConfigModal = document.getElementById('config-modal');
+
+    // Config CSV Inputs
+    const elCsvDelimiter = document.getElementById('csv-delimiter');
+    const elCsvHeader = document.getElementById('csv-header');
+
+    // Modal Inputs/Dynamic Elements
+    const elDeleteModalFilename = document.getElementById('modal-filename');
+    const elRenameFileInput = document.getElementById('rename-file-input'); // New
     const elNewFileNameInput = document.getElementById('new-file-name');
     const elNewFileDemoCheck = document.getElementById('include-demo-code');
-
-    // About Modal
-    const elAboutModal = document.getElementById('about-modal');
-
-    const demoCode = `struct User [
-    string name,
-    bool is_active
-]
-
-function get_active_users_count(list<User> users) number {
-    number count = 0;
+    const elNewFileDemoLabel = document.getElementById('label-include-demo');
+    const elNewFileTitle = document.querySelector('#new-file-modal h3');
+    const elConfigEditor = document.getElementById('config-editor');
+    const elConfigLineNumbers = document.getElementById('config-line-numbers');
+    const elConfigNativeViewer = document.getElementById('config-native-viewer');
+    const elConfigStructsViewer = document.getElementById('config-structs-viewer');
     
-    for (u in users) {
-        if (u["is_active"]) {
-            count = count + 1;
-        }
-    }
-    
-    return count;
-}
+    // New File Modal Sections
+    const elNewFileSourceOptions = document.getElementById('new-file-source-options');
+    const elNewFileDataOptions = document.getElementById('new-file-data-options');
+    const elDataTemplateSelect = document.getElementById('data-template-select');
 
-function main() number {
-    list<User> my_users;
-    
-    // Add some users
-    my_users[] = ["name": "Alice", "is_active": true];
-    my_users[] = ["name": "Bob",   "is_active": false];
-    my_users[] = ["name": "Charlie", "is_active": true];
+    // AST Download
+    const btnDownloadAST = document.getElementById('btn-download-ast');
 
-    // Process
-    number active_count = get_active_users_count(my_users);
-    
-    // Output
-    string report = "Total active users: " & (active_count as string);
-    print_line(report);
-
-    return 0;
-}`;
 
     // --- 2. Virtual File System (LocalStorage) ---
 
@@ -3782,19 +4583,25 @@ function main() number {
         if (stored) {
             files = JSON.parse(stored);
         } else {
-            // Default demo file
+            // Default demo files - Updated requirement: Load 3 data files + 1 source
             files = [
-                { id: 'demo1', name: 'demo.shift', code: demoCode }
+                { id: 'demo1', name: 'demo.shift', code: demoCode },
+                { id: 'demo2', name: 'logins.csv', code: demoCsv },
+                { id: 'demo3', name: 'users.json', code: demoJson },
+                { id: 'demo4', name: 'auditlist.tsv', code: demoTsv }
             ];
         }
         renderFileList();
+        // Try to switch to first source file, otherwise first file
         if (files.length > 0) {
-            switchFile(files[0].id);
+             const firstSource = files.find(f => f.name.endsWith('.shift'));
+             switchFile(firstSource ? firstSource.id : files[0].id);
         } else {
             // No files: Ensure editor is disabled
             elEditor.disabled = true;
             elEditor.value = "";
             elFilename.innerText = "No File Selected";
+            updateLineNumbers();
         }
     }
 
@@ -3802,7 +4609,156 @@ function main() number {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(files));
     }
 
-    // --- 3. Responsive Logic (Sidebar) ---
+    // --- 3. Settings Logic ---
+    function loadSettings() {
+        // StdLib
+        const storedStd = localStorage.getItem(STD_LIB_STORAGE_KEY);
+        // CSV
+        const storedCsv = localStorage.getItem(CSV_SETTINGS_KEY);
+        if (storedCsv) {
+            csvSettings = JSON.parse(storedCsv);
+        }
+        
+        return storedStd !== null ? storedStd : DEFAULT_STD_LIB_SRC;
+    }
+
+    function saveStdLib(code) {
+        localStorage.setItem(STD_LIB_STORAGE_KEY, code);
+    }
+    
+    function saveCsvSettings() {
+        csvSettings = {
+            delimiter: elCsvDelimiter.value,
+            hasHeader: elCsvHeader.checked
+        };
+        localStorage.setItem(CSV_SETTINGS_KEY, JSON.stringify(csvSettings));
+    }
+    
+    function formatNativeFunctions(intrinsics) {
+        let output = "{\n";
+        for (const [key, value] of Object.entries(intrinsics)) {
+            output += `  "${key}": {\n`;
+            output += `    returnType: "${value.returnType}",\n`;
+            output += `    func: ${value.func.toString()}\n`;
+            output += `  },\n`;
+        }
+        output += "}";
+        return output;
+    }
+
+
+    // --- 4. Line Numbers & Editor Logic ---
+    function updateLineNumbers() {
+        if (elEditor.disabled) {
+            elLineNumbers.innerHTML = '';
+            return;
+        }
+        const lines = elEditor.value.split('\n').length;
+        elLineNumbers.innerHTML = Array(lines).fill(0).map((_, i) => `<div>${i + 1}</div>`).join('');
+    }
+
+    elEditor.addEventListener('scroll', () => {
+        elLineNumbers.scrollTop = elEditor.scrollTop;
+    });
+    
+    // Editor QoL Improvements
+    elEditor.addEventListener('keydown', (e) => {
+        // Tab Key: Indent/Unindent (Single or Multi-line)
+        if (e.key === 'Tab') {
+            e.preventDefault();
+            const start = elEditor.selectionStart;
+            const end = elEditor.selectionEnd;
+            const val = elEditor.value;
+            const selection = val.substring(start, end);
+            
+            if (e.shiftKey || selection.includes('\n')) {
+                // Multi-line logic
+                const lineStart = val.lastIndexOf('\n', start - 1) + 1;
+                
+                // Determine effective end for line calculation
+                let effectiveEnd = end;
+                if (end > start && val[end - 1] === '\n') {
+                    effectiveEnd--;
+                }
+                
+                let lineEnd = val.indexOf('\n', effectiveEnd);
+                if (lineEnd === -1) lineEnd = val.length;
+                
+                const textBlock = val.substring(lineStart, lineEnd);
+                const lines = textBlock.split('\n');
+                
+                const newLines = lines.map(line => {
+                    if (e.shiftKey) {
+                        // Unindent: Remove leading tab
+                        return line.startsWith('\t') ? line.substring(1) : line;
+                    } else {
+                        // Indent
+                        return '\t' + line;
+                    }
+                });
+                
+                const newText = newLines.join('\n');
+                elEditor.setRangeText(newText, lineStart, lineEnd, 'select');
+            } else {
+                // Single insertion
+                elEditor.setRangeText('\t', start, end, 'end');
+            }
+            
+            elEditor.dispatchEvent(new Event('input'));
+        }
+        
+        // Ctrl+S / Cmd+S: Save and Run
+        if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+            e.preventDefault();
+            // Trigger save (already handled by input listener but good to be explicit)
+            saveFiles();
+            // Trigger Run
+            if (!elBtnRun.disabled) {
+                runInterpreter();
+            }
+        }
+        
+        // Ctrl+D / Cmd+D: Duplicate Line
+        if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
+            e.preventDefault();
+            const start = elEditor.selectionStart;
+            const end = elEditor.selectionEnd;
+            const val = elEditor.value;
+            
+            // Find start of current line
+            const lineStart = val.lastIndexOf('\n', start - 1) + 1;
+            // Find end of current line
+            let lineEnd = val.indexOf('\n', end);
+            if (lineEnd === -1) lineEnd = val.length;
+            
+            // Extract the line content including newline if it exists, or handle EOF
+            const lineContent = val.substring(lineStart, lineEnd);
+            
+            // Insert it
+            const insertText = '\n' + lineContent;
+            
+            // Simplified: just insert \n + content after the current line end
+            elEditor.setRangeText(insertText, lineEnd, lineEnd, 'preserve');
+            
+            // Trigger input event
+            elEditor.dispatchEvent(new Event('input'));
+            updateLineNumbers();
+        }
+    });
+
+    // --- 4b. Line Numbers Logic (Config Editor) ---
+    function updateConfigLineNumbers() {
+        const lines = elConfigEditor.value.split('\n').length;
+        elConfigLineNumbers.innerHTML = Array(lines).fill(0).map((_, i) => `<div>${i + 1}</div>`).join('');
+    }
+    
+    elConfigEditor.addEventListener('input', updateConfigLineNumbers);
+    elConfigEditor.addEventListener('scroll', () => {
+        elConfigLineNumbers.scrollTop = elConfigEditor.scrollTop;
+    });
+
+
+    // --- 5. Responsive Logic (Sidebar) ---
     function toggleSidebar() {
         elSidebar.classList.toggle('open');
         elMobileBackdrop.classList.toggle('open');
@@ -3817,13 +4773,14 @@ function main() number {
     elMobileBackdrop.addEventListener('click', closeSidebar);
 
 
-    // --- 4. Modal Logic ---
+    // --- 6. Modal Logic ---
 
-    // Generic Modal Closer
     function hideAllModals() {
         elDeleteModal.classList.add('hidden');
+        elRenameModal.classList.add('hidden');
         elNewFileModal.classList.add('hidden');
         elAboutModal.classList.add('hidden');
+        elConfigModal.classList.add('hidden');
     }
 
     // -- Delete Logic --
@@ -3848,31 +4805,115 @@ function main() number {
                 elEditor.disabled = true;
                 elFilename.innerText = "No File Selected";
                 activeFileId = null;
+                updateLineNumbers();
             }
         }
         hideAllModals();
         fileIdToDelete = null;
     }
+    
+    // -- Rename Logic --
+    function promptRename(id, currentName, event) {
+        event.stopPropagation();
+        fileIdToRename = id;
+        elRenameFileInput.value = currentName;
+        elRenameModal.classList.remove('hidden');
+        elRenameFileInput.focus();
+        elRenameFileInput.select();
+    }
+    
+    function confirmRename() {
+        if (!fileIdToRename) return;
+        let newName = elRenameFileInput.value.trim();
+        if (!newName) return;
+        
+        const file = files.find(f => f.id === fileIdToRename);
+        if (file) {
+            // Enforce .shift for source files logic?
+            // If it was a source file, keep it a source file.
+            if (file.name.toLowerCase().endsWith('.shift')) {
+                if (!newName.toLowerCase().endsWith('.shift')) {
+                    newName += '.shift';
+                }
+            }
+            file.name = newName;
+            
+            // Update UI if this is active file
+            if (activeFileId === fileIdToRename) {
+                elFilename.innerText = newName;
+            }
+            
+            saveFiles();
+            renderFileList();
+        }
+        hideAllModals();
+        fileIdToRename = null;
+    }
 
     // -- New File Logic --
-    function openNewFileModal() {
+    function openNewSourceModal() {
+        newFileMode = 'source';
+        elNewFileTitle.innerText = "Create New Source File";
+        elNewFileNameInput.placeholder = "untitled.shift";
         elNewFileNameInput.value = "untitled.shift";
-        elNewFileDemoCheck.checked = true;
+        
+        // Show Source Options, Hide Data Options
+        elNewFileSourceOptions.style.display = 'flex';
+        elNewFileDataOptions.style.display = 'none';
+        
+        elNewFileDemoCheck.checked = false; 
+        
         elNewFileModal.classList.remove('hidden');
         elNewFileNameInput.focus();
         elNewFileNameInput.select();
-        // Close sidebar on mobile if open to make room for modal
+        closeSidebar();
+    }
+
+    function openNewDataModal() {
+        newFileMode = 'data';
+        elNewFileTitle.innerText = "Create New Data File";
+        elNewFileNameInput.placeholder = "untitled.file";
+        elNewFileNameInput.value = "untitled.file";
+        
+        // Show Data Options, Hide Source Options
+        elNewFileSourceOptions.style.display = 'none';
+        elNewFileDataOptions.style.display = 'flex';
+        elDataTemplateSelect.value = "none";
+        
+        elNewFileModal.classList.remove('hidden');
+        elNewFileNameInput.focus();
+        elNewFileNameInput.select();
         closeSidebar();
     }
 
     function createNewFile() {
-        const name = elNewFileNameInput.value.trim() || "untitled.shift";
-        const useDemo = elNewFileDemoCheck.checked;
+        let name = elNewFileNameInput.value.trim();
+        
+        let initialCode = '';
+        
+        if (newFileMode === 'source') {
+            const useDemo = elNewFileDemoCheck.checked;
+            if (!name) name = "untitled.shift";
+            if (!name.toLowerCase().endsWith('.shift')) {
+                name += ".shift";
+            }
+            initialCode = useDemo ? demoCode : '';
+        } else {
+            const template = elDataTemplateSelect.value;
+            if (!name) name = "untitled.file";
+            
+            switch (template) {
+                case 'csv': initialCode = demoCsv; break;
+                case 'json': initialCode = demoJson; break;
+                case 'tsv': initialCode = demoTsv; break;
+                default: initialCode = '';
+            }
+        }
         
         const newFile = {
             id: Date.now().toString(),
             name: name,
-            code: useDemo ? demoCode : ''
+            code: initialCode
         };
         
         files.push(newFile);
@@ -3888,28 +4929,307 @@ function main() number {
         closeSidebar();
     }
 
+    // -- Config Logic --
+    function openConfigModal() {
+        const currentCode = loadSettings(); // loads stdlib and inits csv settings
+        elConfigEditor.value = currentCode;
+        
+        // Populate Native Viewer
+        elConfigNativeViewer.textContent = formatNativeFunctions(DEFAULT_STD_LIB_INT);
+        // Populate Structs Viewer
+        elConfigStructsViewer.textContent = JSON.stringify(DEFAULT_STD_LIB_STRUCTS, null, 4);
+        
+        // Populate CSV Settings
+        elCsvDelimiter.value = csvSettings.delimiter;
+        elCsvHeader.checked = csvSettings.hasHeader;
+        
+        updateConfigLineNumbers(); 
+        
+        // Reset tabs to csv
+        document.querySelectorAll('[data-config-target]').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.config-tab-content').forEach(c => c.classList.remove('active'));
+        document.querySelector('[data-config-target="csv"]').classList.add('active');
+        document.getElementById('config-tab-csv').classList.add('active');
+        
+        elConfigModal.classList.remove('hidden');
+        closeSidebar();
+    }
 
-    // --- Event Listeners ---
+    function saveAndCloseConfigModal() {
+        const newCode = elConfigEditor.value;
+        saveStdLib(newCode);
+        saveCsvSettings(); // Save CSV settings
+        elConfigModal.classList.add('hidden');
+    }
+
+    function dismissConfigModal() {
+        elConfigModal.classList.add('hidden');
+    }
+
+    document.getElementById('btn-save-config').addEventListener('click', saveAndCloseConfigModal);
+    document.getElementById('btn-dismiss-config').addEventListener('click', dismissConfigModal);
     
-    // Background clicks to close
-    [elDeleteModal, elNewFileModal, elAboutModal].forEach(modal => {
+    // New CSV Tab Buttons
+    document.getElementById('btn-save-config-csv').addEventListener('click', saveAndCloseConfigModal);
+    document.getElementById('btn-dismiss-config-csv').addEventListener('click', dismissConfigModal);
+
+    document.getElementById('btn-close-config-native').addEventListener('click', dismissConfigModal);
+    document.getElementById('btn-close-config-structs').addEventListener('click', dismissConfigModal);
+    document.getElementById('btn-close-config-backup').addEventListener('click', dismissConfigModal);
+    
+    // Config Tabs
+    document.querySelectorAll('[data-config-target]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            // Deactivate all
+            document.querySelectorAll('[data-config-target]').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.config-tab-content').forEach(c => c.classList.remove('active'));
+            
+            // Activate clicked
+            btn.classList.add('active');
+            const targetId = 'config-tab-' + btn.dataset.configTarget;
+            document.getElementById(targetId).classList.add('active');
+        });
+    });
+    
+    // Config Revert
+    document.getElementById('btn-revert-stdlib').addEventListener('click', () => {
+        if (confirm("Are you sure you want to revert the Standard Library to default? All changes will be lost.")) {
+            elConfigEditor.value = DEFAULT_STD_LIB_SRC;
+            updateConfigLineNumbers();
+        }
+    });
+
+    // Config Export
+    document.getElementById('btn-export-stdlib').addEventListener('click', () => {
+        const content = elConfigEditor.value;
+        const blob = new Blob([content], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'stdlib.shift';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    });
+
+    // Config Import
+    document.getElementById('btn-import-stdlib').addEventListener('click', () => {
+        fileInputStdLib.click();
+    });
+
+    fileInputStdLib.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            elConfigEditor.value = event.target.result;
+            updateConfigLineNumbers();
+            fileInputStdLib.value = '';
+        };
+        reader.readAsText(file);
+    });
+
+    // --- Backup / Restore Logic ---
+    document.getElementById('btn-backup-download').addEventListener('click', () => {
+        const backupData = {
+            files: localStorage.getItem(STORAGE_KEY),
+            stdlib: localStorage.getItem(STD_LIB_STORAGE_KEY),
+            visited: localStorage.getItem(VISITED_KEY),
+            csv: localStorage.getItem(CSV_SETTINGS_KEY)
+        };
+        const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'shift_playground_backup.json';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    });
+
+    document.getElementById('btn-backup-restore').addEventListener('click', () => {
+        fileInputRestore.click();
+    });
+
+    fileInputRestore.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        if (!confirm("Restoring will overwrite your current files and standard library settings. Continue?")) {
+            fileInputRestore.value = '';
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            try {
+                const backupData = JSON.parse(event.target.result);
+                if (backupData.files) localStorage.setItem(STORAGE_KEY, backupData.files);
+                if (backupData.stdlib) localStorage.setItem(STD_LIB_STORAGE_KEY, backupData.stdlib);
+                if (backupData.visited) localStorage.setItem(VISITED_KEY, backupData.visited);
+                if (backupData.csv) localStorage.setItem(CSV_SETTINGS_KEY, backupData.csv);
+                alert("Restore successful. Reloading...");
+                location.reload();
+            } catch (err) {
+                alert("Error restoring backup: " + err.message);
+            }
+            fileInputRestore.value = '';
+        };
+        reader.readAsText(file);
+    });
+
+    document.getElementById('btn-wipe-all').addEventListener('click', () => {
+        if (confirm("DANGER: This will permanently delete all your files and custom settings. Are you sure?")) {
+            localStorage.clear();
+            location.reload();
+        }
+    });
+
+
+    // --- 7. Import / Export Logic (Main) ---
+    
+    // Export (Download Active File)
+    btnExport.addEventListener('click', () => {
+        if (!activeFileId) {
+            alert("No file selected to export.");
+            return;
+        }
+        const file = files.find(f => f.id === activeFileId);
+        if (!file) return;
+
+        let filename = file.name;
+        // Logic: if it's a source file, enforce .shift. If data, use as is.
+        if (filename.toLowerCase().endsWith('.shift')) {
+             if (!filename.toLowerCase().endsWith('.shift')) filename += '.shift';
+        }
+
+        const blob = new Blob([file.code], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    });
+
+    // Helper for file reading with binary check
+    function handleFileImport(file, isSource) {
+        // Simple check for obvious non-text types
+        if (file.type.startsWith('image/') || file.type.startsWith('audio/') || file.type.startsWith('video/')) {
+            alert("Error: It looks like you are trying to upload a binary file. Only text-based files are supported.");
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const content = event.target.result;
+            
+            // Heuristic check for binary content (null bytes)
+            if (content.indexOf('\0') !== -1) {
+                alert("Error: The uploaded file appears to contain binary data and cannot be opened.");
+                return;
+            }
+
+            const newFile = {
+                id: Date.now().toString(),
+                name: file.name,
+                code: content
+            };
+            files.push(newFile);
+            saveFiles();
+            renderFileList();
+            switchFile(newFile.id);
+        };
+        
+        // Use readAsText which will try to decode.
+        reader.readAsText(file);
+    }
+
+    // Import Handlers
+    btnImportSource.addEventListener('click', () => fileInputImportSource.click());
+    btnImportData.addEventListener('click', () => fileInputImportData.click());
+
+    fileInputImportSource.addEventListener('change', (e) => {
+        if (e.target.files[0]) {
+            handleFileImport(e.target.files[0], true);
+            fileInputImportSource.value = '';
+        }
+    });
+
+    fileInputImportData.addEventListener('change', (e) => {
+        if (e.target.files[0]) {
+            handleFileImport(e.target.files[0], false);
+            fileInputImportData.value = '';
+        }
+    });
+
+
+    // --- 8. Debug / AST Download Logic ---
+    function checkDebugContent() {
+        const content = elDebug.innerText;
+        try {
+            if (content.trim()) {
+                JSON.parse(content);
+                btnDownloadAST.style.display = 'block';
+            } else {
+                btnDownloadAST.style.display = 'none';
+            }
+        } catch (e) {
+            btnDownloadAST.style.display = 'none';
+        }
+    }
+
+    btnDownloadAST.addEventListener('click', () => {
+        const astContent = elDebug.innerText;
+        if (!astContent.trim()) return;
+        
+        const activeFile = files.find(f => f.id === activeFileId);
+        const baseName = activeFile ? activeFile.name : 'output';
+        const filename = baseName + '.debug.json';
+
+        const blob = new Blob([astContent], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    });
+
+
+    // --- Event Listeners (Global) ---
+    
+    [elDeleteModal, elRenameModal, elNewFileModal, elAboutModal, elConfigModal].forEach(modal => {
         modal.addEventListener('click', (e) => {
             if (e.target === modal) hideAllModals();
         });
     });
 
-    // Sidebar Buttons
-    document.getElementById('btn-open-new-modal').addEventListener('click', openNewFileModal);
+    btnNewSource.addEventListener('click', openNewSourceModal);
+    btnNewData.addEventListener('click', openNewDataModal);
+    
     document.getElementById('btn-about').addEventListener('click', openAboutModal);
+    btnConfig.addEventListener('click', openConfigModal);
 
-    // Modal Buttons
     document.getElementById('btn-confirm-delete').addEventListener('click', confirmDelete);
     document.getElementById('btn-cancel-delete').addEventListener('click', hideAllModals);
+    
+    // Rename Listeners
+    document.getElementById('btn-confirm-rename').addEventListener('click', confirmRename);
+    document.getElementById('btn-cancel-rename').addEventListener('click', hideAllModals);
+    elRenameFileInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') confirmRename();
+    });
 
     document.getElementById('btn-confirm-new').addEventListener('click', createNewFile);
     document.getElementById('btn-cancel-new').addEventListener('click', hideAllModals);
     
-    // Allow 'Enter' key in new file input
     elNewFileNameInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') createNewFile();
     });
@@ -3917,10 +5237,12 @@ function main() number {
     document.getElementById('btn-close-about').addEventListener('click', hideAllModals);
 
 
-    // --- 5. UI Interaction ---
+    // --- 9. UI Interaction ---
 
     function renderFileList() {
-        elFileList.innerHTML = '';
+        elSourceList.innerHTML = '';
+        elDataList.innerHTML = '';
+
         files.forEach(file => {
             const li = document.createElement('li');
             li.className = `file-item ${file.id === activeFileId ? 'active' : ''}`;
@@ -3928,11 +5250,23 @@ function main() number {
             
             li.innerHTML = `
                 <span>${file.name}</span>
-                <button class="delete-btn" title="Delete File">×</button>
+                <div class="file-actions">
+                    <button class="action-icon-btn" title="Rename">✎</button>
+                    <button class="action-icon-btn delete" title="Delete">×</button>
+                </div>
             `;
             
-            li.querySelector('.delete-btn').onclick = (e) => promptDelete(file.id, file.name, e);
-            elFileList.appendChild(li);
+            // Attach handlers
+            // Rename button is the first button in actions
+            const btns = li.querySelectorAll('button');
+            btns[0].onclick = (e) => promptRename(file.id, file.name, e);
+            btns[1].onclick = (e) => promptDelete(file.id, file.name, e);
+            
+            if (file.name.toLowerCase().endsWith('.shift')) {
+                elSourceList.appendChild(li);
+            } else {
+                elDataList.appendChild(li);
+            }
         });
     }
 
@@ -3949,12 +5283,17 @@ function main() number {
             elEditor.disabled = false;
             elEditor.value = file.code;
             elFilename.innerText = file.name;
+            
+            // Run button is now always enabled, logic handles behavior
+            elBtnRun.disabled = false; 
+            const isSource = file.name.toLowerCase().endsWith('.shift');
+            elBtnRun.title = isSource ? "Run Script" : "Preview Data";
         }
         
         renderFileList();
         saveFiles();
+        updateLineNumbers();
         
-        // Mobile UX: Close sidebar after selection
         if (window.innerWidth <= 768) {
             closeSidebar();
         }
@@ -3966,14 +5305,16 @@ function main() number {
             if (file) {
                 file.code = elEditor.value;
                 saveFiles();
+                updateLineNumbers();
             }
         }
     });
 
-    // Tab Logic
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.addEventListener('click', () => {
-            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            if (btn.hasAttribute('data-config-target')) return;
+            
+            document.querySelectorAll('.tab-btn:not([data-config-target])').forEach(b => b.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
             
             btn.classList.add('active');
@@ -3984,10 +5325,11 @@ function main() number {
     document.getElementById('btn-clear').addEventListener('click', () => {
         elConsole.innerHTML = '';
         elDebug.innerHTML = '';
+        checkDebugContent();
     });
 
 
-    // --- 6. The Interpreter Bridge ---
+    // --- 10. The Interpreter & Data Viewer Bridge ---
 
     function uiConsoleLog(message, isError = false) {
         const line = document.createElement('div');
@@ -3997,9 +5339,93 @@ function main() number {
         const container = document.getElementById('view-console');
         container.scrollTop = container.scrollHeight;
     }
+    
+    function uiConsoleInfo(message) {
+        const line = document.createElement('div');
+        line.className = 'log-line log-info';
+        line.innerText = message;
+        elConsole.appendChild(line);
+    }
 
     function uiDebugLog(message) {
         elDebug.innerText += message + "\n";
+    }
+    
+    function uiRenderTable(content, delimiter, hasHeader) {
+        const lines = content.trim().split(/\r?\n/);
+        if (lines.length === 0) return;
+
+        // Helper to parse CSV line respecting quotes
+        const parseLine = (text) => {
+            const values = [];
+            let currentValue = '';
+            let insideQuotes = false;
+            
+            for (let i = 0; i < text.length; i++) {
+                const char = text[i];
+                const nextChar = text[i + 1];
+                
+                if (insideQuotes) {
+                    if (char === '"') {
+                        if (nextChar === '"') {
+                            currentValue += '"';
+                            i++;
+                        } else {
+                            insideQuotes = false;
+                        }
+                    } else {
+                        currentValue += char;
+                    }
+                } else {
+                    if (char === '"' && currentValue.trim() === '') {
+                        insideQuotes = true;
+                    } else if (char === delimiter) {
+                        values.push(currentValue);
+                        currentValue = '';
+                    } else {
+                        currentValue += char;
+                    }
+                }
+            }
+            values.push(currentValue);
+            return values;
+        };
+
+        // Parse all rows first to validate
+        const parsedRows = lines.map(line => parseLine(line));
+        
+        if (parsedRows.length === 0) return;
+
+        const expectedColCount = parsedRows[0].length;
+        const badLines = [];
+
+        parsedRows.forEach((row, idx) => {
+            if (row.length !== expectedColCount) {
+                badLines.push(idx + 1); // 1-based line number
+            }
+        });
+
+        if (badLines.length > 0) {
+            uiConsoleLog(`CSV Error: Row length mismatch. Expected ${expectedColCount} columns.`, true);
+            uiConsoleLog(`Check lines: ${badLines.join(', ')}`, true);
+            return;
+        }
+
+        const table = document.createElement('table');
+        table.className = 'csv-table';
+        
+        parsedRows.forEach((cols, index) => {
+            const tr = document.createElement('tr');
+            
+            cols.forEach(col => {
+                const cell = (index === 0 && hasHeader) ? document.createElement('th') : document.createElement('td');
+                cell.textContent = col;
+                tr.appendChild(cell);
+            });
+            table.appendChild(tr);
+        });
+        
+        elConsole.appendChild(table);
     }
 
     async function runInterpreter() {
@@ -4008,29 +5434,113 @@ function main() number {
             return;
         }
 
+        const activeFile = files.find(f => f.id === activeFileId);
         const sourceCode = elEditor.value;
+        const isShift = activeFile.name.toLowerCase().endsWith('.shift');
+
         elConsole.innerHTML = '';
         elDebug.innerHTML = '';
+        checkDebugContent(); 
 
-        try {
+        if (isShift) {
+            // --- Execute Shift Source Code ---
+            const stdLibCode = loadSettings(); // Ensures stdlib is up to date
+            let std_lib_compiled = false;
+            let shift_engine = null;
 
-            let shift_engine = new Shift();
-            let result = shift_engine.run(sourceCode, "main", []);
+            try {
+                shift_engine = new Shift(stdLibCode, DEFAULT_STD_LIB_INT);
 
-            uiDebugLog(shift_engine.finalAST);
+                if (shift_engine.stdLibErrors.length === 0) {
+                    std_lib_compiled = true;
+                } else {
+                    uiConsoleLog(`COULD NOT COMPILE THE STANDARD LIBRARY`, true);
+                    let first_error = shift_engine.stdLibErrors[0];
+                    uiConsoleLog(`Line ${first_error.line}: ${first_error.message}`, true);
+
+                    shift_engine.stdLibErrors.forEach(e => {
+                        const msg = `Line ${e.line}: ${e.message}`;
+                        uiDebugLog(msg);
+                        console.error(msg);
+                    });
+                }
+
+                if (std_lib_compiled) {
+                    let result = shift_engine.run(sourceCode, "main", []);
+                    uiDebugLog(shift_engine.finalAST);
+                    
+                    uiConsoleLog(``);
+                    uiConsoleLog(`--- Script exited with return code: ${result}`);
+                }
+
+            } catch (e) {
+                uiConsoleLog(`COULD NOT RUN SCRIPT`, true);
+                uiConsoleLog(`${e.message}`, true);
+                uiDebugLog(e.stack);
+            }
+        } else {
+            // --- Preview Data File ---
+            let processed = false;
             
-            uiConsoleLog(``);
-            uiConsoleLog(`--- Script exited with return code: ${result}`);
+            // Try JSON
+            try {
+                const json = JSON.parse(sourceCode);
+                const pre = document.createElement('pre');
+                pre.innerText = JSON.stringify(json, null, 2);
+                elConsole.appendChild(pre);
+                uiConsoleInfo("Successfully parsed as JSON.");
+                processed = true;
+            } catch (e) {
+                // Not JSON
+            }
 
-        } catch (e) {
-            uiConsoleLog(`ERROR - ${e.message}`, true);
-            uiDebugLog(e.stack);
+            // Try TSV
+            if (!processed) {
+                 const isTsvExt = activeFile.name.toLowerCase().endsWith('.tsv');
+                 // Check if it's explicitly a TSV extension OR if generic/unknown but contains tabs
+                 if (isTsvExt || (sourceCode.includes('\t') && sourceCode.includes('\n'))) {
+                     try {
+                         uiRenderTable(sourceCode, '\t', csvSettings.hasHeader);
+                         uiConsoleInfo(`Parsed as TSV (Tab separated).`);
+                         processed = true;
+                     } catch(e) {}
+                 }
+            }
+
+            // Try CSV if not JSON or TSV
+            if (!processed) {
+                try {
+                    // Simple heuristic: if multiple lines and contains delimiter
+                    if (sourceCode.includes(csvSettings.delimiter) && sourceCode.includes('\n')) {
+                        uiRenderTable(sourceCode, csvSettings.delimiter, csvSettings.hasHeader);
+                        uiConsoleInfo(`Parsed as CSV (Delimiter: "${csvSettings.delimiter}", Header: ${csvSettings.hasHeader}). Check Config to change.`);
+                        processed = true;
+                    }
+                } catch(e) {
+                    // CSV parsing error
+                }
+            }
+
+            if (!processed) {
+                uiConsoleInfo("File format not recognized as JSON or CSV/TSV. Showing raw text.");
+                const pre = document.createElement('pre');
+                pre.innerText = sourceCode;
+                elConsole.appendChild(pre);
+            }
         }
+
+        checkDebugContent();
     }
 
     document.getElementById('btn-run').addEventListener('click', runInterpreter);
 
     loadFiles();
+
+    // Check for first visit
+    if (!localStorage.getItem(VISITED_KEY)) {
+        openAboutModal();
+        localStorage.setItem(VISITED_KEY, 'true');
+    }
 </script>
 
 </body>
