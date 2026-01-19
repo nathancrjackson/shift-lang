@@ -1,4 +1,4 @@
-import { Shift } from './shift.mjs';
+import { Shift } from '../src/shift.mjs';
 
 let shift_engine = new Shift();
 
