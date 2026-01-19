@@ -233,7 +233,7 @@ string result = to_upper(trim(input));
 ```
 string result = input 
     | trim_string($pipe_value) 
-    | ansitransform_toupper($pipe_value);
+    | transform_ansistring_to_uppercase($pipe_value);
 ```
 
 ## 7. Error Handling

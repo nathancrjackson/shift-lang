@@ -25,8 +25,8 @@ Its primary goal is Readability and Simplicity. It deliberately avoids complex p
 
 ### 1. Readable Pipeline Processing
 To avoid nested function calls that are hard to read, Shift Script supports a Pipe Operator (|) with explicit placement. This allows data transformations to read like a story from left to right.
-- Unreadable Way: `ansitransform_toupper(trim_string(name))`
-- The Shift Way: `name | trim_string($pipe_value) | ansitransform_toupper($pipe_value)`
+- Unreadable Way: `transform_ansistring_to_uppercase(trim_string(name))`
+- The Shift Way: `name | trim_string($pipe_value) | transform_ansistring_to_uppercase($pipe_value)`
 
 ### 2. Zero-Value Safety
 
@@ -85,7 +85,7 @@ function main() number {
     // "$pipe_value" explicitly shows where the data goes
     our_user["role"] = our_user["role"] 
         | trim_string($pipe_value) 
-        | ansitransform_toupper($pipe_value);
+        | transform_ansistring_to_uppercase($pipe_value);
 
     // 4. Output
     string msg = "User " & our_user["$name"] & " is ready.";

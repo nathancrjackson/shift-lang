@@ -55,7 +55,7 @@ function get_city_weather(string target_city) map<any> {
     
     city_metadata["SYDNEY"] = syd_info;
 
-    list<string> rows = split_stringtolist(raw_csv, "\\n");
+    list<string> rows = split_string_to_list(raw_csv, "\\n");
 
     number index = -1;
     for (row_str in rows) {
@@ -64,11 +64,11 @@ function get_city_weather(string target_city) map<any> {
         if (index == 0) { skip; }
         if (size of row_str < 3) { skip; }
 
-        list<string> cols = split_stringtolist(row_str, ",");
+        list<string> cols = split_string_to_list(row_str, ",");
     
         string city_key = cols[0] 
             | trim_string($pipe_value) 
-            | ansitransform_toupper($pipe_value);
+            | transform_ansistring_to_uppercase($pipe_value);
 
         if (city_key == target_city) {
             return build_city_report(city_key, cols, city_metadata);
@@ -110,7 +110,7 @@ function main() number {
     // "$pipe_value" explicitly shows where the data goes
     our_user["role"] = our_user["role"] 
         | trim_string($pipe_value) 
-        | ansitransform_toupper($pipe_value);
+        | transform_ansistring_to_uppercase($pipe_value);
 
     // 4. Output
     string msg = "User " & our_user["$name"] & " is ready.";
@@ -132,6 +132,40 @@ function main() number {
 // This is here so we don't actually output text during tests
 function print_textline(string msg) none {
     msg = "We're doing nothing with: " & msg;
+}
+`
+    },
+    "Dice rolls":
+    {
+        "tests": [
+            { call: "do_rolls()", type: "number", expect: 0 }
+        ],
+        "code":
+`
+function do_rolls() number {
+    number total_count = 0;
+    number nat_count = 0;
+    number iterations = 1000;
+
+    try {
+        for (num in 1 to iterations)
+        {
+            number roll = generate_randomint_from_range(1, 20);
+            if (roll == 20) { nat_count = nat_count + 1; }
+            total_count = total_count + roll;
+        }
+    } catch {
+        return 1;
+    }
+
+    number avg_roll = total_count / iterations;
+
+    if (avg_roll >= 1 and avg_roll <= 20)
+    {
+        return 0;
+    }
+
+    return 2;
 }
 `
     }

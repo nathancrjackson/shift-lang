@@ -11,7 +11,7 @@ export const pipe_tests = {
         "code":
 `function do_piping(string first_name, string last_name) string
 {
-    string result = get_substring(first_name, 0, 1) | $pipe_value & last_name | ansitransform_toupper($pipe_value);
+    string result = get_substring(first_name, 0, 1) | $pipe_value & last_name | transform_ansistring_to_uppercase($pipe_value);
     return result;
 }`
 

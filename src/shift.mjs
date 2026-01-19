@@ -4,20 +4,42 @@ import { Runtime } from './runtime.mjs';
 import { StandardLibrary } from './standard_library.mjs';
 
 export class Shift {
-    constructor() {
+    /**
+     * @param {string|null} stdLibCode - Custom standard library code (Shift). Pass null to use default.
+     * @param {Object|null} stdLibIntrinsics - Custom intrinsics map. Pass null to use default StandardLibrary.intrinsics.
+     */
+    constructor(stdLibCode = null, stdLibIntrinsics = null) {
         this.stdLibAST = null;
         this.stdLibErrors = [];
-        this._initStandardLibrary();
+        
+        // If stdLibIntrinsics is provided, use it. Otherwise use the default.
+        const baseIntrinsics = stdLibIntrinsics !== null ? stdLibIntrinsics : StandardLibrary.intrinsics;
+        this.intrinsics = new Map(Object.entries(baseIntrinsics));
+        
+        this._initStandardLibrary(stdLibCode);
     }
 
-    _initStandardLibrary() {
+    /**
+     * Registers a new intrinsic function for use in scripts.
+     * @param {string} name - Function name.
+     * @param {Object} definition - { returnType: string, generic?: string, func: Function }
+     */
+    registerIntrinsic(name, definition) {
+        this.intrinsics.set(name, definition);
+    }
+
+    _initStandardLibrary(stdLibCode) {
+        // Use provided code or default to StandardLibrary.source
+        const source = stdLibCode !== null ? stdLibCode : StandardLibrary.source;
+
         // Compile the Standard Library (Shift code part) once during initialization
-        const stdLexer = new Lexer(StandardLibrary.source);
+        const stdLexer = new Lexer(source);
         const stdTokens = stdLexer.tokenize().tokens;
         const stdParser = new Parser(stdTokens);
 
-        // Load definitions so the stdlib parser understands its own types/intrinsics
-        StandardLibrary.loadDefinitions(stdParser);
+        // Load Definitions manually (Structs + Active Intrinsics)
+        this._loadStructs(stdParser);
+        this._loadIntrinsics(stdParser);
         
         // Scan and parse
         stdParser.preScan();
@@ -29,6 +51,45 @@ export class Shift {
         if (this.stdLibErrors.length > 0) {
             console.error("Shift Internal Error: Standard Library failed to compile.");
             this.stdLibErrors.forEach(e => console.error(`Line ${e.line}: ${e.message}`));
+        }
+    }
+
+    _loadStructs(parser) {
+        StandardLibrary.structs.forEach(s => {
+            parser.knownTypes.add(s.name);
+            
+            const fields = s.fields.map(f => {
+                let typeObj = { type: "Type", name: f.type, generic: null };
+                if (f.generic) {
+                    typeObj.generic = { type: "Type", name: f.generic, generic: null };
+                }
+                if (f.type === "nullable" && f.generic) {
+                     typeObj = { 
+                         type: "Type", 
+                         name: "nullable", 
+                         generic: { type: "Type", name: f.generic, generic: null } 
+                     };
+                }
+                return { name: f.name, type: typeObj };
+            });
+
+            parser.structDefinitions.set(s.name, { fields });
+        });
+    }
+
+    _loadIntrinsics(parser) {
+        for (const [name, def] of this.intrinsics) {
+            let typeObj = { type: "Type", name: def.returnType, generic: null, initialized: true };
+            if (def.generic) {
+                typeObj.generic = { type: "Type", name: def.generic, generic: null };
+            }
+            parser.defineVariable(name, typeObj);
+        }
+    }
+
+    _loadIntrinsicsIntoRuntime(runtime) {
+        for (const [name, def] of this.intrinsics) {
+            runtime.addIntrinsic(name, def.func);
         }
     }
 
@@ -57,11 +118,11 @@ export class Shift {
         // 2. Parser
         const parser = new Parser(lexResult.tokens);
         
-        // A. Load Definitions (Structs & Intrinsic Signatures)
-        StandardLibrary.loadDefinitions(parser);
+        // A. Load Definitions
+        this._loadStructs(parser);
+        this._loadIntrinsics(parser);
 
         // B. Load Signatures from StdLib AST (functions written in Shift)
-        // This ensures the parser knows about functions like 'get_stringlength' for type checking
         if (this.stdLibAST) {
             this.stdLibAST.functions.forEach(func => {
                 parser.defineVariable(func.name, {
@@ -95,8 +156,8 @@ export class Shift {
         // 4. Runtime Initialization
         const runtime = new Runtime(finalAST);
         
-        // Load Intrinsic Implementations (Native JS functions)
-        StandardLibrary.loadIntrinsics(runtime);
+        // Load Intrinsic Implementations
+        this._loadIntrinsicsIntoRuntime(runtime);
 
         // 5. Execution
         try {
