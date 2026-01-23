@@ -1,3 +1,6 @@
 # Custom
 private/
 local/
+
+# Excluded generated content
+unit_tests/test_json/

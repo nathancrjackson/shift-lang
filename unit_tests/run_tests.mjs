@@ -1,28 +1,28 @@
 import { UnitTestHandler } from './unit_test_handler.mjs';
 
-import { lexer_tests } from './test_groups/lexer_tests.mjs';
-import { function_tests } from './test_groups/function_tests.mjs';
-import { variable_tests } from './test_groups/variable_tests.mjs';
-import { stringmanipulation_tests } from './test_groups/stringmanipulation_tests.mjs';
-import { boolean_tests } from './test_groups/boolean_tests.mjs';
-import { if_tests } from './test_groups/if_tests.mjs';
-import { pipe_tests } from './test_groups/pipe_tests.mjs';
-import { comparison_tests } from './test_groups/comparison_tests.mjs';
-import { math_tests } from './test_groups/math_tests.mjs';
-import { casting_tests } from './test_groups/casting_tests.mjs';
-import { while_tests } from './test_groups/while_tests.mjs';
-import { for_tests } from './test_groups/for_tests.mjs';
-import { nullable_tests } from './test_groups/nullable_tests.mjs';
-import { list_tests } from './test_groups/list_tests.mjs';
-import { map_tests } from './test_groups/map_tests.mjs';
-import { inspection_tests } from './test_groups/inspection_tests.mjs';
-import { bytepacking_tests } from './test_groups/bytepacking_tests.mjs';
-import { trycatchreview_tests } from './test_groups/trycatchreview_tests.mjs';
+import { lexer_tests } from './test_modules/lexer_tests.mjs';
+import { function_tests } from './test_modules/function_tests.mjs';
+import { variable_tests } from './test_modules/variable_tests.mjs';
+import { stringmanipulation_tests } from './test_modules/stringmanipulation_tests.mjs';
+import { boolean_tests } from './test_modules/boolean_tests.mjs';
+import { if_tests } from './test_modules/if_tests.mjs';
+import { pipe_tests } from './test_modules/pipe_tests.mjs';
+import { comparison_tests } from './test_modules/comparison_tests.mjs';
+import { math_tests } from './test_modules/math_tests.mjs';
+import { casting_tests } from './test_modules/casting_tests.mjs';
+import { while_tests } from './test_modules/while_tests.mjs';
+import { for_tests } from './test_modules/for_tests.mjs';
+import { nullable_tests } from './test_modules/nullable_tests.mjs';
+import { list_tests } from './test_modules/list_tests.mjs';
+import { map_tests } from './test_modules/map_tests.mjs';
+import { inspection_tests } from './test_modules/inspection_tests.mjs';
+import { bytepacking_tests } from './test_modules/bytepacking_tests.mjs';
+import { trycatchreview_tests } from './test_modules/trycatchreview_tests.mjs';
 
-import { structs_tests } from './test_groups/structs_tests.mjs';
-import { regex_tests } from './test_groups/regex_tests.mjs';
-import { syntax_tests } from './test_groups/syntax_tests.mjs';
-import { complex_tests } from './test_groups/complex_tests.mjs';
+import { structs_tests } from './test_modules/structs_tests.mjs';
+import { regex_tests } from './test_modules/regex_tests.mjs';
+import { syntax_tests } from './test_modules/syntax_tests.mjs';
+import { complex_tests } from './test_modules/complex_tests.mjs';
 
 const test_suite = new UnitTestHandler();
 
