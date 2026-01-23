@@ -1,6 +1,6 @@
 /**
  * Shift Script Library
- * Bundled at: 2026-01-23T04:41:25.246Z
+ * Bundled at: 2026-01-23T04:52:15.163Z
  */
 
 // --- Source: token_enums.mjs ---
@@ -3334,6 +3334,7 @@ export class Runtime {
         if (expr.operator === "*") return left * right;
         if (expr.operator === "/") { if(right===0) throw new Error("Runtime Error: Division by zero."); return left/right; }
         if (expr.operator === "%") { if(right===0) throw new Error("Runtime Error: Modulo by zero."); return left%right; }
+        if (expr.operator === "^") return Math.pow(left, right);
         if (expr.operator === "&") return this.stringify(left) + this.stringify(right);
         if (expr.operator === "==") return left === right;
         if (expr.operator === "!=") return left !== right;

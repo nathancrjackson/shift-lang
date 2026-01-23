@@ -901,7 +901,7 @@
             <p>This interactive tool lets you write, tweak, and run Shift scripts right in your browser, powered by a virtual file system designed for experimentation.</p>
             <p>The Shift project is managed by <a href="https://njit.io">Nathan Jackson</a> and is sponsored by <a href="https://dtc.group">DTC Group</a></p>
             <p><i><b>Please note:</b> The Shift Project is still in early development so the language, its runtime and this test environment may be subject to backwards compatibility breaking changes.</i></p>
-            <p style="margin-top: 15px; font-size: 0.85em; color: #888;">Version 1.2.1</p>
+            <p style="margin-top: 15px; font-size: 0.85em; color: #888;">Version 1.2.2</p>
         </div>
         <div class="modal-actions">
             <button id="btn-close-about" class="btn-secondary">Close</button>
@@ -912,7 +912,7 @@
 <script>
 /**
  * Shift Script Library
- * Bundled at: 2026-01-23T04:41:25.246Z
+ * Bundled at: 2026-01-23T04:52:15.163Z
  */
 
 // --- Source: token_enums.mjs ---
@@ -4246,6 +4246,7 @@ class Runtime {
         if (expr.operator === "*") return left * right;
         if (expr.operator === "/") { if(right===0) throw new Error("Runtime Error: Division by zero."); return left/right; }
         if (expr.operator === "%") { if(right===0) throw new Error("Runtime Error: Modulo by zero."); return left%right; }
+        if (expr.operator === "^") return Math.pow(left, right);
         if (expr.operator === "&") return this.stringify(left) + this.stringify(right);
         if (expr.operator === "==") return left === right;
         if (expr.operator === "!=") return left !== right;

@@ -99,6 +99,19 @@ export const math_tests = {
         "code": `function div(number the_divisor) number { return 10 % the_divisor; }`
     }
 ,
+    "Power tests":
+    {
+        "tests": [
+            { call:"do_math(2, 2)", type: "number", expect: 4 },
+            { call:"do_math(5, 10)", type: "number", expect: 9765625 },
+            { call:"do_math(-10, -3)", type: "number", expect: -0.001 }
+        ],
+        "code":
+`function do_math(number a, number b) number {
+    return a ^ b;
+}`
+    }
+,
     "Complex order":
     {
         "tests": [{ call:"sillyhalve_number(10)", type: "number", expect: 5 }],

@@ -762,6 +762,7 @@ export class Runtime {
         if (expr.operator === "*") return left * right;
         if (expr.operator === "/") { if(right===0) throw new Error("Runtime Error: Division by zero."); return left/right; }
         if (expr.operator === "%") { if(right===0) throw new Error("Runtime Error: Modulo by zero."); return left%right; }
+        if (expr.operator === "^") return Math.pow(left, right);
         if (expr.operator === "&") return this.stringify(left) + this.stringify(right);
         if (expr.operator === "==") return left === right;
         if (expr.operator === "!=") return left !== right;
