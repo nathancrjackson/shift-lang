@@ -84,8 +84,6 @@ export class Runtime {
         }
     }
 
-    // --- Helper Methods ---
-
     stringify(val) {
         if (typeof val === 'boolean') return val ? "1" : "0";
         return String(val);
@@ -150,12 +148,10 @@ export class Runtime {
     // --- The Stack Machine Core ---
 
     runFunction(name, args = []) {
-        // FIX 1: RE-ENTRANCY SUPPORT
         const previousStack = this.stack;
         this.stack = []; 
         
         try {
-            // 1. Resolve Function
             let func = null;
 
             if (this.intrinsics.has(name)) {
@@ -170,7 +166,6 @@ export class Runtime {
                  throw new Error(`Runtime Error: Function '${name}' expects ${func.params.length} arguments but got ${args.length}.`);
             }
 
-            // 2. Setup Initial Frame
             const fnEnv = new Environment(this.globalEnv);
             for (let i = 0; i < func.params.length; i++) {
                 const paramName = func.params[i].name;
@@ -184,7 +179,6 @@ export class Runtime {
             this.stack.push(initialFrame);
             this.logDebug(`Pushed Function Frame: ${name} (Args: ${args.length})`);
 
-            // 3. Enter Main Loop
             let finalResult = null;
             let currentSignal = SIGNAL_NONE;
             let signalValue = null;
@@ -192,7 +186,6 @@ export class Runtime {
             while (this.stack.length > 0) {
                 const frame = this.stack[this.stack.length - 1];
 
-                // A. Handle Return Signal
                 if (currentSignal === SIGNAL_RETURN) {
                     if (frame.type === "Function") {
                         finalResult = signalValue;
@@ -220,16 +213,15 @@ export class Runtime {
                     }
                 }
 
-                // B. Handle Break/Skip
                 if (currentSignal === SIGNAL_BREAK || currentSignal === SIGNAL_SKIP) {
                     if (frame.type === "Loop") {
                         if (currentSignal === SIGNAL_BREAK) {
-                            this.stack.pop(); // Terminate loop
+                            this.stack.pop(); 
                             this.logDebug(`Loop Terminated (Break)`);
                             currentSignal = SIGNAL_NONE; 
                         } else {
                             this.logDebug(`Loop Skipping`);
-                            currentSignal = SIGNAL_NONE; // Loop logic handles next step
+                            currentSignal = SIGNAL_NONE; 
                         }
                         continue;
                     } else if (frame.type === "Function") {
@@ -240,9 +232,7 @@ export class Runtime {
                     }
                 }
 
-                // C. Execute Instructions
                 if (frame.pc >= frame.statements.length) {
-                    // Frame Finished
                     this.stack.pop();
                     this.logDebug(`Popped Frame: ${frame.type} (Finished)`);
                     
@@ -269,7 +259,6 @@ export class Runtime {
                     frame.pc++;
                 }
 
-                // Handle Statement
                 try {
                     this.executeStatement(stmt, frame, (sig, val) => {
                         currentSignal = sig;
@@ -286,7 +275,6 @@ export class Runtime {
             return finalResult;
 
         } finally {
-            // Restore Stack state
             this.stack = previousStack;
         }
     }
@@ -371,25 +359,29 @@ export class Runtime {
             }
 
             case "TryStatement": {
-                // Recursive implementation for simplicity in Hybrid Runtime
                 try {
-                    // We must pass the signalCallback down to support return/break inside Try
-                    // FIX: runProtectedBlock now accepts signalCallback
                     this.runProtectedBlock(stmt.tryBlock, frame.env, signalCallback);
                 } catch (e) {
-                    if (e instanceof ShiftCritical) throw e;
-                    if (e instanceof ShiftAlert) {
+                    if (e instanceof ShiftCritical) {
+                        throw e; 
+                    } 
+                    else if (e instanceof ShiftAlert) {
                         if (stmt.reviewBlock) {
                             const reviewEnv = new Environment(frame.env);
                             reviewEnv.define(stmt.catchIdentifier, e.message);
                             this.runProtectedBlock(stmt.reviewBlock, reviewEnv, signalCallback);
                         } else {
-                            throw e;
+                            throw e; 
                         }
-                    } else if (e instanceof ShiftError || e instanceof Error) {
-                        const catchEnv = new Environment(frame.env);
-                        catchEnv.define(stmt.catchIdentifier, e.message);
-                        this.runProtectedBlock(stmt.catchBlock, catchEnv, signalCallback);
+                    } 
+                    else if (e instanceof ShiftError || e instanceof Error) {
+                        if (stmt.catchBlock) {
+                            const catchEnv = new Environment(frame.env);
+                            catchEnv.define(stmt.catchIdentifier, e.message);
+                            this.runProtectedBlock(stmt.catchBlock, catchEnv, signalCallback);
+                        } else {
+                            throw e; 
+                        }
                     }
                 }
                 break;
@@ -407,10 +399,8 @@ export class Runtime {
     }
 
     runProtectedBlock(blockNode, env, parentSignalCallback) {
-        // We use a simple recursive loop here to isolate the Try block execution logic
         const oldStyleExec = (statements, env) => {
             for (const stmt of statements) {
-                // FIX: Pass a callback that throws a signal object we can catch locally
                 this.executeStatement(stmt, {env, type: "Protected"}, (sig, val) => {
                     throw { type: "Signal", sig, val };
                 });
@@ -420,14 +410,12 @@ export class Runtime {
             oldStyleExec(blockNode.statements, env);
         } catch (e) {
             if (e.type === "Signal") {
-                // FIX: Propagate the signal up to the main loop via the parent callback
                 if (parentSignalCallback) {
                     parentSignalCallback(e.sig, e.val);
                 } else {
-                    // Fallback if no callback provided (shouldn't happen in main execution)
                     throw new Error("Control flow signal unhandled in protected block.");
                 }
-                return; // Stop execution of the protected block
+                return; 
             }
             throw e;
         }
@@ -524,7 +512,7 @@ export class Runtime {
         }
 
         if (shouldRun) {
-            frame.pc = 0; // Fix: Stay at index 0
+            frame.pc = 0; 
             this.logDebug(`Loop Step: Running Body`);
             this.pushBlock(state.body, loopEnv);
         } else {
@@ -533,8 +521,6 @@ export class Runtime {
         }
     }
 
-    // --- Expression Evaluation ---
-    
     evaluate(expr, env) {
         this.logDebug(`Eval: ${expr.type}`);
         
@@ -562,7 +548,13 @@ export class Runtime {
             case "IndexAssignment": {
                 const container = this.evaluate(expr.object, env);
                 const value = this.evaluate(expr.value, env);
-                if (container === null) throw new Error("Runtime Error: Cannot assign to null.");
+                if (container === null) {
+                    // Specific null check for index assignment
+                    const index = this.evaluate(expr.index, env);
+                    if (typeof index === 'number') throw new Error("Runtime Error: Cannot access index on null value.");
+                    if (typeof index === 'string') throw new Error("Runtime Error: Cannot access key on null value.");
+                    throw new Error("Runtime Error: Cannot assign to null.");
+                }
                 if (Array.isArray(container)) {
                     if (expr.index === null) { container.push(value); return value; }
                     const index = this.evaluate(expr.index, env);
@@ -640,9 +632,12 @@ export class Runtime {
     evaluateIndex(expr, env) {
         const obj = this.evaluate(expr.object, env);
         const idx = this.evaluate(expr.index, env);
-        if (obj === null) throw new Error("Runtime Error: Cannot read properties of null.");
+        if (obj === null) {
+            if (typeof idx === 'number') throw new Error("Runtime Error: Cannot access index on null value.");
+            if (typeof idx === 'string') throw new Error("Runtime Error: Cannot access key on null value.");
+            throw new Error("Runtime Error: Cannot read properties of null.");
+        }
         if (Array.isArray(obj)) {
-            // FIX: Split index error messages
             if (!Number.isInteger(idx)) throw new Error("Runtime Error: List index must be integer value.");
             if (idx < 0) throw new Error("Runtime Error: List index must not be a negative number.");
             if (idx >= obj.length) throw new Error("Runtime Error: List index is out of bounds.");
@@ -660,7 +655,6 @@ export class Runtime {
         if (val === null) return "null";
         if (Array.isArray(val)) return "list";
         if (val instanceof Map) return val.__shift_type || "map";
-        // FIX: Return 'bool' for boolean type
         if (typeof val === 'boolean') return "bool";
         return typeof val;
     }
@@ -705,28 +699,49 @@ export class Runtime {
     evaluateCast(expr, env) {
         const val = this.evaluate(expr.value, env);
         const target = expr.targetType.name;
+        const sourceType = this.getTypeName(val);
         
+        // Identity cast: If source already matches target, return directly
+        if (sourceType === target) {
+            return val;
+        }
+
         if (target === "string") {
+            if (sourceType === "map") throw new Error("Runtime Error: Cannot cast map to string.");
             if (Array.isArray(val)) return val.map(v => this.stringify(v)).join("");
             return this.stringify(val);
         }
+
         if (target === "number") {
             if (typeof val === 'boolean') return val ? 1 : 0;
-            const n = parseFloat(val);
-            if (isNaN(n)) throw new Error("Runtime Error: Could not cast string to number");
-            return n;
+            if (typeof val === 'string') {
+                const n = parseFloat(val);
+                if (isNaN(n)) throw new Error("Runtime Error: Could not cast string to number.");
+                return n;
+            }
+            throw new Error(`Runtime Error: Cannot cast ${sourceType} to number.`);
         }
+
         if (target === "bool") {
             if (typeof val === 'string') {
-                if (val === "true") return true;
-                if (val === "false") return false;
+                if (val === "true" || val === "1") return true;
+                if (val === "false" || val === "0") return false;
                 const n = parseFloat(val);
                 if (!isNaN(n)) return n !== 0;
-                throw new Error("Runtime Error: Could not cast string to bool");
+                throw new Error("Runtime Error: Could not cast string to bool.");
             }
-            return Boolean(val);
+            if (typeof val === 'number') return val !== 0;
+            if (typeof val === 'boolean') return val;
+            
+            throw new Error(`Runtime Error: Cannot cast ${sourceType} to bool.`);
         }
-        if (target === "list" && typeof val === "string") return val.split('');
+
+        if (target === "list") {
+            if (typeof val === "string") return val.split('');
+            if (Array.isArray(val)) return val; 
+            throw new Error(`Runtime Error: Cannot cast ${sourceType} to list.`);
+        }
+
         return val;
     }
 
@@ -822,7 +837,6 @@ export class Runtime {
             if (!obj.has(idx)) throw new Error("Runtime Error: Map key does not exist.");
             obj.delete(idx);
         } else if (Array.isArray(obj)) {
-            // FIX: Split error messages
             if (!Number.isInteger(idx)) throw new Error("Runtime Error: List index must be integer value.");
             if (idx < 0) throw new Error("Runtime Error: List index must not be a negative number.");
             if (idx >= obj.length) throw new Error("Runtime Error: List index is out of bounds.");
