@@ -1,6 +1,6 @@
 /**
  * Shift Script Library
- * Bundled at: 2026-01-19T00:01:37.463Z
+ * Bundled at: 2026-01-23T04:41:25.246Z
  */
 
 // --- Source: token_enums.mjs ---
@@ -8,7 +8,7 @@ export const TokenType = {
 	// Keywords
 	FUNCTION: "FUNCTION", RETURN: "RETURN", STRUCT: "STRUCT",
 	IF: "IF", ELSE: "ELSE", FOR: "FOR", IN: "IN", TO: "TO",
-    WHILE: "WHILE", // Added WHILE
+    WHILE: "WHILE",
 	TRY: "TRY", CATCH: "CATCH", REVIEW: "REVIEW", THROW: "THROW",
 	TRUE: "TRUE", FALSE: "FALSE",
 
@@ -20,8 +20,17 @@ export const TokenType = {
     // Casting & Checks
     AS: "AS",
     HAS: "HAS",
+    IS: "IS",             
+    CONTAINS: "CONTAINS",
+    MATCHES: "MATCHES",
     DELETE: "DELETE",
     SEARCH: "SEARCH",
+
+    // String/List Ops
+    REPLACE: "REPLACE",   
+    WITH: "WITH",         
+    SPLIT: "SPLIT",       
+    JOINED: "JOINED",
 
     // Inspection & Bytes
     INSPECT: "INSPECT",
@@ -30,6 +39,9 @@ export const TokenType = {
     OF: "OF",
     PACK: "PACK",
     UNPACK: "UNPACK",
+    
+    // Null Coalescing
+    QUESTION_QUESTION: "QUESTION_QUESTION",
 
 	// Types
 	TYPE_STRING: "TYPE_STRING", TYPE_NUMBER: "TYPE_NUMBER",
@@ -42,7 +54,7 @@ export const TokenType = {
 	BANG: "BANG", BANG_EQUAL: "BANG_EQUAL",
     EQUAL_EQUAL: "EQUAL_EQUAL",
     LESS_EQUAL: "LESS_EQUAL", GREATER_EQUAL: "GREATER_EQUAL",
-	LANGLE: "LANGLE", RANGLE: "RANGLE",              // < > - Also to be used for less than and greater than checks
+	LANGLE: "LANGLE", RANGLE: "RANGLE",              // < > 
 	LPAREN: "LPAREN", RPAREN: "RPAREN",              // ( )
 	LBRACE: "LBRACE", RBRACE: "RBRACE",              // { }
 	LBRACKET: "LBRACKET", RBRACKET: "RBRACKET",      // [ ]
@@ -50,9 +62,9 @@ export const TokenType = {
 	PIPE: "PIPE",
 	ASSIGN: "ASSIGN",
 	PLUS: "PLUS", MINUS: "MINUS", SLASH: "SLASH", STAR: "STAR",
-	PERCENT: "PERCENT",                              // % (Modulus)
-    AMPERSAND: "AMPERSAND",                          // & (Concatenation)
-    CARET: "CARET",                                  // ^ (XOR)
+	PERCENT: "PERCENT",                              // % 
+    AMPERSAND: "AMPERSAND",                          // & 
+    CARET: "CARET",                                  // ^ 
     MAGIC_VAR: "MAGIC_VAR",                          // $
 
 	// Literals
@@ -76,7 +88,7 @@ export const KEYWORDS = {
 	"function": TokenType.FUNCTION, "return": TokenType.RETURN, "struct": TokenType.STRUCT,
 	"if": TokenType.IF, "else": TokenType.ELSE,
 	"for": TokenType.FOR, "in": TokenType.IN, "to": TokenType.TO,
-    "while": TokenType.WHILE, // Added while
+    "while": TokenType.WHILE,
 	"try": TokenType.TRY, "catch": TokenType.CATCH, "review": TokenType.REVIEW, 
     "throw": TokenType.THROW, 
 	"true": TokenType.TRUE, "false": TokenType.FALSE,
@@ -88,6 +100,13 @@ export const KEYWORDS = {
 
     "as": TokenType.AS,
     "has": TokenType.HAS,
+    "is": TokenType.IS,             
+    "contains": TokenType.CONTAINS, 
+    "matches": TokenType.MATCHES,
+    "replace": TokenType.REPLACE,   
+    "with": TokenType.WITH,         
+    "split": TokenType.SPLIT,       
+    "joined": TokenType.JOINED,
     "delete": TokenType.DELETE,
     "search": TokenType.SEARCH,
 
@@ -134,7 +153,9 @@ export class Lexer
 			{
 				t: TokenType.EOF,
 				v: "",
-				l: this.currentline
+				l: this.currentline,
+                s: this.currentindex,
+                e: this.currentindex
 			}
 		);
 
@@ -176,7 +197,17 @@ export class Lexer
 			case '*': this.addToken(TokenType.STAR, "*"); break;
 			case '%': this.addToken(TokenType.PERCENT, "%"); break;
             case '|': this.addToken(TokenType.PIPE, "|"); break;
+            case '^': this.addToken(TokenType.CARET, "^"); break;
             case '$': this.magicVariable(); break;
+
+            // Null Coalescing ??
+            case '?':
+                if (this.match('?')) {
+                    this.addToken(TokenType.QUESTION_QUESTION, "??");
+                } else {
+                     this.addError("Unexpected character '?'");
+                }
+                break;
 
 			// Could it be generic definition or could it be a comparison?
 			case '<':
@@ -309,7 +340,6 @@ export class Lexer
 	{
 		while (!this.isAtEnd())
 		{
-
 			// Handle the backslah case
 			if (this.peek() === '\\')
 			{
@@ -324,12 +354,10 @@ export class Lexer
 				continue;
 			}
 
-			// 
 			if (this.peek() === '"') {
 				break;
 			}
 
-			// Don't forget to track newlines inside strings for correct error reporting
 			if (this.peek() === '\n') {
 				this.currentline++;
 			}
@@ -458,11 +486,17 @@ export class Lexer
 	// t = Token type, v = Token value, l = Line Token is on
 	addToken(t, v)
 	{
-		this.tokens.push({ t, v, l: this.currentline });
+        // Add start (s) and end (e) indices
+		this.tokens.push({ 
+            t, 
+            v, 
+            l: this.currentline,
+            s: this.startindex,
+            e: this.currentindex
+        });
 	}
 
 	magicVariable() {
-        // We already consumed the '$', now consume the rest
         while (this.isAlphaNumeric(this.peek())) {
             this.advance();
         }
@@ -513,7 +547,7 @@ export class ExpressionParser {
 
     // Level 0: Assignment (a = b)
     assignment() {
-        const expr = this.pipeline();
+        let expr = this.pipeline();
 
         if (this.parser.match(TokenType.ASSIGN)) {
             const equalsToken = this.parser.previous();
@@ -534,7 +568,14 @@ export class ExpressionParser {
                     // Errors already added by validator
                 }
                 
-                return { type: "Assignment", name: varName, value: value };
+                return { 
+                    type: "Assignment", 
+                    start: expr.start,
+                    end: value.end,
+                    line: equalsToken.l,
+                    name: varName, 
+                    value: value 
+                };
             }
             else if (expr.type === "IndexExpression") {
                 
@@ -627,6 +668,9 @@ export class ExpressionParser {
                 
                 return { 
                     type: "IndexAssignment", 
+                    start: expr.start,
+                    end: value.end,
+                    line: equalsToken.l,
                     object: expr.object, 
                     index: expr.index, 
                     value: value 
@@ -641,14 +685,39 @@ export class ExpressionParser {
 
     // Level 0.5: Pipeline (|)
     pipeline() {
-        let expr = this.logicalOr();
+        let expr = this.nullCoalescing(); 
 
         while (this.parser.match(TokenType.PIPE)) {
             const operatorToken = this.parser.previous();
-            const right = this.logicalOr(); 
+            const right = this.nullCoalescing(); 
 
             expr = {
                 type: "PipelineExpression",
+                start: expr.start,
+                end: right.end,
+                line: operatorToken.l,
+                left: expr,
+                right: right
+            };
+        }
+
+        return expr;
+    }
+
+    // Level 0.7: Null Coalescing (??)
+    nullCoalescing() {
+        let expr = this.logicalOr();
+
+        while (this.parser.match(TokenType.QUESTION_QUESTION)) {
+            const operatorToken = this.parser.previous();
+            const right = this.logicalOr();
+
+            expr = {
+                type: "BinaryExpression",
+                start: expr.start,
+                end: right.end,
+                line: operatorToken.l,
+                operator: operatorToken.v,
                 left: expr,
                 right: right
             };
@@ -667,6 +736,9 @@ export class ExpressionParser {
 
             expr = {
                 type: "BinaryExpression",
+                start: expr.start,
+                end: right.end,
+                line: operatorToken.l,
                 operator: operatorToken.v,
                 left: expr,
                 right: right
@@ -686,6 +758,9 @@ export class ExpressionParser {
 
             expr = {
                 type: "BinaryExpression",
+                start: expr.start,
+                end: right.end,
+                line: operatorToken.l,
                 operator: operatorToken.v,
                 left: expr,
                 right: right
@@ -705,6 +780,9 @@ export class ExpressionParser {
 
             expr = {
                 type: "BinaryExpression",
+                start: expr.start,
+                end: right.end,
+                line: operatorToken.l,
                 operator: operatorToken.v,
                 left: expr,
                 right: right
@@ -740,6 +818,9 @@ export class ExpressionParser {
 
             expr = {
                 type: "BinaryExpression",
+                start: expr.start,
+                end: right.end,
+                line: operatorToken.l,
                 operator: operatorToken.v,
                 left: expr,
                 right: right
@@ -749,15 +830,98 @@ export class ExpressionParser {
         return expr;
     }
 
-    // Level 5: Comparison (<, >, <=, >=, has, search)
+    // Level 5: Comparison (<, >, <=, >=, has, search, is, contains, replace, split, joined, matches)
     comparison() {
         let expr = this.concatenation();
 
         while (this.parser.match(TokenType.LANGLE) || this.parser.match(TokenType.RANGLE) || 
             this.parser.match(TokenType.LESS_EQUAL) || this.parser.match(TokenType.GREATER_EQUAL) ||
-            this.parser.match(TokenType.HAS) || this.parser.match(TokenType.SEARCH)) {
+            this.parser.match(TokenType.HAS) || this.parser.match(TokenType.SEARCH) ||
+            this.parser.match(TokenType.CONTAINS) || this.parser.match(TokenType.IS) ||
+            this.parser.match(TokenType.REPLACE) || this.parser.match(TokenType.SPLIT) || this.parser.match(TokenType.JOINED) ||
+            this.parser.match(TokenType.MATCHES) 
+        ) {
             const operatorToken = this.parser.previous();
+
+            // 1. IS Operator
+            if (operatorToken.t === TokenType.IS) {
+                let isNot = false;
+                if (this.parser.match(TokenType.NOT)) {
+                    isNot = true;
+                }
+
+                let checkType = "";
+                let endPos = operatorToken.e;
+                
+                // Match type keywords (string, number) OR identifiers (alpha, email)
+                if (this.parser.matchTypeKeyword()) {
+                    const tok = this.parser.advance();
+                    checkType = tok.v;
+                    endPos = tok.e;
+                } else if (this.parser.match(TokenType.IDENTIFIER)) {
+                    const tok = this.parser.previous();
+                    checkType = tok.v;
+                    endPos = tok.e;
+                } else {
+                    throw this.parser.addError(this.parser.peek(), "Expect type or check name after 'is'.");
+                }
+
+                expr = {
+                    type: "IsExpression",
+                    start: expr.start,
+                    end: endPos,
+                    line: operatorToken.l,
+                    left: expr,
+                    check: checkType,
+                    isNot: isNot
+                };
+                continue;
+            }
+
+            // 2. REPLACE Operator
+            if (operatorToken.t === TokenType.REPLACE) {
+                const pattern = this.concatenation();
+                this.parser.consume(TokenType.WITH, "Expect 'with' after replace pattern.");
+                const replacement = this.concatenation();
+
+                expr = {
+                    type: "ReplaceExpression",
+                    start: expr.start,
+                    end: replacement.end,
+                    line: operatorToken.l,
+                    source: expr,
+                    pattern: pattern,
+                    replacement: replacement
+                };
+                continue;
+            }
+
+            // 3. SPLIT / JOINED Operators
+            if (operatorToken.t === TokenType.SPLIT || operatorToken.t === TokenType.JOINED) {
+                this.parser.consume(TokenType.WITH, `Expect 'with' after ${operatorToken.v}.`);
+                const delimiter = this.concatenation();
+
+                expr = {
+                    type: operatorToken.t === TokenType.SPLIT ? "SplitExpression" : "JoinExpression",
+                    start: expr.start,
+                    end: delimiter.end,
+                    line: operatorToken.l,
+                    source: expr,
+                    delimiter: delimiter
+                };
+                continue;
+            }
+
+            // 4. Standard Binary Ops (contains, search, has, matches, etc)
             const right = this.concatenation();
+
+            // CONTAINS Check
+            if (operatorToken.t === TokenType.CONTAINS) {
+                const leftType = this.parser.inferType(expr);
+                if (leftType !== "any" && leftType !== "list" && leftType !== "string") {
+                     // We allow list or string for 'contains'
+                }
+            }
 
             if (operatorToken.t === TokenType.SEARCH) {
                 const leftType = this.parser.inferType(expr);
@@ -781,8 +945,33 @@ export class ExpressionParser {
                 }
             }
 
+            if (operatorToken.t === TokenType.MATCHES) {
+                const leftType = this.parser.inferType(expr);
+                const rightType = this.parser.inferType(right);
+
+                // 1. Data must be string
+                if (leftType !== "any" && leftType !== "string") {
+                    throw this.parser.addError(operatorToken, "Matches data must be a string.");
+                }
+
+                // 2. Pattern must be string
+                if (rightType !== "any" && rightType !== "string") {
+                    throw this.parser.addError(operatorToken, "Matches expression must be a string.");
+                }
+
+                // 3. Pattern literal validation (heuristics)
+                if (right.type === "Literal" && typeof right.value === "string") {
+                    if (!right.value.startsWith("/")) {
+                        throw this.parser.addError(operatorToken, "Matches expression must be a valid regular expression.");
+                    }
+                }
+            }
+
             expr = {
                 type: "BinaryExpression",
+                start: expr.start,
+                end: right.end,
+                line: operatorToken.l,
                 operator: operatorToken.v,
                 left: expr,
                 right: right
@@ -802,6 +991,9 @@ export class ExpressionParser {
 
             expr = {
                 type: "BinaryExpression",
+                start: expr.start,
+                end: right.end,
+                line: operatorToken.l,
                 operator: operatorToken.v,
                 left: expr,
                 right: right
@@ -821,6 +1013,9 @@ export class ExpressionParser {
 
             expr = {
                 type: "BinaryExpression",
+                start: expr.start,
+                end: right.end,
+                line: operatorToken.l,
                 operator: operatorToken.v,
                 left: expr,
                 right: right
@@ -831,11 +1026,11 @@ export class ExpressionParser {
 
     // Level 7: Factor (*, /, %)
     factor() {
-        let expr = this.unary();
+        let expr = this.power(); // Changed from unary() to power()
 
         while (this.parser.match(TokenType.SLASH) || this.parser.match(TokenType.STAR) || this.parser.match(TokenType.PERCENT)) {
             const operatorToken = this.parser.previous();
-            const right = this.unary();
+            const right = this.power(); // Changed from unary() to power()
 
             if (operatorToken.v === '/' || operatorToken.v === '%') {
                 if (right.type === "Literal" && right.value === 0) {
@@ -846,6 +1041,31 @@ export class ExpressionParser {
 
             expr = {
                 type: "BinaryExpression",
+                start: expr.start,
+                end: right.end,
+                line: operatorToken.l,
+                operator: operatorToken.v,
+                left: expr,
+                right: right
+            };
+        }
+
+        return expr;
+    }
+
+    // Level 7.5: Power (^) - New
+    power() {
+        let expr = this.unary();
+
+        while (this.parser.match(TokenType.CARET)) {
+            const operatorToken = this.parser.previous();
+            const right = this.unary();
+
+            expr = {
+                type: "BinaryExpression",
+                start: expr.start,
+                end: right.end,
+                line: operatorToken.l,
                 operator: operatorToken.v,
                 left: expr,
                 right: right
@@ -863,6 +1083,9 @@ export class ExpressionParser {
 
             return {
                 type: "UnaryExpression",
+                start: operatorToken.s,
+                end: right.end,
+                line: operatorToken.l,
                 operator: operatorToken.v,
                 argument: right
             };
@@ -870,24 +1093,46 @@ export class ExpressionParser {
 
         // inspect <expr>
         if (this.parser.match(TokenType.INSPECT)) {
+            const startToken = this.parser.previous();
             const right = this.unary();
-            return { type: "InspectExpression", argument: right };
+            return { 
+                type: "InspectExpression", 
+                start: startToken.s,
+                end: right.end,
+                line: startToken.l,
+                argument: right 
+            };
         }
 
         // pack <expr>
         if (this.parser.match(TokenType.PACK)) {
+            const startToken = this.parser.previous();
             const right = this.unary();
-            return { type: "PackExpression", argument: right };
+            return { 
+                type: "PackExpression", 
+                start: startToken.s,
+                end: right.end,
+                line: startToken.l,
+                argument: right 
+            };
         }
 
         // unpack <expr>
         if (this.parser.match(TokenType.UNPACK)) {
+            const startToken = this.parser.previous();
             const right = this.unary();
-            return { type: "UnpackExpression", argument: right };
+            return { 
+                type: "UnpackExpression", 
+                start: startToken.s,
+                end: right.end,
+                line: startToken.l,
+                argument: right 
+            };
         }
 
         // size of <expr>
         if (this.parser.match(TokenType.SIZE)) {
+            const startToken = this.parser.previous();
             this.parser.consume(TokenType.OF, "Expect 'of' after 'size'.");
             const right = this.unary();
             
@@ -896,14 +1141,27 @@ export class ExpressionParser {
                  throw this.parser.addError(this.parser.previous(), "Cannot get size of primitive types");
             }
 
-            return { type: "SizeOfExpression", argument: right };
+            return { 
+                type: "SizeOfExpression", 
+                start: startToken.s,
+                end: right.end,
+                line: startToken.l,
+                argument: right 
+            };
         }
 
         // type of <expr>
         if (this.parser.match(TokenType.TYPE)) {
+            const startToken = this.parser.previous();
             this.parser.consume(TokenType.OF, "Expect 'of' after 'type'.");
             const right = this.unary();
-            return { type: "TypeOfExpression", argument: right };
+            return { 
+                type: "TypeOfExpression", 
+                start: startToken.s,
+                end: right.end,
+                line: startToken.l,
+                argument: right 
+            };
         }
 
         return this.cast();
@@ -916,6 +1174,10 @@ export class ExpressionParser {
         while(this.parser.match(TokenType.AS)) {
             const asToken = this.parser.previous();
             const typeInfo = this.parser.parseType(); 
+            // Note: parseType doesn't return a Node, so it doesn't have an end.
+            // But if it was a generic, it consumed RANGLE.
+            // We need to approximate the end from previous token.
+            const endToken = this.parser.previous();
             
             let fromType = this.parser.inferType(expr);
             const toType = typeInfo.name;
@@ -977,6 +1239,9 @@ export class ExpressionParser {
 
             expr = {
                 type: "CastExpression",
+                start: expr.start,
+                end: endToken.e,
+                line: asToken.l,
                 value: expr,
                 targetType: typeInfo
             };
@@ -987,22 +1252,50 @@ export class ExpressionParser {
 
     // Level 9: Primary (Atomic values)
     primary() {
-        if (this.parser.match(TokenType.FALSE)) return { type: "Literal", value: false };
-        if (this.parser.match(TokenType.TRUE)) return { type: "Literal", value: true };
-        if (this.parser.match(TokenType.TYPE_NULL)) return { type: "Literal", value: null };
+        if (this.parser.match(TokenType.FALSE)) {
+            const t = this.parser.previous();
+            return { type: "Literal", value: false, start: t.s, end: t.e, line: t.l };
+        }
+        if (this.parser.match(TokenType.TRUE)) {
+            const t = this.parser.previous();
+            return { type: "Literal", value: true, start: t.s, end: t.e, line: t.l };
+        }
+        if (this.parser.match(TokenType.TYPE_NULL)) {
+            const t = this.parser.previous();
+            return { type: "Literal", value: null, start: t.s, end: t.e, line: t.l };
+        }
 
         if (this.parser.match(TokenType.MAGIC_VAR)) {
-            // FIX: Capture the line number from the token
             const token = this.parser.previous();
-            return { type: "MagicVariable", name: token.v, line: token.l };
+            return { 
+                type: "MagicVariable", 
+                start: token.s,
+                end: token.e,
+                line: token.l,
+                name: token.v
+            };
         }
 
         if (this.parser.match(TokenType.NUMBER)) {
-            return { type: "Literal", value: parseFloat(this.parser.previous().v) };
+            const token = this.parser.previous();
+            return { 
+                type: "Literal", 
+                start: token.s,
+                end: token.e,
+                line: token.l,
+                value: parseFloat(token.v) 
+            };
         }
 
         if (this.parser.match(TokenType.STRING)) {
-            return { type: "Literal", value: this.parser.previous().v };
+            const token = this.parser.previous();
+            return { 
+                type: "Literal", 
+                start: token.s,
+                end: token.e,
+                line: token.l,
+                value: token.v 
+            };
         }
 
         if (this.parser.match(TokenType.LBRACKET)) {
@@ -1010,19 +1303,26 @@ export class ExpressionParser {
         }
 
         if (this.parser.match(TokenType.IDENTIFIER)) {
-            const name = this.parser.previous().v;
+            const token = this.parser.previous();
+            const name = token.v;
             
             const symbol = this.parser.getVariable(name);
             if (!symbol) {
-                throw this.parser.addError(this.parser.previous(), "Undefined variable.");
+                throw this.parser.addError(token, "Undefined variable.");
             }
 
             let expr;
 
             if (this.parser.match(TokenType.LPAREN)) {
-                expr = this.finishCall(name);
+                expr = this.finishCall(name, token);
             } else {
-                expr = { type: "Variable", name: name };
+                expr = { 
+                    type: "Variable", 
+                    start: token.s,
+                    end: token.e,
+                    line: token.l,
+                    name: name 
+                };
             }
 
             while (this.parser.match(TokenType.LBRACKET)) {
@@ -1033,18 +1333,33 @@ export class ExpressionParser {
         }
 
         if (this.parser.match(TokenType.LPAREN)) {
+            const startToken = this.parser.previous();
             const expr = this.parse(); 
-            this.parser.consume(TokenType.RPAREN, "Expect ')' after expression.");
-            return { type: "Grouping", expression: expr };
+            const endToken = this.parser.consume(TokenType.RPAREN, "Expect ')' after expression.");
+            return { 
+                type: "Grouping", 
+                start: startToken.s,
+                end: endToken.e,
+                line: startToken.l,
+                expression: expr 
+            };
         }
 
         throw this.parser.addError(this.parser.peek(), "Expect expression.");
     }
 
     collectionLiteral() {
+        const startToken = this.parser.previous(); // LBRACKET
+
         if (this.parser.check(TokenType.RBRACKET)) {
-            this.parser.consume(TokenType.RBRACKET, "Compiler error");
-            return { type: "ListLiteral", elements: [] };
+            const endToken = this.parser.consume(TokenType.RBRACKET, "Compiler error");
+            return { 
+                type: "ListLiteral", 
+                start: startToken.s,
+                end: endToken.e,
+                line: startToken.l,
+                elements: [] 
+            };
         }
 
         const firstExpr = this.parse();
@@ -1062,8 +1377,14 @@ export class ExpressionParser {
                 entries.push({ key: key, value: value });
             }
 
-            this.parser.consume(TokenType.RBRACKET, "Expect ']' after map literal.");
-            return { type: "MapLiteral", entries: entries };
+            const endToken = this.parser.consume(TokenType.RBRACKET, "Expect ']' after map literal.");
+            return { 
+                type: "MapLiteral", 
+                start: startToken.s,
+                end: endToken.e,
+                line: startToken.l,
+                entries: entries 
+            };
         }
 
         const elements = [firstExpr];
@@ -1072,12 +1393,17 @@ export class ExpressionParser {
             elements.push(this.parse());
         }
 
-        this.parser.consume(TokenType.RBRACKET, "Expect ']' after list literal.");
-        return { type: "ListLiteral", elements: elements };
+        const endToken = this.parser.consume(TokenType.RBRACKET, "Expect ']' after list literal.");
+        return { 
+            type: "ListLiteral", 
+            start: startToken.s,
+            end: endToken.e,
+            line: startToken.l,
+            elements: elements 
+        };
     }
 
-    finishCall(calleeName) {
-        // Track that this function is used
+    finishCall(calleeName, calleeToken) {
         this.parser.markFunctionUsed(calleeName);
 
         const args = [];
@@ -1087,10 +1413,13 @@ export class ExpressionParser {
             } while (this.parser.match(TokenType.COMMA));
         }
 
-        this.parser.consume(TokenType.RPAREN, "Expect ')' after arguments.");
+        const endToken = this.parser.consume(TokenType.RPAREN, "Expect ')' after arguments.");
 
         return {
             type: "CallExpression",
+            start: calleeToken.s,
+            end: endToken.e,
+            line: calleeToken.l,
             callee: calleeName,
             arguments: args
         };
@@ -1102,10 +1431,13 @@ export class ExpressionParser {
             index = this.parse();
         }
 
-        this.parser.consume(TokenType.RBRACKET, "Expect ']' after index.");
+        const endToken = this.parser.consume(TokenType.RBRACKET, "Expect ']' after index.");
 
         return {
             type: "IndexExpression",
+            start: objectExpr.start,
+            end: endToken.e,
+            line: objectExpr.line,
             object: objectExpr,
             index: index
         };
@@ -1228,7 +1560,7 @@ export class Parser
         }
     }
 
-	inferType(expr) {
+	inferType(expr, resolveNullable = false) {
         if (!expr) return "null";
 
         switch (expr.type) {
@@ -1241,7 +1573,7 @@ export class Parser
             case "SizeOfExpression": return "number";
             case "TypeOfExpression": return "string";
 
-            case "PipelineExpression": return this.inferType(expr.right);
+            case "PipelineExpression": return this.inferType(expr.right, resolveNullable);
 
             case "Literal":
                 if (typeof expr.value === 'number') return "number";
@@ -1287,17 +1619,43 @@ export class Parser
 					let currentType = this.getVariable(root.name);
                     if (!currentType) return "any";
 
-                    let isNullableResult = false;
+                    let isResultNullable = false;
 
                     for (const keyNode of chain) {
                         if (currentType.name === "any") return "any";
 
-                        // Unwrap nullable, but mark result as nullable
+                        // 1. Detect if it's a Nullable
+                        const wasNullable = currentType.name === "nullable";
+                        if (wasNullable) isResultNullable = true;
+
+                        // 2. Unwrap Nullable
                         while (currentType.name === "nullable" && currentType.generic) {
-                             isNullableResult = true;
                              currentType = currentType.generic;
                         }
 
+                        // 3. Static Type Validation for Index Access
+                        let isNumericIndex = false;
+                        if (keyNode.type === "Literal" && typeof keyNode.value === 'number') isNumericIndex = true;
+                        if (keyNode.type === "Variable") {
+                            const kType = this.inferType(keyNode);
+                            if (kType === "number") isNumericIndex = true;
+                        }
+
+                        if (wasNullable) {
+                            if (isNumericIndex) {
+                                if (currentType.name !== "list") {
+                                    this.addError(keyNode, "Cannot access index on nullable that is not a list.");
+                                    return "any";
+                                }
+                            } else {
+                                if (currentType.name !== "map" && currentType.type !== "StructType") {
+                                    this.addError(keyNode, "Cannot access key on nullable that is not a map.");
+                                    return "any";
+                                }
+                            }
+                        }
+
+                        // 4. Peirce the collection to find internal type
                         if (currentType.generic) {
                             currentType = currentType.generic;
                         }
@@ -1321,9 +1679,10 @@ export class Parser
                         }
                     }
                     
-                    // If we traversed through a nullable, the result must be nullable
-                    if (isNullableResult && currentType.name !== "nullable") {
-                        return "nullable"; 
+                    // FIXED: If we encountered a nullable wrapper along the way, the result is nullable.
+                    if (isResultNullable) {
+                        if (resolveNullable) return currentType.name;
+                        return "nullable";
                     }
 
                     return currentType.name;
@@ -1361,11 +1720,11 @@ export class Parser
     }
 
 	parse() {
-        // Ensure preScan has been called if not already manually invoked
-        // Note: In our new architecture, preScan is called manually after loading definitions
-        
 		const program = { 
             type: "Program", 
+            start: this.tokens[0] ? this.tokens[0].s : 0,
+            end: this.tokens[this.tokens.length - 1] ? this.tokens[this.tokens.length - 1].e : 0,
+            line: 1,
             structs: [], 
             functions: [] 
         };
@@ -1392,6 +1751,7 @@ export class Parser
 	}
 
     structDeclaration() {
+        const startToken = this.previous(); // STRUCT keyword
         const nameToken = this.consume(TokenType.IDENTIFIER, "Expect struct name.");
         // Removed assignment '=' check
         this.consume(TokenType.LBRACKET, "Expect '[' to begin struct fields.");
@@ -1421,19 +1781,23 @@ export class Parser
             } while (this.match(TokenType.COMMA));
         }
 
-        this.consume(TokenType.RBRACKET, "Expect ']' after struct fields.");
+        const endToken = this.consume(TokenType.RBRACKET, "Expect ']' after struct fields.");
 
         this.structDefinitions.set(nameToken.v, { fields });
 
         return {
             type: "StructDeclaration",
+            start: startToken.s,
+            end: endToken.e,
+            line: startToken.l,
             name: nameToken.v,
             fields: fields
         };
     }
 
 	functionDeclaration() {
-        const line = this.tokens[this.current - 1].l;
+        const startToken = this.previous(); // FUNCTION keyword
+        const line = startToken.l;
 
 		const nameToken = this.consume(TokenType.IDENTIFIER, "Expect function name.");
 		this.consume(TokenType.LPAREN, "Expect '(' after function name.");
@@ -1472,13 +1836,16 @@ export class Parser
         const previousReturnType = this.currentReturnType;
         this.currentReturnType = returnType.name; 
 
-		const body = this.parseBlock();
+		const body = this.parseBlock(); 
+        
         this.currentReturnType = previousReturnType;
         this.exitScope(); 
 
 		return {
+            type: "FunctionDeclaration",
+            start: startToken.s,
+            end: body.end,
 			line: line,
-			type: "FunctionDeclaration",
 			name: nameToken.v,
 			params: params,
 			returnType: returnType,
@@ -1520,15 +1887,23 @@ export class Parser
 	}
 
 	parseBlock() {
+        const startToken = this.previous(); // Should be the LBRACE
+
         this.enterScope();
 		const statements = [];
 		while (!this.check(TokenType.RBRACE) && !this.isAtEnd()) {
 			const statement = this.parseStatement();
 			if (statement) statements.push(statement);
 		}
-		this.consume(TokenType.RBRACE, "Expect '}' after block.");
+		const endToken = this.consume(TokenType.RBRACE, "Expect '}' after block.");
         this.exitScope();
-		return { type: "Block", statements: statements };
+		return { 
+            type: "Block", 
+            start: startToken.s,
+            end: endToken.e,
+            line: startToken.l,
+            statements: statements 
+        };
 	}
 
 	parseStatement() {
@@ -1556,67 +1931,110 @@ export class Parser
 	}
 
     whileStatement() {
-        const keyword = this.previous();
+        const startToken = this.previous(); // WHILE
         this.consume(TokenType.LPAREN, "Expect '(' after 'while'.");
         const condition = this.parseExpression();
         this.consume(TokenType.RPAREN, "Expect ')' after while condition.");
         this.consume(TokenType.LBRACE, "Expect '{' before loop body.");
         
         this.loopDepth++;
-        const body = this.parseBlock();
+        const body = this.parseBlock(); 
         this.loopDepth--;
 
-        return { type: "WhileStatement", condition: condition, body: body, line: keyword.l };
+        return { 
+            type: "WhileStatement", 
+            start: startToken.s,
+            end: body.end,
+            condition: condition, 
+            body: body, 
+            line: startToken.l 
+        };
     }
 
 	breakStatement() {
-        const keyword = this.previous();
-        if (this.loopDepth === 0) this.addError(keyword, "'break' can only be used inside a loop.");
-        this.consume(TokenType.SEMICOLON, "Expect ';' after 'break'.");
-        return { type: "BreakStatement", line: keyword.l };
+        const startToken = this.previous();
+        if (this.loopDepth === 0) this.addError(startToken, "'break' can only be used inside a loop.");
+        const endToken = this.consume(TokenType.SEMICOLON, "Expect ';' after 'break'.");
+        return { 
+            type: "BreakStatement", 
+            start: startToken.s,
+            end: endToken.e,
+            line: startToken.l 
+        };
     }
 
     skipStatement() {
-        const keyword = this.previous();
-        if (this.loopDepth === 0) this.addError(keyword, "'skip' can only be used inside a loop.");
-        this.consume(TokenType.SEMICOLON, "Expect ';' after 'skip'.");
-        return { type: "SkipStatement", line: keyword.l };
+        const startToken = this.previous();
+        if (this.loopDepth === 0) this.addError(startToken, "'skip' can only be used inside a loop.");
+        const endToken = this.consume(TokenType.SEMICOLON, "Expect ';' after 'skip'.");
+        return { 
+            type: "SkipStatement", 
+            start: startToken.s,
+            end: endToken.e,
+            line: startToken.l 
+        };
     }
 
 	tryStatement() {
-        const keyword = this.previous();
+        const startToken = this.previous(); // TRY
         this.consume(TokenType.LBRACE, "Expect '{' before try block.");
         const tryBlock = this.parseBlock();
         
-        this.consume(TokenType.CATCH, "Expect 'catch' after try block.");
-        this.consume(TokenType.LBRACE, "Expect '{' before catch block.");
-        
-        this.enterScope();
-        this.defineVariable("$thrown_message", { type: "Type", name: "string", initialized: true });
-        const catchBlock = this.parseBlock();
-        this.exitScope();
-
+        let catchBlock = null;
+        let catchIdentifier = null;
         let reviewBlock = null;
+        
+        let hasCatchOrReview = false;
+        let endToken = tryBlock;
+
+        // Check for CATCH
+        if (this.match(TokenType.CATCH)) {
+            hasCatchOrReview = true;
+            this.consume(TokenType.LBRACE, "Expect '{' before catch block.");
+            
+            this.enterScope();
+            this.defineVariable("$thrown_message", { type: "Type", name: "string", initialized: true });
+            catchBlock = this.parseBlock();
+            this.exitScope();
+            
+            catchIdentifier = "$thrown_message";
+            endToken = catchBlock;
+        }
+
+        // Check for REVIEW
         if (this.match(TokenType.REVIEW)) {
+            hasCatchOrReview = true;
             this.consume(TokenType.LBRACE, "Expect '{' before review block.");
+            
             this.enterScope();
             this.defineVariable("$thrown_message", { type: "Type", name: "string", initialized: true });
             reviewBlock = this.parseBlock();
             this.exitScope();
+            
+            if (!catchIdentifier) {
+                catchIdentifier = "$thrown_message";
+            }
+            endToken = reviewBlock;
+        }
+
+        if (!hasCatchOrReview) {
+            throw this.addError(this.peek(), "Expect 'catch' or 'review' after try block.");
         }
 
         return {
             type: "TryStatement",
+            start: startToken.s,
+            end: endToken.end,
             tryBlock: tryBlock,
-            catchIdentifier: "$thrown_message",
-            catchBlock: catchBlock,
+            catchIdentifier: catchIdentifier,
+            catchBlock: catchBlock, 
             reviewBlock: reviewBlock,
-            line: keyword.l
+            line: startToken.l
         };
     }
 
 	throwStatement() {
-        const keyword = this.previous();
+        const startToken = this.previous(); // THROW
         
         let severity = "error";
         if (this.check(TokenType.IDENTIFIER)) {
@@ -1631,68 +2049,102 @@ export class Parser
         }
 
         const value = this.parseExpression();
-        this.consume(TokenType.SEMICOLON, "Expect ';' after throw value.");
-        return { type: "ThrowStatement", severity: severity, argument: value, line: keyword.l };
+        const endToken = this.consume(TokenType.SEMICOLON, "Expect ';' after throw value.");
+        return { 
+            type: "ThrowStatement", 
+            start: startToken.s,
+            end: endToken.e,
+            severity: severity, 
+            argument: value, 
+            line: startToken.l 
+        };
     }
 
     deleteStatement() {
-        const keyword = this.previous();
+        const startToken = this.previous(); // DELETE
         const expr = this.parseExpression();
         
         if (expr.type !== "IndexExpression") {
-            this.addError(keyword, "Invalid delete target. Expected index expression (e.g. collection[key]).");
+            this.addError(startToken, "Invalid delete target. Expected index expression (e.g. collection[key]).");
         } else {
             // Check if we are deleting from a Struct
             const inferredObj = this.inferType(expr.object);
             const structDef = this.structDefinitions.get(inferredObj);
             if (structDef) {
-                this.addError(keyword, "Cannot delete Struct elements");
+                this.addError(startToken, "Cannot delete Struct elements");
             }
         }
 
-        this.consume(TokenType.SEMICOLON, "Expect ';' after delete statement.");
-        return { type: "DeleteStatement", target: expr, line: keyword.l };
+        const endToken = this.consume(TokenType.SEMICOLON, "Expect ';' after delete statement.");
+        return { 
+            type: "DeleteStatement", 
+            start: startToken.s,
+            end: endToken.e,
+            target: expr, 
+            line: startToken.l 
+        };
     }
 
 	parseExpression() { return this.expressionParser.parse(); }
 
 	returnStatement() {
-		const keyword = this.previous();
+		const startToken = this.previous(); // RETURN
 		let value = null;
 		if (!this.check(TokenType.SEMICOLON)) value = this.parseExpression();
-		this.consume(TokenType.SEMICOLON, "Expect ';' after return value.");
+		const endToken = this.consume(TokenType.SEMICOLON, "Expect ';' after return value.");
 
 		if (this.currentReturnType !== null && this.currentReturnType !== "any") {
             if (value === null) {
                 if (this.currentReturnType !== "none") {
-                    this.addError(keyword, "Return type mismatch.");
+                    this.addError(startToken, "Return type mismatch.");
                 }
             } else {
                 const inferredType = this.inferType(value);
                 
                 if (this.currentReturnType === "none") {
-                     this.addError(keyword, "Return type mismatch.");
+                     this.addError(startToken, "Return type mismatch.");
                 }
                 
                 const isNull = inferredType === "null";
-                const isPrimitive = ["number", "bool"].includes(this.currentReturnType);
-                if (isNull && !isPrimitive) { /* Allowed */ } 
-                else if (inferredType !== "any" && inferredType !== this.currentReturnType) {
-                    this.addError(keyword, "Return type mismatch.");
+                
+                // FIXED RETURN TYPE LOGIC: Account for nullable target correctly
+                let match = (inferredType === this.currentReturnType);
+                if (!match) {
+                    if (this.currentReturnType === "nullable" && inferredType !== "null" && inferredType !== "none") {
+                        match = true; // Concrete type (e.g. number) can fulfill a nullable (e.g. nullable<number>)
+                    }
+                    if (inferredType === "any" || this.currentReturnType === "any") {
+                        match = true;
+                    }
+                }
+                
+                const isPrimitiveTarget = ["number", "bool"].includes(this.currentReturnType);
+                if (isNull && !isPrimitiveTarget) { match = true; } // null to nullable/string/list/map is fine
+
+                if (!match) {
+                    this.addError(startToken, "Return type mismatch.");
                 }
             }
         }
-		return { line: keyword.l, type: "ReturnStatement", value: value };
+		return { 
+            type: "ReturnStatement", 
+            start: startToken.s,
+            end: endToken.e,
+            line: startToken.l, 
+            value: value 
+        };
 	}
 
 	ifStatement() {
-		const keyword = this.previous();
+		const startToken = this.previous(); // IF
 		this.consume(TokenType.LPAREN, "Expect '(' after 'if'.");
 		const condition = this.parseExpression();
 		this.consume(TokenType.RPAREN, "Expect ')' after if condition.");
 		this.consume(TokenType.LBRACE, "Expect '{' before if body.");
 		const thenBranch = this.parseBlock();
 		let elseBranch = null;
+        let endNode = thenBranch;
+
 		if (this.match(TokenType.ELSE)) {
 			if (this.match(TokenType.IF)) {
 				elseBranch = this.ifStatement();
@@ -1700,14 +2152,30 @@ export class Parser
 				this.consume(TokenType.LBRACE, "Expect '{' before else body.");
 				elseBranch = this.parseBlock();
 			}
+            endNode = elseBranch;
 		}
-		return { type: "IfStatement", condition: condition, thenBranch: thenBranch, elseBranch: elseBranch, line: keyword.l };
+		return { 
+            type: "IfStatement", 
+            start: startToken.s,
+            end: endNode.end,
+            condition: condition, 
+            thenBranch: thenBranch, 
+            elseBranch: elseBranch, 
+            line: startToken.l 
+        };
 	}
 
 	forStatement() {
-        const keyword = this.previous();
+        const startToken = this.previous(); // FOR
         this.consume(TokenType.LPAREN, "Expect '(' after 'for'.");
+        
         const iteratorToken = this.consume(TokenType.IDENTIFIER, "Expect iterator variable name.");
+        let valueIteratorToken = null;
+
+        if (this.match(TokenType.COMMA)) {
+            valueIteratorToken = this.consume(TokenType.IDENTIFIER, "Expect value iterator variable name.");
+        }
+
         this.consume(TokenType.IN, "Expect 'in' after variable name.");
         const startOrCollection = this.parseExpression();
         let isRange = false;
@@ -1721,48 +2189,82 @@ export class Parser
         this.enterScope();
 
         let iterType = "any";
+        let valueIterType = "any"; 
         
         if (isRange) {
             iterType = "number";
+            if (valueIteratorToken) {
+                 this.addError(valueIteratorToken, "Range loops cannot have two iterators.");
+            }
         } else {
             const collectionType = this.inferType(startOrCollection);
 
             if (["list", "any"].includes(collectionType)) {
                  iterType = "any"; 
+                 if (valueIteratorToken) {
+                     iterType = "number"; 
+                     valueIterType = "any";
+                 }
             }
             else if (["map"].includes(collectionType) || this.structDefinitions.has(collectionType)) {
-                 iterType = "string"; // Keys 
+                 iterType = "string"; 
+                 if (valueIteratorToken) {
+                     valueIterType = "any"; 
+                 }
             }
             else if (collectionType === "string") {
-                 this.addError(keyword, "Strings are not directly iterable. Use 'string as list<string>'.");
+                 this.addError(startToken, "Strings are not directly iterable. Use 'string as list<string>'.");
             } 
             else {
-                 this.addError(keyword, `Type '${collectionType}' is not iterable.`);
+                 this.addError(startToken, `Type '${collectionType}' is not iterable.`);
             }
         }
 
         this.defineVariable(iteratorToken.v, { type: "Type", name: iterType, initialized: true });
+        
+        if (valueIteratorToken) {
+             this.defineVariable(valueIteratorToken.v, { type: "Type", name: valueIterType, initialized: true });
+        }
+
 		this.loopDepth++;
         const body = this.parseBlock();
 		this.loopDepth--;
         this.exitScope();
         if (isRange) {
-            return { type: "ForRangeStatement", iterator: iteratorToken.v, startValue: startOrCollection, endValue: endValue, body: body, line: keyword.l };
+            return { 
+                type: "ForRangeStatement", 
+                start: startToken.s,
+                end: body.end,
+                iterator: iteratorToken.v, 
+                startValue: startOrCollection, 
+                endValue: endValue, 
+                body: body, 
+                line: startToken.l 
+            };
         } else {
-            return { type: "ForInStatement", iterator: iteratorToken.v, collection: startOrCollection, body: body, line: keyword.l };
+            return { 
+                type: "ForInStatement", 
+                start: startToken.s,
+                end: body.end,
+                iterator: iteratorToken.v, 
+                valueIterator: valueIteratorToken ? valueIteratorToken.v : null, 
+                collection: startOrCollection, 
+                body: body, 
+                line: startToken.l 
+            };
         }
     }
 
 	getDefaultValue(typeInfo, visited = new Set()) {
         switch (typeInfo.name) {
-            case "number": return { type: "Literal", value: 0 };
-            case "string": return { type: "Literal", value: "" };
-            case "bool":   return { type: "Literal", value: false };
-            case "list":   return { type: "ListLiteral", elements: [] };
-            case "map":    return { type: "MapLiteral", entries: [] };
-            case "null":   return { type: "Literal", value: null };
-            case "none":   return { type: "Literal", value: null };
-            case "nullable": return { type: "Literal", value: null };
+            case "number": return { type: "Literal", value: 0, start: -1, end: -1, line: -1 };
+            case "string": return { type: "Literal", value: "", start: -1, end: -1, line: -1 };
+            case "bool":   return { type: "Literal", value: false, start: -1, end: -1, line: -1 };
+            case "list":   return { type: "ListLiteral", elements: [], start: -1, end: -1, line: -1 };
+            case "map":    return { type: "MapLiteral", entries: [], start: -1, end: -1, line: -1 };
+            case "null":   return { type: "Literal", value: null, start: -1, end: -1, line: -1 };
+            case "none":   return { type: "Literal", value: null, start: -1, end: -1, line: -1 };
+            case "nullable": return { type: "Literal", value: null, start: -1, end: -1, line: -1 };
             default:       
                 if (typeInfo.type === "StructType") {
                     if (visited.has(typeInfo.name)) {
@@ -1788,44 +2290,49 @@ export class Parser
                         }
 
                         const entries = structDef.fields.map(field => ({
-                            key: { type: "Literal", value: field.name },
+                            key: { type: "Literal", value: field.name, start: -1, end: -1, line: -1 },
                             value: this.getDefaultValue(field.type, newVisited) 
                         }));
-                        return { type: "MapLiteral", entries: entries };
+                        return { type: "MapLiteral", entries: entries, start: -1, end: -1, line: -1 };
                     }
                 }
-                return { type: "Literal", value: null }; 
+                return { type: "Literal", value: null, start: -1, end: -1, line: -1 }; 
         }
     }
 
-    // CENTRALIZED ASSIGNMENT LOGIC
     validateAssignment(targetType, valueExpr, token, customMismatchError = null) {
         const inferredVal = this.inferType(valueExpr);
         let typeMatch = false;
 
-        // 1. Any check (Strict: Any variable can take anything, Any value can go anywhere)
         if (inferredVal === "any" || targetType.name === "any") {
             typeMatch = true;
         }
-        // 2. Exact match
         else if (inferredVal === targetType.name) {
             typeMatch = true;
         }
-        // 3. Struct Initialization via Map Literal
         else if (targetType.type === "StructType" && inferredVal === "map") {
             typeMatch = true;
             if (valueExpr.type === "MapLiteral") {
                 this.validateStructLiteral(valueExpr, targetType.name, token);
             }
         }
-        // 4. Nullable Handling
         else if (targetType.name === "nullable" && targetType.generic) {
-            if (inferredVal === targetType.generic.name || inferredVal === "null") {
+            // FIXED: Concrete type name (e.g. "number") can match the nullable requirement
+            if (inferredVal === targetType.generic.name || inferredVal === "null" || inferredVal === "nullable") {
                 typeMatch = true;
                 if (inferredVal === targetType.generic.name && valueExpr.type === "MapLiteral") {
                      this.validateStructLiteral(valueExpr, targetType.generic.name, token);
                 }
             }
+        }
+        // FIXED: Allow implicit unwrapping of nullable result from index access if inner type matches
+        // This supports the test case where we assign a nullable[index] (which is technically nullable) 
+        // to a strict variable, relying on runtime checks.
+        else if (inferredVal === "nullable" && targetType.name !== "nullable") {
+             const resolved = this.inferType(valueExpr, true);
+             if (resolved === targetType.name) {
+                 typeMatch = true;
+             }
         }
 
         if (!typeMatch) {
@@ -1836,10 +2343,9 @@ export class Parser
             } else if (targetType.name === "nullable") {
                 this.addError(token, "Nullable variable assignment type mismatch.");
             } else {
-                // Use custom error if provided, otherwise default
                 this.addError(token, customMismatchError || "Variable assignment type mismatch.");
             }
-            throw new Error("Assignment validation failed"); // Short circuit
+            throw new Error("Assignment validation failed"); 
         }
     }
 
@@ -1850,16 +2356,14 @@ export class Parser
         def.fields.forEach(field => {
             const entry = literal.entries.find(e => e.key.value === field.name);
             
-            // MISSING FIELD LOGIC
             if (!entry) {
                 if (field.name.startsWith('$')) {
                     this.addError(token, `Missing required struct field: '${field.name}'.`);
                 } else {
-                    // Auto-inject default value for non-required fields
                     try {
                         const defaultVal = this.getDefaultValue(field.type, new Set([structName])); 
                         literal.entries.push({
-                            key: { type: "Literal", value: field.name },
+                            key: { type: "Literal", value: field.name, start: -1, end: -1, line: -1 },
                             value: defaultVal
                         });
                     } catch (e) {
@@ -1901,6 +2405,7 @@ export class Parser
     }
 
 	variableDeclaration() {
+        const startToken = this.peek(); 
         const typeInfo = this.parseType();
         const nameToken = this.consume(TokenType.IDENTIFIER, "Expect variable name.");
 
@@ -1920,7 +2425,6 @@ export class Parser
             try {
                 this.validateAssignment(typeInfo, initializer, nameToken);
             } catch (e) {
-                // Validation failed, errors already added
             }
         } else {
             try {
@@ -1930,7 +2434,7 @@ export class Parser
             }
         }
 
-        this.consume(TokenType.SEMICOLON, "Expect ';' after variable declaration.");
+        const endToken = this.consume(TokenType.SEMICOLON, "Expect ';' after variable declaration.");
 
 		try {
             this.defineVariable(nameToken.v, { ...typeInfo, initialized: isInitialized }, true); 
@@ -1938,13 +2442,27 @@ export class Parser
             this.addError(nameToken, e.message);
         }
 
-		return { line: nameToken.l, type: "VariableDeclaration", varType: typeInfo, name: nameToken.v, initializer: initializer };
+		return { 
+            type: "VariableDeclaration", 
+            start: startToken.s,
+            end: endToken.e,
+            line: nameToken.l, 
+            varType: typeInfo, 
+            name: nameToken.v, 
+            initializer: initializer 
+        };
     }
 
 	expressionStatement() {
 		const expr = this.parseExpression();
-		this.consume(TokenType.SEMICOLON, "Expect ';' after expression.");
-		return { type: "ExpressionStatement", expression: expr };
+		const endToken = this.consume(TokenType.SEMICOLON, "Expect ';' after expression.");
+		return { 
+            type: "ExpressionStatement", 
+            start: expr.start,
+            end: endToken.e,
+            line: expr.line,
+            expression: expr 
+        };
 	}
 
 	match(expectedType)
@@ -2052,19 +2570,16 @@ export class Parser
 }
 
 // --- Source: runtime.mjs ---
-// Signals for control flow (internal use only)
-class BreakSignal {}
-class SkipSignal {}
-class ReturnSignal {
-    constructor(value) {
-        this.value = value;
-    }
-}
-
-// Exception types for Shift logic
+// Exceptions for User Logic (still useful for error reporting)
 class ShiftError extends Error { constructor(message) { super(message); } }
 class ShiftAlert extends Error { constructor(message) { super(message); } }
 class ShiftCritical extends Error { constructor(message) { super(message); } }
+
+// Control Flow Signals (Internal Only - Not thrown)
+const SIGNAL_NONE = 0;
+const SIGNAL_BREAK = 1;
+const SIGNAL_SKIP = 2;
+const SIGNAL_RETURN = 3;
 
 export class Environment {
     constructor(parent = null) {
@@ -2077,12 +2592,8 @@ export class Environment {
     }
 
     get(name) {
-        if (this.values.has(name)) {
-            return this.values.get(name);
-        }
-        if (this.parent) {
-            return this.parent.get(name);
-        }
+        if (this.values.has(name)) return this.values.get(name);
+        if (this.parent) return this.parent.get(name);
         throw new Error(`Runtime Error: Undefined variable '${name}'.`);
     }
 
@@ -2099,20 +2610,40 @@ export class Environment {
     }
 }
 
+class StackFrame {
+    constructor(type, env, statements = []) {
+        this.type = type; // "Function", "Block", "Loop"
+        this.env = env;
+        this.statements = statements;
+        this.pc = 0; // Program Counter
+        this.waitingForExpr = false; 
+        this.exprResult = null; 
+    }
+}
+
 export class Runtime {
-    constructor(ast) {
+    constructor(ast, debugMode = false) {
         this.ast = ast;
+        this.debugMode = debugMode;
         this.globalEnv = new Environment();
         this.functions = new Map();
         this.intrinsics = new Map();
         
         this.loadFunctions();
         
-        // NOTE: registerIntrinsics() removed. 
-        // Use external StandardLibrary.loadIntrinsics(runtime) instead.
-
         // Global magic variables
         this.globalEnv.define("$line_num", 0);
+        this.globalEnv.define("$pi", Math.PI);
+        this.globalEnv.define("$e", Math.E);
+
+        // The Execution Stack
+        this.stack = [];
+    }
+
+    logDebug(msg) {
+        if (this.debugMode) {
+            console.log(`[DEBUG] ${msg}`);
+        }
     }
 
     addIntrinsic(name, func) {
@@ -2125,12 +2656,22 @@ export class Runtime {
         }
     }
 
-    // Helper for Shift-specific string conversion (Bool -> "1"/"0")
     stringify(val) {
-        if (typeof val === 'boolean') {
-            return val ? "1" : "0";
-        }
+        if (typeof val === 'boolean') return val ? "1" : "0";
         return String(val);
+    }
+
+    deepCopy(value) {
+        if (value === null) return null;
+        if (typeof value !== 'object') return value;
+        if (Array.isArray(value)) return value.map(item => this.deepCopy(item));
+        if (value instanceof Map) {
+            const newMap = new Map();
+            if (value.__shift_type) newMap.__shift_type = value.__shift_type;
+            for (const [k, v] of value) newMap.set(k, this.deepCopy(v));
+            return newMap;
+        }
+        return value;
     }
 
     getDefaultValue(typeInfo) {
@@ -2148,403 +2689,453 @@ export class Runtime {
         }
     }
 
-    deepCopy(value) {
-        if (value === null) return null;
-        if (typeof value !== 'object') return value;
-        
-        if (Array.isArray(value)) {
-            return value.map(item => this.deepCopy(item));
-        }
-        
-        if (value instanceof Map) {
-            const newMap = new Map();
-            for (const [k, v] of value) {
-                newMap.set(k, this.deepCopy(v));
-            }
-            return newMap;
-        }
-        
-        return value;
-    }
-
-    runFunction(name, args = []) {
-        try {
-            return this.callFunction(name, args);
-        } catch (e) {
-            throw e; 
-        }
-    }
-
-    callFunction(name, args) {
-        // 1. Check Intrinsics first
-        if (this.intrinsics.has(name)) {
-            return this.intrinsics.get(name)(args, this);
-        }
-
-        // 2. Check User Functions
-        const func = this.functions.get(name);
-        
-        if (!func) {
-            throw new Error(`Runtime Error: Function '${name}' not found.`);
-        }
-
-        if (args.length !== func.params.length) {
-             throw new Error(`Runtime Error: Function '${name}' expects ${func.params.length} arguments but got ${args.length}.`);
-        }
-
-        const fnEnv = new Environment(this.globalEnv);
-
-        for (let i = 0; i < func.params.length; i++) {
-            const paramName = func.params[i].name;
-            const paramValue = this.deepCopy(args[i]);
-            fnEnv.define(paramName, paramValue);
-        }
-
-        let result = null;
-        try {
-            this.executeBlock(func.body.statements, fnEnv);
-        } catch (e) {
-            if (e instanceof ReturnSignal) {
-                result = e.value;
-            } else {
-                throw e; 
-            }
-        }
-
-        // 3. Strict Return Type Check
-        if (func.returnType) {
-            this.checkType(result, func.returnType);
-        }
-
-        return result; 
-    }
-
     checkType(value, typeInfo) {
         if (typeInfo.name === 'any') return;
-        
         if (value === null) {
-            if (typeInfo.name === 'nullable' || typeInfo.name === 'null' || typeInfo.name === 'none') return;
+            if (["nullable", "null", "none"].includes(typeInfo.name)) return;
             throw new Error(`Runtime Error: Return type mismatch.`);
         }
-
         if (typeInfo.name === 'nullable') {
-            if (typeInfo.generic) {
-                this.checkType(value, typeInfo.generic);
-            }
+            if (typeInfo.generic) this.checkType(value, typeInfo.generic);
             return;
         }
-
-        // Structs are Maps at runtime
         if (typeInfo.type === 'StructType') {
              if (!(value instanceof Map)) throw new Error(`Runtime Error: Return type mismatch.`);
+             value.__shift_type = typeInfo.name;
              return;
         }
+        const actualType = typeof value;
+        
+        // Strict Type Mapping
+        let expectedJS = typeInfo.name;
+        if (expectedJS === "bool") expectedJS = "boolean";
 
-        switch (typeInfo.name) {
-            case 'string':
-                if (typeof value !== 'string') throw new Error(`Runtime Error: Return type mismatch.`);
-                break;
-            case 'number':
-                if (typeof value !== 'number') throw new Error(`Runtime Error: Return type mismatch.`);
-                break;
-            case 'bool':
-                if (typeof value !== 'boolean') throw new Error(`Runtime Error: Return type mismatch.`);
-                break;
-            case 'list':
-                if (!Array.isArray(value)) throw new Error(`Runtime Error: Return type mismatch.`);
-                break;
-            case 'map':
-                if (!(value instanceof Map)) throw new Error(`Runtime Error: Return type mismatch.`);
-                break;
-            case 'none':
-                if (value !== null) throw new Error(`Runtime Error: Return type mismatch.`);
-                break;
+        const valid = (typeInfo.name === "list" && Array.isArray(value)) ||
+                      (typeInfo.name === "map" && value instanceof Map) ||
+                      (expectedJS === actualType);
+        
+        if (!valid) throw new Error(`Runtime Error: Return type mismatch.`);
+    }
+
+    // --- The Stack Machine Core ---
+
+    runFunction(name, args = []) {
+        const previousStack = this.stack;
+        this.stack = []; 
+        
+        try {
+            let func = null;
+
+            if (this.intrinsics.has(name)) {
+                this.logDebug(`Running Intrinsic: ${name}`);
+                return this.intrinsics.get(name)(args, this);
+            } else {
+                func = this.functions.get(name);
+            }
+
+            if (!func) throw new Error(`Runtime Error: Function '${name}' not found.`);
+            if (args.length !== func.params.length) {
+                 throw new Error(`Runtime Error: Function '${name}' expects ${func.params.length} arguments but got ${args.length}.`);
+            }
+
+            const fnEnv = new Environment(this.globalEnv);
+            for (let i = 0; i < func.params.length; i++) {
+                const paramName = func.params[i].name;
+                const paramValue = this.deepCopy(args[i]);
+                fnEnv.define(paramName, paramValue);
+            }
+
+            const initialFrame = new StackFrame("Function", fnEnv, func.body.statements);
+            initialFrame.meta = { returnType: func.returnType, functionName: name };
+            
+            this.stack.push(initialFrame);
+            this.logDebug(`Pushed Function Frame: ${name} (Args: ${args.length})`);
+
+            let finalResult = null;
+            let currentSignal = SIGNAL_NONE;
+            let signalValue = null;
+
+            while (this.stack.length > 0) {
+                const frame = this.stack[this.stack.length - 1];
+
+                if (currentSignal === SIGNAL_RETURN) {
+                    if (frame.type === "Function") {
+                        finalResult = signalValue;
+                        this.stack.pop();
+                        this.logDebug(`Popped Function Frame: ${frame.meta?.functionName} (Return: ${this.stringify(finalResult)})`);
+                        
+                        if (frame.meta && frame.meta.returnType) {
+                            this.checkType(finalResult, frame.meta.returnType);
+                        }
+                        
+                        if (this.stack.length === 0) return finalResult;
+                        
+                        const callerFrame = this.stack[this.stack.length - 1];
+                        callerFrame.exprResult = finalResult;
+                        callerFrame.waitingForExpr = false;
+                        
+                        currentSignal = SIGNAL_NONE;
+                        signalValue = null;
+                        continue;
+                    } 
+                    else {
+                        this.stack.pop();
+                        this.logDebug(`Popped Frame: ${frame.type} (Propagating Return)`);
+                        continue;
+                    }
+                }
+
+                if (currentSignal === SIGNAL_BREAK || currentSignal === SIGNAL_SKIP) {
+                    if (frame.type === "Loop") {
+                        if (currentSignal === SIGNAL_BREAK) {
+                            this.stack.pop(); 
+                            this.logDebug(`Loop Terminated (Break)`);
+                            currentSignal = SIGNAL_NONE; 
+                        } else {
+                            this.logDebug(`Loop Skipping`);
+                            currentSignal = SIGNAL_NONE; 
+                        }
+                        continue;
+                    } else if (frame.type === "Function") {
+                        throw new Error("Runtime Error: 'break' or 'skip' used outside of loop.");
+                    } else {
+                        this.stack.pop();
+                        continue;
+                    }
+                }
+
+                if (frame.pc >= frame.statements.length) {
+                    this.stack.pop();
+                    this.logDebug(`Popped Frame: ${frame.type} (Finished)`);
+                    
+                    if (frame.type === "Function") {
+                        const retType = frame.meta.returnType;
+                        if (retType.name !== 'none' && retType.name !== 'null' && 
+                            retType.name !== 'nullable' && retType.name !== 'any') {
+                            throw new Error(`Runtime Error: Expected a return but none was supplied before function end.`);
+                        }
+                        if (this.stack.length > 0) {
+                            const caller = this.stack[this.stack.length - 1];
+                            caller.exprResult = null;
+                            caller.waitingForExpr = false;
+                        } else {
+                            return null;
+                        }
+                    }
+                    continue;
+                }
+
+                const stmt = frame.statements[frame.pc];
+                
+                if (frame.type !== "Loop") {
+                    frame.pc++;
+                }
+
+                try {
+                    this.executeStatement(stmt, frame, (sig, val) => {
+                        currentSignal = sig;
+                        signalValue = val;
+                        if (sig !== SIGNAL_NONE) this.logDebug(`Signal Raised: ${sig}`);
+                    });
+                } catch (e) {
+                    throw e; 
+                }
+
+                if (currentSignal !== SIGNAL_NONE) continue;
+            }
+            
+            return finalResult;
+
+        } finally {
+            this.stack = previousStack;
         }
     }
 
-    executeBlock(statements, env) {
-        for (const stmt of statements) {
-            this.executeStatement(stmt, env);
-        }
-    }
-
-    executeStatement(stmt, env) {
+    executeStatement(stmt, frame, signalCallback) {
         if (stmt.line) {
              try { this.globalEnv.assign("$line_num", stmt.line); } catch(e) {} 
         }
+        
+        this.logDebug(`Exec Stmt: ${stmt.type} (Line: ${stmt.line})`);
 
         switch (stmt.type) {
-            case "Block":
-                this.executeBlock(stmt.statements, new Environment(env));
+            case "VariableDeclaration": {
+                if (stmt.name.startsWith('$')) throw new Error(`Runtime Error: Cannot declare magic variable '${stmt.name}'.`);
+                let val = stmt.initializer ? this.evaluate(stmt.initializer, frame.env) : this.getDefaultValue(stmt.varType);
+                if (stmt.varType.type === "StructType" && val instanceof Map) val.__shift_type = stmt.varType.name;
+                frame.env.define(stmt.name, val);
                 break;
-
-            case "VariableDeclaration":
-                this.handleVariableDeclaration(stmt, env);
-                break;
-            
+            }
             case "ExpressionStatement":
-                this.evaluate(stmt.expression, env);
-                break;
-
-            case "IfStatement":
-                this.executeIfStatement(stmt, env);
-                break;
-
-            case "WhileStatement":
-                this.executeWhileStatement(stmt, env);
-                break;
-
-            case "ForRangeStatement":
-                this.executeForRangeStatement(stmt, env);
+                this.evaluate(stmt.expression, frame.env);
                 break;
             
-            case "ForInStatement":
-                this.executeForInStatement(stmt, env);
-                break;
-
-            case "BreakStatement":
-                throw new BreakSignal();
-
-            case "SkipStatement":
-                throw new SkipSignal();
-
             case "ReturnStatement": {
                 let retVal = null;
-                if (stmt.value) {
-                    retVal = this.evaluate(stmt.value, env);
+                if (stmt.value) retVal = this.evaluate(stmt.value, frame.env);
+                signalCallback(SIGNAL_RETURN, retVal);
+                break;
+            }
+            
+            case "BreakStatement":
+                signalCallback(SIGNAL_BREAK, null);
+                break;
+                
+            case "SkipStatement":
+                signalCallback(SIGNAL_SKIP, null);
+                break;
+
+            case "IfStatement": {
+                if (this.isTruthy(this.evaluate(stmt.condition, frame.env))) {
+                    this.pushBlock(stmt.thenBranch, frame.env);
+                } else if (stmt.elseBranch) {
+                    if (stmt.elseBranch.type === "IfStatement") {
+                        this.stack.push(new StackFrame("Block", new Environment(frame.env), [stmt.elseBranch]));
+                    } else {
+                        this.pushBlock(stmt.elseBranch, frame.env);
+                    }
                 }
-                throw new ReturnSignal(retVal);
+                break;
+            }
+
+            case "WhileStatement": {
+                this.startLoop(stmt, frame.env, "while");
+                break;
+            }
+
+            case "ForRangeStatement": {
+                this.startLoop(stmt, frame.env, "range");
+                break;
+            }
+
+            case "ForInStatement": {
+                this.startLoop(stmt, frame.env, "in");
+                break;
+            }
+
+            case "Block": {
+                this.pushBlock(stmt, frame.env);
+                break;
+            }
+
+            case "LoopStep": {
+                this.executeLoopStep(frame);
+                break;
             }
 
             case "ThrowStatement": {
-                const message = this.evaluate(stmt.argument, env);
-                if (stmt.severity === "alert") {
-                    throw new ShiftAlert(message);
-                } else if (stmt.severity === "critical") {
-                    throw new ShiftCritical(message);
-                } else {
-                    throw new ShiftError(message);
-                }
+                const message = this.evaluate(stmt.argument, frame.env);
+                if (stmt.severity === "alert") throw new ShiftAlert(message);
+                if (stmt.severity === "critical") throw new ShiftCritical(message);
+                throw new ShiftError(message);
             }
 
-            case "TryStatement":
-                this.executeTryStatement(stmt, env);
+            case "TryStatement": {
+                try {
+                    this.runProtectedBlock(stmt.tryBlock, frame.env, signalCallback);
+                } catch (e) {
+                    if (e instanceof ShiftCritical) {
+                        throw e; 
+                    } 
+                    else if (e instanceof ShiftAlert) {
+                        if (stmt.reviewBlock) {
+                            const reviewEnv = new Environment(frame.env);
+                            reviewEnv.define(stmt.catchIdentifier, e.message);
+                            this.runProtectedBlock(stmt.reviewBlock, reviewEnv, signalCallback);
+                        } else {
+                            throw e; 
+                        }
+                    } 
+                    else if (e instanceof ShiftError || e instanceof Error) {
+                        if (stmt.catchBlock) {
+                            const catchEnv = new Environment(frame.env);
+                            catchEnv.define(stmt.catchIdentifier, e.message);
+                            this.runProtectedBlock(stmt.catchBlock, catchEnv, signalCallback);
+                        } else {
+                            throw e; 
+                        }
+                    }
+                }
                 break;
+            }
             
             case "DeleteStatement":
-                this.executeDeleteStatement(stmt, env);
+                this.executeDelete(stmt, frame.env);
                 break;
-
-            default:
-                // console.warn(`Runtime: Unsupported statement type '${stmt.type}' skipped.`);
         }
     }
 
-    executeTryStatement(stmt, env) {
+    pushBlock(blockNode, parentEnv) {
+        const blockEnv = new Environment(parentEnv);
+        this.stack.push(new StackFrame("Block", blockEnv, blockNode.statements));
+    }
+
+    runProtectedBlock(blockNode, env, parentSignalCallback) {
+        const oldStyleExec = (statements, env) => {
+            for (const stmt of statements) {
+                this.executeStatement(stmt, {env, type: "Protected"}, (sig, val) => {
+                    throw { type: "Signal", sig, val };
+                });
+            }
+        };
         try {
-            this.executeBlock(stmt.tryBlock.statements, new Environment(env));
+            oldStyleExec(blockNode.statements, env);
         } catch (e) {
-            if (e instanceof ShiftCritical) {
-                throw e; // Critical errors bubble up immediately
-            }
-            else if (e instanceof ShiftAlert) {
-                if (stmt.reviewBlock) {
-                    const reviewEnv = new Environment(env);
-                    reviewEnv.define(stmt.catchIdentifier, e.message);
-                    this.executeBlock(stmt.reviewBlock.statements, reviewEnv);
+            if (e.type === "Signal") {
+                if (parentSignalCallback) {
+                    parentSignalCallback(e.sig, e.val);
                 } else {
-                    throw e;
+                    throw new Error("Control flow signal unhandled in protected block.");
                 }
+                return; 
             }
-            else if (e instanceof ShiftError || e instanceof Error) {
-                const catchEnv = new Environment(env);
-                catchEnv.define(stmt.catchIdentifier, e.message);
-                this.executeBlock(stmt.catchBlock.statements, catchEnv);
-            } else {
-                throw e; 
-            }
+            throw e;
         }
     }
 
-    executeDeleteStatement(stmt, env) {
-        const target = stmt.target; 
-        const container = this.evaluate(target.object, env);
-        const index = this.evaluate(target.index, env);
-
-        if (container instanceof Map) {
-            if (typeof index !== 'string') throw new Error("Runtime Error: Map keys must be strings.");
-            if (!container.has(index)) throw new Error("Runtime Error: Map key does not exist.");
-            container.delete(index);
-        } else if (Array.isArray(container)) {
-            if (typeof index !== 'number') throw new Error("Runtime Error: List index must be integer value.");
-            if (index < 0) throw new Error("Runtime Error: List index must not be a negative number.");
-            if (index >= container.length) throw new Error("Runtime Error: List index is out of bounds.");
-            container.splice(index, 1);
-        } else {
-             throw new Error("Runtime Error: Cannot delete from this type.");
-        }
-    }
-
-    executeIfStatement(stmt, env) {
-        if (this.isTruthy(this.evaluate(stmt.condition, env))) {
-            this.executeStatement(stmt.thenBranch, env);
-        } else if (stmt.elseBranch) {
-            this.executeStatement(stmt.elseBranch, env);
-        }
-    }
-
-    executeWhileStatement(stmt, env) {
-        while (this.isTruthy(this.evaluate(stmt.condition, env))) {
-            try {
-                this.executeStatement(stmt.body, env);
-            } catch (e) {
-                if (e instanceof BreakSignal) break;
-                if (e instanceof SkipSignal) continue;
-                throw e; 
-            }
-        }
-    }
-
-    executeForRangeStatement(stmt, env) {
-        const start = this.evaluate(stmt.startValue, env);
-        const end = this.evaluate(stmt.endValue, env);
-
-        if (typeof start !== 'number' || typeof end !== 'number') {
-            throw new Error("Runtime Error: Range values must be numbers.");
-        }
-
-        const step = start <= end ? 1 : -1;
-        let current = start;
-        const condition = () => (step > 0 ? current <= end : current >= end);
-
-        while (condition()) {
-            const loopEnv = new Environment(env);
-            loopEnv.define(stmt.iterator, current);
-
-            try {
-                this.executeStatement(stmt.body, loopEnv);
-            } catch (e) {
-                if (e instanceof BreakSignal) break;
-                if (e instanceof SkipSignal) {
-                    current += step;
-                    continue;
-                }
-                throw e; 
-            }
-
-            current += step;
-        }
-    }
-
-    executeForInStatement(stmt, env) {
-        const collection = this.evaluate(stmt.collection, env);
+    startLoop(stmt, env, type) {
+        const loopEnv = new Environment(env);
+        const loopFrame = new StackFrame("Loop", loopEnv, []);
         
-        let iterable = [];
+        if (type === "range") {
+            const start = this.evaluate(stmt.startValue, env);
+            const end = this.evaluate(stmt.endValue, env);
+            if (typeof start !== 'number' || typeof end !== 'number') throw new Error("Range must be numbers");
+            
+            loopFrame.iterState = {
+                type: "range",
+                current: start,
+                end: end,
+                step: start <= end ? 1 : -1,
+                varName: stmt.iterator,
+                body: stmt.body
+            };
+        } 
+        else if (type === "while") {
+            loopFrame.iterState = {
+                type: "while",
+                condition: stmt.condition,
+                body: stmt.body
+            };
+        }
+        else if (type === "in") {
+            const col = this.evaluate(stmt.collection, env);
+            let items = [];
+            let isMap = false;
+            
+            if (Array.isArray(col)) items = col;
+            else if (col instanceof Map) { items = Array.from(col.entries()); isMap = true; }
+            else throw new Error("Not iterable");
 
-        if (Array.isArray(collection)) {
-            iterable = collection;
-        } else if (collection instanceof Map) {
-            iterable = Array.from(collection.keys());
-        } else {
-            throw new Error(`Runtime Error: Cannot iterate over type '${typeof collection}'.`);
+            loopFrame.iterState = {
+                type: "in",
+                items: items,
+                index: 0,
+                varName: stmt.iterator,
+                valVarName: stmt.valueIterator,
+                isMap: isMap,
+                body: stmt.body
+            };
         }
 
-        for (const item of iterable) {
-            const loopEnv = new Environment(env);
-            loopEnv.define(stmt.iterator, item);
-
-            try {
-                this.executeStatement(stmt.body, loopEnv);
-            } catch (e) {
-                if (e instanceof BreakSignal) break;
-                if (e instanceof SkipSignal) continue;
-                throw e; 
-            }
-        }
+        loopFrame.statements = [{ type: "LoopStep" }]; 
+        this.stack.push(loopFrame);
+        this.logDebug(`Started Loop (${type})`);
     }
 
-    handleVariableDeclaration(stmt, env) {
-        if (stmt.name.startsWith('$')) {
-             throw new Error(`Runtime Error: Cannot declare magic variable '${stmt.name}'.`);
+    executeLoopStep(frame) {
+        const state = frame.iterState;
+        let shouldRun = false;
+        let loopEnv = new Environment(frame.env);
+
+        if (state.type === "range") {
+            const cond = (state.step > 0) ? state.current <= state.end : state.current >= state.end;
+            if (cond) {
+                loopEnv.define(state.varName, state.current);
+                state.current += state.step;
+                shouldRun = true;
+            }
+        }
+        else if (state.type === "while") {
+            if (this.isTruthy(this.evaluate(state.condition, frame.env))) {
+                shouldRun = true;
+            }
+        }
+        else if (state.type === "in") {
+            if (state.index < state.items.length) {
+                const item = state.items[state.index++];
+                if (state.isMap) {
+                    if (state.valVarName) {
+                        loopEnv.define(state.varName, item[0]);
+                        loopEnv.define(state.valVarName, item[1]);
+                    } else {
+                        loopEnv.define(state.varName, item[0]);
+                    }
+                } else {
+                    if (state.valVarName) {
+                        loopEnv.define(state.varName, state.index - 1); 
+                        loopEnv.define(state.valVarName, item); 
+                    } else {
+                        loopEnv.define(state.varName, item);
+                    }
+                }
+                shouldRun = true;
+            }
         }
 
-        let value;
-        if (stmt.initializer) {
-            value = this.evaluate(stmt.initializer, env);
+        if (shouldRun) {
+            frame.pc = 0; 
+            this.logDebug(`Loop Step: Running Body`);
+            this.pushBlock(state.body, loopEnv);
         } else {
-            value = this.getDefaultValue(stmt.varType);
+            this.stack.pop();
+            this.logDebug(`Loop Finished`);
         }
-        env.define(stmt.name, value);
     }
 
     evaluate(expr, env) {
+        this.logDebug(`Eval: ${expr.type}`);
+        
         switch (expr.type) {
-            case "Literal":
-                return expr.value;
-            
-            case "MagicVariable":
-                if (expr.name === "$pipe_value") {
-                    return env.get("$pipe_value");
-                }
+            case "Literal": return expr.value;
+            case "MagicVariable": 
                 if (expr.name === "$line_num") {
-                    // Fix: Use the line number from the expression if available
-                    if (expr.line) {
-                        return expr.line;
-                    }
-                    // Fallback to statement-level tracking (e.g. for implicit usage)
-                    return this.globalEnv.get("$line_num");
+                    return expr.line || this.globalEnv.get("$line_num");
                 }
+                if (expr.name === "$pipe_value") return env.get("$pipe_value");
                 return env.get(expr.name);
-
-            case "ListLiteral":
-                return expr.elements.map(e => this.evaluate(e, env));
-
+            case "Variable": return env.get(expr.name);
+            case "ListLiteral": return expr.elements.map(e => this.evaluate(e, env));
             case "MapLiteral": {
                 const map = new Map();
-                for (const entry of expr.entries) {
-                    const key = this.evaluate(entry.key, env);
-                    const val = this.evaluate(entry.value, env);
-                    map.set(key, val);
-                }
+                for (const entry of expr.entries) map.set(this.evaluate(entry.key, env), this.evaluate(entry.value, env));
                 return map;
             }
-
-            case "Grouping":
-                return this.evaluate(expr.expression, env);
-
-            case "Variable":
-                return env.get(expr.name);
-
             case "Assignment": {
-                if (expr.name.startsWith('$')) {
-                    throw new Error(`Runtime Error: Cannot assign to magic variable '${expr.name}'.`);
-                }
+                if (expr.name.startsWith('$')) throw new Error(`Runtime Error: Cannot assign to magic variable '${expr.name}'.`);
                 const value = this.evaluate(expr.value, env);
                 env.assign(expr.name, value);
                 return value;
             }
-
             case "IndexAssignment": {
                 const container = this.evaluate(expr.object, env);
                 const value = this.evaluate(expr.value, env);
-                
-                if (container === null) throw new Error("Runtime Error: Cannot assign to null.");
-
+                if (container === null) {
+                    // Specific null check for index assignment
+                    const index = this.evaluate(expr.index, env);
+                    if (typeof index === 'number') throw new Error("Runtime Error: Cannot access index on null value.");
+                    if (typeof index === 'string') throw new Error("Runtime Error: Cannot access key on null value.");
+                    throw new Error("Runtime Error: Cannot assign to null.");
+                }
                 if (Array.isArray(container)) {
-                    if (expr.index === null) {
-                        container.push(value);
-                        return value;
-                    }
+                    if (expr.index === null) { container.push(value); return value; }
                     const index = this.evaluate(expr.index, env);
                     if (typeof index !== 'number' || !Number.isInteger(index)) throw new Error("Runtime Error: List index must be integer value.");
-                    
                     if (index < 0) throw new Error("Runtime Error: List index must not be a negative number.");
                     if (index >= container.length) throw new Error("Runtime Error: List index is out of bounds.");
-
                     container[index] = value;
                     return value;
                 }
-                
                 if (container instanceof Map) {
                     if (expr.index === null) throw new Error("Runtime Error: Map requires a key.");
                     const key = this.evaluate(expr.index, env);
@@ -2555,188 +3146,227 @@ export class Runtime {
                 throw new Error("Runtime Error: Invalid assignment target.");
             }
 
-            case "IndexExpression": {
-                const container = this.evaluate(expr.object, env);
-                const index = this.evaluate(expr.index, env);
-
-                if (container === null) throw new Error("Runtime Error: Cannot read properties of null.");
-
-                if (Array.isArray(container)) {
-                    if (typeof index !== 'number' || !Number.isInteger(index)) throw new Error("Runtime Error: List index must be integer value.");
-                    if (index < 0) throw new Error("Runtime Error: List index must not be a negative number.");
-                    if (index >= container.length) throw new Error("Runtime Error: List index is out of bounds.");
-                    return container[index];
-                }
-
-                if (container instanceof Map) {
-                    if (typeof index !== 'string') throw new Error("Runtime Error: Map keys must be strings.");
-                    if (!container.has(index)) throw new Error("Runtime Error: Map key does not exist.");
-                    return container.get(index);
-                }
-                throw new Error("Runtime Error: Invalid index target.");
-            }
-
-            case "CallExpression": {
-                const args = expr.arguments.map(arg => this.evaluate(arg, env));
-                return this.callFunction(expr.callee, args);
-            }
-            
+            case "BinaryExpression": return this.evaluateBinary(expr, env);
+            case "UnaryExpression": return this.evaluateUnary(expr, env);
+            case "Grouping": return this.evaluate(expr.expression, env);
             case "PipelineExpression": {
-                const leftVal = this.evaluate(expr.left, env);
-                env.define("$pipe_value", leftVal); 
+                const left = this.evaluate(expr.left, env);
+                env.define("$pipe_value", left);
                 return this.evaluate(expr.right, env);
             }
-
-            case "BinaryExpression":
-                return this.evaluateBinary(expr, env);
-
-            case "UnaryExpression":
-                return this.evaluateUnary(expr, env);
-
-            case "CastExpression":
-                return this.evaluateCast(expr, env);
-
-            case "InspectExpression":
-                return this.evaluateInspect(expr, env);
-
-            case "PackExpression":
-                return String.fromCharCode(...this.evaluate(expr.argument, env));
-
-            case "UnpackExpression":
-                return String(this.evaluate(expr.argument, env)).split('').map(c => c.charCodeAt(0));
-
-            case "SizeOfExpression":
-                return this.evaluateSizeOf(expr, env);
-
-            case "TypeOfExpression":
-                return this.evaluateTypeOf(expr, env);
-            
-            default:
-                throw new Error(`Runtime Error: Unsupported expression type '${expr.type}' in Task 6.`);
+            case "IndexExpression": return this.evaluateIndex(expr, env);
+            case "CallExpression": {
+                const args = expr.arguments.map(a => this.evaluate(a, env));
+                return this.runFunction(expr.callee, args);
+            }
+            case "CastExpression": return this.evaluateCast(expr, env);
+            default: return this.evaluateRest(expr, env);
         }
+    }
+
+    evaluateRest(expr, env) {
+        switch(expr.type) {
+            case "InspectExpression": {
+                const val = this.evaluate(expr.argument, env);
+                const map = new Map();
+                let type = "any", size = null;
+                if (val === null) type = "null";
+                else if (Array.isArray(val)) { type = "list"; size = val.length; }
+                else if (val instanceof Map) { type = val.__shift_type || "map"; size = val.size; }
+                else if (typeof val === "number") type = "number";
+                else if (typeof val === "string") { type = "string"; size = val.length; }
+                else if (typeof val === "boolean") type = "bool";
+                map.set("$type", type); map.set("$size", size);
+                return map;
+            }
+            case "SizeOfExpression": {
+                const val = this.evaluate(expr.argument, env);
+                if (Array.isArray(val)) return val.length;
+                if (val instanceof Map) return val.size;
+                if (typeof val === "string") return val.length;
+                throw new Error("Runtime Error: Cannot get size of primitive types");
+            }
+            case "PackExpression": return String.fromCharCode(...this.evaluate(expr.argument, env));
+            case "UnpackExpression": return String(this.evaluate(expr.argument, env)).split('').map(c => c.charCodeAt(0));
+            case "TypeOfExpression": return this.getTypeName(this.evaluate(expr.argument, env));
+            case "IsExpression": return this.evaluateIs(expr, env);
+            case "ReplaceExpression": return this.evaluateReplace(expr, env);
+            case "SplitExpression": return String(this.evaluate(expr.source, env)).split(String(this.evaluate(expr.delimiter, env)));
+            case "JoinExpression": {
+                const src = this.evaluate(expr.source, env);
+                if (!Array.isArray(src)) throw new Error("Runtime Error: Join requires a list.");
+                return src.join(String(this.evaluate(expr.delimiter, env)));
+            }
+            default: throw new Error(`Unknown expression ${expr.type}`);
+        }
+    }
+
+    evaluateIndex(expr, env) {
+        const obj = this.evaluate(expr.object, env);
+        const idx = this.evaluate(expr.index, env);
+        if (obj === null) {
+            if (typeof idx === 'number') throw new Error("Runtime Error: Cannot access index on null value.");
+            if (typeof idx === 'string') throw new Error("Runtime Error: Cannot access key on null value.");
+            throw new Error("Runtime Error: Cannot read properties of null.");
+        }
+        if (Array.isArray(obj)) {
+            if (!Number.isInteger(idx)) throw new Error("Runtime Error: List index must be integer value.");
+            if (idx < 0) throw new Error("Runtime Error: List index must not be a negative number.");
+            if (idx >= obj.length) throw new Error("Runtime Error: List index is out of bounds.");
+            return obj[idx];
+        }
+        if (obj instanceof Map) {
+            if (typeof idx !== 'string') throw new Error("Runtime Error: Map keys must be strings.");
+            if (!obj.has(idx)) throw new Error("Runtime Error: Map key does not exist.");
+            return obj.get(idx);
+        }
+        throw new Error("Runtime Error: Invalid index target.");
+    }
+
+    getTypeName(val) {
+        if (val === null) return "null";
+        if (Array.isArray(val)) return "list";
+        if (val instanceof Map) return val.__shift_type || "map";
+        if (typeof val === 'boolean') return "bool";
+        return typeof val;
+    }
+
+    evaluateIs(expr, env) {
+        const val = this.evaluate(expr.left, env);
+        let res = false;
+        const check = expr.check;
+        
+        if (check === "string") res = typeof val === 'string';
+        else if (check === "number") res = typeof val === 'number' || (typeof val === 'string' && !isNaN(parseFloat(val)));
+        else if (check === "bool") res = typeof val === 'boolean' || (typeof val === 'string' && (val === "1" || val === "0"));
+        else if (check === "list") res = Array.isArray(val);
+        else if (check === "map") res = val instanceof Map;
+        else if (check === "null") res = val === null;
+        else if (check === "integer") res = Number.isInteger(val) || (typeof val === 'string' && Number.isInteger(parseFloat(val)));
+        else if (check === "whitespace") res = typeof val === 'string' && /^\s*$/.test(val);
+        else if (check === "alpha") res = typeof val === 'string' && /^[a-zA-Z]+$/.test(val);
+        else if (check === "numeric") res = typeof val === 'string' && /^[0-9]+$/.test(val);
+        else if (check === "alphanumeric") res = typeof val === 'string' && /^[a-zA-Z0-9]+$/.test(val);
+        else if (check === "email") res = typeof val === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val);
+        else throw new Error(`Unknown is check '${check}'`);
+        
+        return expr.isNot ? !res : res;
+    }
+
+    evaluateReplace(expr, env) {
+        const src = String(this.evaluate(expr.source, env));
+        const rep = String(this.evaluate(expr.replacement, env));
+        const patRaw = String(this.evaluate(expr.pattern, env));
+        
+        if (patRaw.startsWith("/") && patRaw.lastIndexOf("/") > 0) {
+            const last = patRaw.lastIndexOf('/');
+            try {
+                const regex = new RegExp(patRaw.substring(1, last), patRaw.substring(last + 1));
+                return src.replace(regex, rep);
+            } catch(e) { throw new Error("Invalid regex"); }
+        }
+        return src.replaceAll(patRaw, rep);
     }
 
     evaluateCast(expr, env) {
         const val = this.evaluate(expr.value, env);
-        const targetType = expr.targetType.name;
+        const target = expr.targetType.name;
+        const sourceType = this.getTypeName(val);
+        
+        // Identity cast: If source already matches target, return directly
+        if (sourceType === target) {
+            return val;
+        }
 
-        if (targetType === "string") {
-            if (Array.isArray(val)) {
-                // Join list elements into a single string
-                return val.map(v => this.stringify(v)).join("");
-            }
+        if (target === "string") {
+            if (sourceType === "map") throw new Error("Runtime Error: Cannot cast map to string.");
+            if (Array.isArray(val)) return val.map(v => this.stringify(v)).join("");
             return this.stringify(val);
         }
-        if (targetType === "number") {
+
+        if (target === "number") {
             if (typeof val === 'boolean') return val ? 1 : 0;
-            const n = parseFloat(val);
-            if (isNaN(n)) throw new Error("Runtime Error: Could not cast string to number");
-            return n;
+            if (typeof val === 'string') {
+                const n = parseFloat(val);
+                if (isNaN(n)) throw new Error("Runtime Error: Could not cast string to number.");
+                return n;
+            }
+            throw new Error(`Runtime Error: Cannot cast ${sourceType} to number.`);
         }
-        if (targetType === "bool") {
-             if (typeof val === 'string') {
-                 if (val === "true") return true;
-                 if (val === "false") return false;
-                 const n = parseFloat(val);
-                 if (!isNaN(n)) return n !== 0;
-                 throw new Error("Runtime Error: Could not cast string to bool");
-             }
-             return Boolean(val);
-        }
-        if (targetType === "list" && typeof val === "string") {
-            return val.split(''); // Explicit string to list support for get_stringlength
-        }
-        return val; 
-    }
 
-    evaluateInspect(expr, env) {
-        const val = this.evaluate(expr.argument, env);
-        const map = new Map();
-        let type = "any";
-        let size = null;
-        
-        if (val === null) { type = "null"; }
-        else if (Array.isArray(val)) { 
-            type = "list"; 
-            size = val.length; 
+        if (target === "bool") {
+            if (typeof val === 'string') {
+                if (val === "true" || val === "1") return true;
+                if (val === "false" || val === "0") return false;
+                const n = parseFloat(val);
+                if (!isNaN(n)) return n !== 0;
+                throw new Error("Runtime Error: Could not cast string to bool.");
+            }
+            if (typeof val === 'number') return val !== 0;
+            if (typeof val === 'boolean') return val;
+            
+            throw new Error(`Runtime Error: Cannot cast ${sourceType} to bool.`);
         }
-        else if (val instanceof Map) { 
-            type = "map"; 
-            size = val.size; 
+
+        if (target === "list") {
+            if (typeof val === "string") return val.split('');
+            if (Array.isArray(val)) return val; 
+            throw new Error(`Runtime Error: Cannot cast ${sourceType} to list.`);
         }
-        else if (typeof val === 'number') { type = "number"; }
-        else if (typeof val === 'string') { 
-            type = "string"; 
-            size = val.length;
-        } 
-        else if (typeof val === 'boolean') { type = "bool"; }
-        
-        // Ensure keys match InspectionResult struct
-        map.set("$type", type);
-        map.set("$size", size);
-        return map;
-    }
 
-    evaluateSizeOf(expr, env) {
-        const val = this.evaluate(expr.argument, env);
-        if (Array.isArray(val)) return val.length;
-        if (val instanceof Map) return val.size;
-        if (typeof val === 'string') return val.length;
-        throw new Error("Runtime Error: Cannot get size of primitive types"); 
-    }
-
-    evaluateTypeOf(expr, env) {
-        const val = this.evaluate(expr.argument, env);
-        if (val === null) return "null";
-        if (Array.isArray(val)) return "list";
-        if (val instanceof Map) return "map";
-        if (typeof val === 'number') return "number";
-        if (typeof val === 'string') return "string";
-        if (typeof val === 'boolean') return "bool";
-        return "any";
+        return val;
     }
 
     evaluateBinary(expr, env) {
         const left = this.evaluate(expr.left, env);
+        if (expr.operator === "and") return this.isTruthy(left) && this.isTruthy(this.evaluate(expr.right, env));
+        if (expr.operator === "or") return this.isTruthy(left) || this.isTruthy(this.evaluate(expr.right, env));
+        if (expr.operator === "??") return left !== null ? left : this.evaluate(expr.right, env);
         
-        if (expr.operator === "and") {
-            if (!this.isTruthy(left)) return false;
-            return this.isTruthy(this.evaluate(expr.right, env));
-        }
-        if (expr.operator === "or") {
-            if (this.isTruthy(left)) return true;
-            return this.isTruthy(this.evaluate(expr.right, env));
-        }
         if (expr.operator === "xor") {
             const right = this.evaluate(expr.right, env);
             return this.isTruthy(left) !== this.isTruthy(right);
         }
-
+        
         const right = this.evaluate(expr.right, env);
-
-        if (expr.operator === "has") {
-             if (left instanceof Map) {
-                 if (typeof right !== 'string') throw new Error("Runtime Error: 'has' check requires a string key.");
-                 return left.has(right);
-             }
-             throw new Error("Runtime Error: 'has' operator only works on maps.");
+        if (expr.operator === "+") return left + right;
+        if (expr.operator === "-") return left - right;
+        if (expr.operator === "*") return left * right;
+        if (expr.operator === "/") { if(right===0) throw new Error("Runtime Error: Division by zero."); return left/right; }
+        if (expr.operator === "%") { if(right===0) throw new Error("Runtime Error: Modulo by zero."); return left%right; }
+        if (expr.operator === "&") return this.stringify(left) + this.stringify(right);
+        if (expr.operator === "==") return left === right;
+        if (expr.operator === "!=") return left !== right;
+        if (expr.operator === "<") return left < right;
+        if (expr.operator === ">") return left > right;
+        if (expr.operator === "<=") return left <= right;
+        if (expr.operator === ">=") return left >= right;
+        
+        if (expr.operator === "contains") {
+            if (Array.isArray(left) || typeof left === 'string') return left.includes(right);
+            throw new Error("Runtime Error: 'contains' requires a list or string.");
         }
-
+        if (expr.operator === "has") {
+            if (left instanceof Map) {
+                if (typeof right !== 'string') throw new Error("Runtime Error: 'has' check requires a string key.");
+                return left.has(right);
+            }
+            throw new Error("Runtime Error: 'has' operator only works on maps.");
+        }
+        if (expr.operator === "matches") {
+             const str = String(left); const reg = String(right);
+             const l = reg.lastIndexOf('/');
+             return new RegExp(reg.substring(1,l), reg.substring(l+1)).test(str);
+        }
+        
         if (expr.operator === "search") {
-            const str = String(left);
-            const regexStr = String(right); 
-            const lastSlash = regexStr.lastIndexOf('/');
-            if (lastSlash <= 0) throw new Error("Runtime Error: Invalid regex format.");
-            const pattern = regexStr.substring(1, lastSlash);
-            const flags = regexStr.substring(lastSlash + 1);
-            
-            let regex;
-            try { regex = new RegExp(pattern, flags); } 
-            catch(e) { throw new Error("Runtime Error: Invalid regular expression."); }
-
+            const str = String(left); const regStr = String(right);
+            const lastSlash = regStr.lastIndexOf('/');
+            const pattern = regStr.substring(1, lastSlash);
+            const flags = regStr.substring(lastSlash + 1);
+            const regex = new RegExp(pattern, flags);
             const results = [];
             let match;
-            
             if (!regex.global) {
                 match = regex.exec(str);
                 if (match) {
@@ -2760,45 +3390,36 @@ export class Runtime {
             return results;
         }
 
-        switch (expr.operator) {
-            case "+": return left + right;
-            case "-": return left - right;
-            case "*": return left * right;
-            case "/": 
-                if (right === 0) throw new Error("Runtime Error: Division by zero.");
-                return left / right;
-            case "%": 
-                if (right === 0) throw new Error("Runtime Error: Modulo by zero.");
-                return left % right;
-            case "==": return left === right;
-            case "!=": return left !== right;
-            case "<":  return left < right;
-            case ">":  return left > right;
-            case "<=": return left <= right;
-            case ">=": return left >= right;
-            case "&":  return this.stringify(left) + this.stringify(right);
-            default:
-                throw new Error(`Runtime Error: Unknown operator '${expr.operator}'`);
-        }
+        throw new Error(`Unknown op ${expr.operator}`);
     }
 
     evaluateUnary(expr, env) {
         const val = this.evaluate(expr.argument, env);
+        if (expr.operator === "not" || expr.operator === "!") return !this.isTruthy(val);
+        if (expr.operator === "-") return -val;
+        return null;
+    }
 
-        switch (expr.operator) {
-            case "-": return -val;
-            case "not":
-            case "!": return !this.isTruthy(val);
-            default:
-                throw new Error(`Runtime Error: Unknown unary operator '${expr.operator}'`);
+    executeDelete(stmt, env) {
+        const t = stmt.target;
+        const obj = this.evaluate(t.object, env);
+        const idx = this.evaluate(t.index, env);
+        
+        if (obj instanceof Map) {
+            if (!obj.has(idx)) throw new Error("Runtime Error: Map key does not exist.");
+            obj.delete(idx);
+        } else if (Array.isArray(obj)) {
+            if (!Number.isInteger(idx)) throw new Error("Runtime Error: List index must be integer value.");
+            if (idx < 0) throw new Error("Runtime Error: List index must not be a negative number.");
+            if (idx >= obj.length) throw new Error("Runtime Error: List index is out of bounds.");
+            obj.splice(idx, 1);
+        } else {
+            throw new Error("Cannot delete");
         }
     }
 
-    isTruthy(value) {
-        if (value === null) return false;
-        if (value === false) return false;
-        if (value === 0) return false; 
-        return true;
+    isTruthy(val) {
+        return val !== null && val !== false && val !== 0;
     }
 }
 
@@ -3029,7 +3650,74 @@ export const StandardLibrary = {
                 );
                 return d.toISOString();
             }
+        },
+
+        // Math Intrinsics
+        "calc_sqrt": {
+            returnType: "number",
+            func: (args) => Math.sqrt(args[0])
+        },
+        "calc_log10": {
+            returnType: "number",
+            func: (args) => Math.log10(args[0])
+        },
+        "calc_natlog": {
+            returnType: "number",
+            func: (args) => Math.log(args[0])
+        },
+        "round_number": {
+            returnType: "number",
+            func: (args) => Math.round(args[0])
+        },
+        "round_number_up": {
+            returnType: "number",
+            func: (args) => Math.ceil(args[0])
+        },
+        "round_number_down": {
+            returnType: "number",
+            func: (args) => Math.floor(args[0])
+        },
+        "calc_absolute": {
+            returnType: "number",
+            func: (args) => Math.abs(args[0])
+        },
+        "calc_sin": {
+            returnType: "number",
+            func: (args) => Math.sin(args[0])
+        },
+        "calc_cos": {
+            returnType: "number",
+            func: (args) => Math.cos(args[0])
+        },
+        "calc_tan": {
+            returnType: "number",
+            func: (args) => Math.tan(args[0])
+        },
+        "calc_asin": {
+            returnType: "number",
+            func: (args) => Math.asin(args[0])
+        },
+        "calc_acos": {
+            returnType: "number",
+            func: (args) => Math.acos(args[0])
+        },
+        "calc_atan": {
+            returnType: "number",
+            func: (args) => Math.atan(args[0])
+        },
+        "calc_atan2": {
+            returnType: "number",
+            func: (args) => Math.atan2(args[0], args[1])
+        },
+        "convert_deg_to_rad": {
+            returnType: "number",
+            func: (args) => args[0] * (Math.PI / 180)
+        },
+        "convert_rad_to_deg": {
+            returnType: "number",
+            func: (args) => args[0] * (180 / Math.PI)
         }
+
     },
 
     // 3. Shift Standard Library (Written in Shift)
@@ -3107,51 +3795,6 @@ function trim_string(string input_str) string {
     }
 
     return exploded_input as string;
-}
-
-function split_string_to_list(string input_str, string split_str) list<string> {
-    list<string> exploded_input = input_str as list<string>;
-    list<string> exploded_split = split_str as list<string>;
-    list<string> resulting_list;
-    string current_string;
-    string buffer;
-    number split_cursor;
-    number split_str_size = size of exploded_split;
-
-    for (char in exploded_input)
-    {
-        if (char == exploded_split[split_cursor])
-        {
-            buffer = buffer & char;
-            split_cursor = split_cursor + 1;
-            if (split_cursor == split_str_size)
-            {
-                buffer = "";
-                split_cursor = 0;
-                resulting_list[] = current_string;
-                current_string = "";
-            }
-        }
-        else
-        {
-            if (buffer != "")
-            {
-                current_string = current_string & buffer;
-                buffer = "";
-                split_cursor = 0;
-            }
-            current_string = current_string & char;
-        }
-    }
-
-    if (buffer != "")
-    {
-        current_string = current_string & buffer;
-    }
-
-    resulting_list[] = current_string;
-
-    return resulting_list;
 }`,
 
     loadDefinitions(parser) {
