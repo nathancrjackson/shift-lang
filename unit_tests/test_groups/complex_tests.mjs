@@ -55,7 +55,7 @@ function get_city_weather(string target_city) map<any> {
     
     city_metadata["SYDNEY"] = syd_info;
 
-    list<string> rows = split_string_to_list(raw_csv, "\\n");
+    list<string> rows = raw_csv split with "\\n";
 
     number index = -1;
     for (row_str in rows) {
@@ -64,7 +64,7 @@ function get_city_weather(string target_city) map<any> {
         if (index == 0) { skip; }
         if (size of row_str < 3) { skip; }
 
-        list<string> cols = split_string_to_list(row_str, ",");
+        list<string> cols = row_str split with ",";
     
         string city_key = cols[0] 
             | trim_string($pipe_value) 

@@ -31,6 +31,80 @@ export const for_tests = {
 }`
     }
 ,
+    "For String Error":
+    {
+        "tests": [{ type: "ParserError", expect: "Strings are not directly iterable. Use 'string as list<string>'." }],
+        "code":
+`function exampleof_forstring() string {
+    string result;
+    string my_string = "BADWOLF";
+    for (some_char in my_string) {
+        if (some_char == "O")
+        {
+            result = some_char & "!";
+        }
+    }
+    return result;
+}`
+    }
+,
+    "For List":
+    {
+        "tests": [{ call:"exampleof_forlist()", type: "string", expect: "BADWOLF" }],
+        "code":
+`function exampleof_forlist() string {
+    string result;
+    list<string> my_list = ["B", "A", "D", "W", "O", "L", "F"];
+    for (some_char in my_list) {
+        result = result & some_char;
+    }
+    return result;
+}`
+    }
+,
+    "For Map (Key)":
+    {
+        "tests": [{ call:"exampleof_formap()", type: "string", expect: "MADWOLF" }],
+        "code":
+`function exampleof_formap() string {
+    string result;
+    map<string> my_map = ["M": "B", "A": "A", "D": "D", "W": "W", "O": "O", "L": "L", "F": "F"];
+    for (some_char in my_map) {
+        result = result & some_char;
+    }
+    return result;
+}`
+    }
+,
+    "For Map (Key, Value)":
+    {
+        "tests": [{ call:"exampleof_formap()", type: "string", expect: "MADWOLF & BADWOLF" }],
+        "code":
+`function exampleof_formap() string {
+    string result_key;
+    string result_value;
+    map<string> my_map = ["M": "B", "A": "A", "D": "D", "W": "W", "O": "O", "L": "L", "F": "F"];
+    for (some_key, some_value in my_map) {
+        result_key = result_key & some_key;
+        result_value = result_value & some_value;
+    }
+    return result_key & " & " & result_value;
+}`
+    }
+,
+    "Decending number range":
+    {
+        "tests": [{ call:"exampleof_forrange()", type: "string", expect: "543210" }],
+        "code":
+`function exampleof_forrange() string {
+    string result;
+    for (t_minus in 5 to 0) {
+        result = result & t_minus;
+    }
+    return result;
+}`
+    }
+,
     "Break and Skip":
     {
         "tests": [

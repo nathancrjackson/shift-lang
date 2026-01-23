@@ -27,7 +27,9 @@ export class Lexer
 			{
 				t: TokenType.EOF,
 				v: "",
-				l: this.currentline
+				l: this.currentline,
+                s: this.currentindex,
+                e: this.currentindex
 			}
 		);
 
@@ -69,7 +71,17 @@ export class Lexer
 			case '*': this.addToken(TokenType.STAR, "*"); break;
 			case '%': this.addToken(TokenType.PERCENT, "%"); break;
             case '|': this.addToken(TokenType.PIPE, "|"); break;
+            case '^': this.addToken(TokenType.CARET, "^"); break;
             case '$': this.magicVariable(); break;
+
+            // Null Coalescing ??
+            case '?':
+                if (this.match('?')) {
+                    this.addToken(TokenType.QUESTION_QUESTION, "??");
+                } else {
+                     this.addError("Unexpected character '?'");
+                }
+                break;
 
 			// Could it be generic definition or could it be a comparison?
 			case '<':
@@ -202,7 +214,6 @@ export class Lexer
 	{
 		while (!this.isAtEnd())
 		{
-
 			// Handle the backslah case
 			if (this.peek() === '\\')
 			{
@@ -217,12 +228,10 @@ export class Lexer
 				continue;
 			}
 
-			// 
 			if (this.peek() === '"') {
 				break;
 			}
 
-			// Don't forget to track newlines inside strings for correct error reporting
 			if (this.peek() === '\n') {
 				this.currentline++;
 			}
@@ -351,11 +360,17 @@ export class Lexer
 	// t = Token type, v = Token value, l = Line Token is on
 	addToken(t, v)
 	{
-		this.tokens.push({ t, v, l: this.currentline });
+        // Add start (s) and end (e) indices
+		this.tokens.push({ 
+            t, 
+            v, 
+            l: this.currentline,
+            s: this.startindex,
+            e: this.currentindex
+        });
 	}
 
 	magicVariable() {
-        // We already consumed the '$', now consume the rest
         while (this.isAlphaNumeric(this.peek())) {
             this.advance();
         }

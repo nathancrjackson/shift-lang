@@ -143,7 +143,9 @@ function main() number {
 - **Conditionals:** `if`, `else if`, `else`. Braces `{ ... }` are required even for single lines.
 - **Loops:**
   - `while (condition)`
-  - `for (item in collection)`
+  - `for (item in list)`
+  - `for (key in map)`
+  - `for (key,value in map)`
   - `for (i in 0 to 10)`
   - Keywords: `break` (exit loop) and `skip` (continue to next iteration).
 - **Error Handling:**
@@ -154,13 +156,31 @@ function main() number {
 
 ### Operators
 - **Pipeline:** `|` with strict Left-to-Right evaluation into `$pipe_value`.
-- **Math:** `+`, `-`, `*`, `/`, `%`.
+- **Math:** `+`, `-`, `*`, `/`, `%`, `^`.
 - **Logic:** `and`, `or`, `xor`, `not`.
 - **Comparison:** `>`, `<`, `>=`, `<=`, `==`, `!=`.
-- **Concatenation:** `&` (e.g., `"Hello " & "World"`). Specifically for joining strings. Other types are automatically cast to string when using this operator.
+- **Null Coalescing:** `??`, (e.g., `string username = nullable_string ?? "Guest"`).
 - **Casting:** `value as type` (e.g `10 as string`).
-- **Containment:** `map has "key"` (Returns bool).
-- **Search:** `string search "/regex/flags"` (Returns `list<RegexResult>`).
+- **String Manipulation:**
+  - `string & string` for concatenation (e.g., `"Hello " & "World"`). Specifically for joining strings. Other types are automatically cast to string when using this operator.
+  - `string split with string` (Returns `list<string>`).
+  - `list<string> joined with string` (Returns `string`).
+- **String checks:**
+  - `string is bool`
+  - `string is number`
+  - `string is integer`
+  - `string is whitespace`
+  - `string is alpha`
+  - `string is numeric`
+  - `string is alphanumeric`
+  - `string is email`
+- **Collection checks:**
+  - `list contains item` restricted to `list<bool>`, `list<number>`, `list<string>` (Returns bool).
+  - `map has "key"` (Returns bool).
+- **Regex**:
+  - `string matches "/regex/flags"` (Returns `bool`).
+  - `string search "/regex/flags"` (Returns `list<RegexResult>`).
+  - `string replace "/regex/flags"` (Returns `string`).
 - **Introspection:**
   - `size of value`: Returns length/size of collection or string.
   - `type of value`: Returns string representation of type.

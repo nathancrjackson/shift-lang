@@ -30,6 +30,28 @@ export const nullable_tests = {
 }`
     }
 ,
+    "Null coalescing assignment":
+    {
+        "tests": [
+            { call: "get_number( true )", type: "number", expect: 99 },
+            { call: "get_number( false )", type: "number", expect: 100 }
+        ],
+        "code":
+`function get_number(bool assign_value) number
+{
+    nullable<number> our_nullable;
+
+    if (assign_value)
+    {
+        our_nullable = 99;
+    }
+
+    number result = our_nullable ?? 100;
+
+    return result;
+}`
+    }
+,
     "Function argument assignment":
     {
         "tests": [

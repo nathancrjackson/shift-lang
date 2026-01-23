@@ -48,6 +48,33 @@ export const list_tests = {
 }`
     }
 ,
+    "Element number checking with contains":
+    {
+        "tests": [
+            { call: "check_number(0)", type: "bool", expect: false },
+            { call: "check_number(10)", type: "bool", expect: true }
+        ],
+        "code":
+`function check_number(number num_to_check) bool {
+    list<number> our_list = [10, 20, 30];
+    return our_list contains num_to_check;
+}`
+    }
+,
+    "Element string checking with contains":
+    {
+        "tests": [
+            { call: "check_string(\"One Big Dirty Apple\")", type: "bool", expect: false },
+            { call: "check_string(\"Apple\")", type: "bool", expect: false },
+            { call: "check_string(\"Apples\")", type: "bool", expect: true }
+        ],
+        "code":
+`function check_string(string str_to_check) bool {
+    list<number> our_list = ["Apples", "Bananas", "Cheese"];
+    return our_list contains str_to_check;
+}`
+    }
+,
     "Assignment type error":
     {
         "tests": [{ type: "parser_error", expect: "List variable assignment type mismatch." }],

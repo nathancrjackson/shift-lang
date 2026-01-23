@@ -224,7 +224,74 @@ export const StandardLibrary = {
                 );
                 return d.toISOString();
             }
+        },
+
+        // Math Intrinsics
+        "calc_sqrt": {
+            returnType: "number",
+            func: (args) => Math.sqrt(args[0])
+        },
+        "calc_log10": {
+            returnType: "number",
+            func: (args) => Math.log10(args[0])
+        },
+        "calc_natlog": {
+            returnType: "number",
+            func: (args) => Math.log(args[0])
+        },
+        "round_number": {
+            returnType: "number",
+            func: (args) => Math.round(args[0])
+        },
+        "round_number_up": {
+            returnType: "number",
+            func: (args) => Math.ceil(args[0])
+        },
+        "round_number_down": {
+            returnType: "number",
+            func: (args) => Math.floor(args[0])
+        },
+        "calc_absolute": {
+            returnType: "number",
+            func: (args) => Math.abs(args[0])
+        },
+        "calc_sin": {
+            returnType: "number",
+            func: (args) => Math.sin(args[0])
+        },
+        "calc_cos": {
+            returnType: "number",
+            func: (args) => Math.cos(args[0])
+        },
+        "calc_tan": {
+            returnType: "number",
+            func: (args) => Math.tan(args[0])
+        },
+        "calc_asin": {
+            returnType: "number",
+            func: (args) => Math.asin(args[0])
+        },
+        "calc_acos": {
+            returnType: "number",
+            func: (args) => Math.acos(args[0])
+        },
+        "calc_atan": {
+            returnType: "number",
+            func: (args) => Math.atan(args[0])
+        },
+        "calc_atan2": {
+            returnType: "number",
+            func: (args) => Math.atan2(args[0], args[1])
+        },
+        "convert_deg_to_rad": {
+            returnType: "number",
+            func: (args) => args[0] * (Math.PI / 180)
+        },
+        "convert_rad_to_deg": {
+            returnType: "number",
+            func: (args) => args[0] * (180 / Math.PI)
         }
+
     },
 
     // 3. Shift Standard Library (Written in Shift)
@@ -302,51 +369,6 @@ function trim_string(string input_str) string {
     }
 
     return exploded_input as string;
-}
-
-function split_string_to_list(string input_str, string split_str) list<string> {
-    list<string> exploded_input = input_str as list<string>;
-    list<string> exploded_split = split_str as list<string>;
-    list<string> resulting_list;
-    string current_string;
-    string buffer;
-    number split_cursor;
-    number split_str_size = size of exploded_split;
-
-    for (char in exploded_input)
-    {
-        if (char == exploded_split[split_cursor])
-        {
-            buffer = buffer & char;
-            split_cursor = split_cursor + 1;
-            if (split_cursor == split_str_size)
-            {
-                buffer = "";
-                split_cursor = 0;
-                resulting_list[] = current_string;
-                current_string = "";
-            }
-        }
-        else
-        {
-            if (buffer != "")
-            {
-                current_string = current_string & buffer;
-                buffer = "";
-                split_cursor = 0;
-            }
-            current_string = current_string & char;
-        }
-    }
-
-    if (buffer != "")
-    {
-        current_string = current_string & buffer;
-    }
-
-    resulting_list[] = current_string;
-
-    return resulting_list;
 }`,
 
     loadDefinitions(parser) {

@@ -78,6 +78,18 @@ export const inspection_tests = {
 }`
     }
 ,
+    "Type of Struct":
+    {
+        "tests": [
+            { call:"get_struct_type()", type: "string", expect: "DateTime" }
+        ],
+        "code":
+`function get_struct_type() string {
+    DateTime date_var;
+    return type of date_var;
+}`
+    }
+,
     "Inspect type":
     {
         "tests": [

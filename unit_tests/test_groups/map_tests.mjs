@@ -46,7 +46,7 @@ export const map_tests = {
 }`
     }
 ,
-    "Element checking":
+    "Element checking using has":
     {
         "tests": [
             { call: "check_somemap(\"name\")", type: "bool", expect: true },

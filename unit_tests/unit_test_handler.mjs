@@ -1,5 +1,6 @@
 import { Lexer } from '../src/lexer.mjs';
 import { Parser } from '../src/parser.mjs';
+import { validateAST } from '../src/ast_validator.mjs';
 import { Runtime } from '../src/runtime.mjs';
 import { TokenType } from '../src/token_enums.mjs';
 import { StandardLibrary } from '../src/standard_library.mjs';
@@ -109,6 +110,7 @@ export class UnitTestHandler {
             // --- STEP 3: PARSER (User Code) ---
             let parseErrors = [];
             let ast = null;
+            let validationError = null; // Store validation error
             
             if (lexErrors.length === 0) {
                 const parser = new Parser(lexResult.tokens);
@@ -142,6 +144,16 @@ export class UnitTestHandler {
 
                 ast = userAST;
                 currentDebug.ast = ast;
+
+                // E. Validate AST (NEW STEP)
+                // Only validate if parsing succeeded, as parsing errors usually produce partial/invalid ASTs anyway
+                if (parseErrors.length === 0) {
+                    try {
+                        validateAST(ast);
+                    } catch (e) {
+                        validationError = e;
+                    }
+                }
             }
 
             // --- VERIFY CHECKS ---
@@ -162,6 +174,7 @@ export class UnitTestHandler {
                 const isLexerCheck = check.type === "lexer_error" || check.type === "LexerError";
                 // FIX: Allow parser_error_cascading to be treated as a parser check if it has expectations
                 const isParserCheck = check.type === "parser_error" || check.type === "ParserError" || (check.type === "parser_error_cascading" && check.expect);
+                const isValidationCheck = check.type === "validation_error"; // NEW
 
                 // 1. LEXER ERROR CHECKS
                 if (isLexerCheck) {
@@ -191,10 +204,31 @@ export class UnitTestHandler {
                     }
                 }
 
-                // 3. RUNTIME CHECKS
+                // 3. VALIDATION CHECKS (NEW)
+                else if (isValidationCheck) {
+                    logEntry.result_type = "VALIDATION_CHECK";
+                    
+                    if (validationError) {
+                        logEntry.actual = validationError.message;
+                        if (validationError.message.includes(check.expect)) {
+                            // Expected error found
+                            validationError = null; // Mark as handled
+                        } else {
+                            testFailures.push(`${checkName}: Expected validation error "${check.expect}" but got "${validationError.message}".`);
+                            logEntry.result_type = "FAIL_WRONG_ERROR";
+                        }
+                    } else {
+                        testFailures.push(`${checkName}: Expected validation error "${check.expect}" but validation passed.`);
+                        logEntry.actual = "No Error";
+                        logEntry.result_type = "FAIL_NO_ERROR";
+                    }
+                }
+
+                // 4. RUNTIME CHECKS
                 else {
                     const hasBlockingErrors = (lexResult.errors.length > 0 && !isLexerCheck) || 
-                                              (parseErrors.length > 0 && !isParserCheck);
+                                              (parseErrors.length > 0 && !isParserCheck) ||
+                                              (validationError !== null); // Block if unhandled validation error
                     
                     if (hasBlockingErrors) {
                         testFailures.push(`${checkName}: Skipped because of earlier compilation errors.`);
@@ -333,6 +367,15 @@ export class UnitTestHandler {
                         message: e.message
                     });
                  });
+            }
+
+            // Report Unexpected Validation Errors
+            if (validationError) {
+                testFailures.push(`Unexpected AST Validation Error: ${validationError.message}`);
+                currentDebug.errors.push({
+                    type: "ValidationError",
+                    message: validationError.message
+                });
             }
 
             // --- SET SUCCESS FLAG ---

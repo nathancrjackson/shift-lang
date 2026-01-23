@@ -4,8 +4,48 @@ Search Tests
 
 ----- */
 
-export const search_tests = {
-    "Basic":
+export const regex_tests = {
+    "Basic Match":
+    {
+        "tests": [{ call: "do_match()", type: "bool", expect: true }],
+        "code":
+`function do_match() bool {
+    return "Hello World" matches "/Hello/g";
+}`
+    }
+,
+    "Match usage in if":
+    {
+        "tests": [{ call: "do_match()", type: "bool", expect: true }],
+        "code":
+`function do_match() bool {
+    if ("Hello World" matches "/Hello/g")
+    {
+        return true;
+    }
+    return false;
+}`
+    }
+,
+    "Basic Replace":
+    {
+        "tests": [{ call: "do_replace()", type: "string", expect: "Hello Planet" }],
+        "code":
+`function do_replace() string {
+    return "Hello World" replace "/World/g" with "Planet";
+}`
+    }
+,
+    "Double Replace":
+    {
+        "tests": [{ call: "do_replace()", type: "string", expect: "Hello Planet, Goodbye Planet" }],
+        "code":
+`function do_replace() string {
+    return "Hello World, Goodbye World" replace "/World/g" with "Planet";
+}`
+    }
+,
+    "Basic Search":
     {
         "tests": [{ call: "do_find()", type: "string", expect: "Hello" }],
         "code":
@@ -16,7 +56,7 @@ export const search_tests = {
     }
 ,
 
-    "RegexResult fields":
+    "Search RegexResult fields":
     {
         "tests": [{ call: "do_find()", type: "number", expect: 6 }],
         "code":
@@ -27,7 +67,7 @@ export const search_tests = {
     }
 ,
 
-    "Multiple results":
+    "Search Multiple results":
     {
         "tests": [{ call: "do_find()", type: "number", expect: 2 }],
         "code":

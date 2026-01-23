@@ -2,7 +2,7 @@ export const TokenType = {
 	// Keywords
 	FUNCTION: "FUNCTION", RETURN: "RETURN", STRUCT: "STRUCT",
 	IF: "IF", ELSE: "ELSE", FOR: "FOR", IN: "IN", TO: "TO",
-    WHILE: "WHILE", // Added WHILE
+    WHILE: "WHILE",
 	TRY: "TRY", CATCH: "CATCH", REVIEW: "REVIEW", THROW: "THROW",
 	TRUE: "TRUE", FALSE: "FALSE",
 
@@ -14,8 +14,17 @@ export const TokenType = {
     // Casting & Checks
     AS: "AS",
     HAS: "HAS",
+    IS: "IS",             
+    CONTAINS: "CONTAINS",
+    MATCHES: "MATCHES",
     DELETE: "DELETE",
     SEARCH: "SEARCH",
+
+    // String/List Ops
+    REPLACE: "REPLACE",   
+    WITH: "WITH",         
+    SPLIT: "SPLIT",       
+    JOINED: "JOINED",
 
     // Inspection & Bytes
     INSPECT: "INSPECT",
@@ -24,6 +33,9 @@ export const TokenType = {
     OF: "OF",
     PACK: "PACK",
     UNPACK: "UNPACK",
+    
+    // Null Coalescing
+    QUESTION_QUESTION: "QUESTION_QUESTION",
 
 	// Types
 	TYPE_STRING: "TYPE_STRING", TYPE_NUMBER: "TYPE_NUMBER",
@@ -36,7 +48,7 @@ export const TokenType = {
 	BANG: "BANG", BANG_EQUAL: "BANG_EQUAL",
     EQUAL_EQUAL: "EQUAL_EQUAL",
     LESS_EQUAL: "LESS_EQUAL", GREATER_EQUAL: "GREATER_EQUAL",
-	LANGLE: "LANGLE", RANGLE: "RANGLE",              // < > - Also to be used for less than and greater than checks
+	LANGLE: "LANGLE", RANGLE: "RANGLE",              // < > 
 	LPAREN: "LPAREN", RPAREN: "RPAREN",              // ( )
 	LBRACE: "LBRACE", RBRACE: "RBRACE",              // { }
 	LBRACKET: "LBRACKET", RBRACKET: "RBRACKET",      // [ ]
@@ -44,9 +56,9 @@ export const TokenType = {
 	PIPE: "PIPE",
 	ASSIGN: "ASSIGN",
 	PLUS: "PLUS", MINUS: "MINUS", SLASH: "SLASH", STAR: "STAR",
-	PERCENT: "PERCENT",                              // % (Modulus)
-    AMPERSAND: "AMPERSAND",                          // & (Concatenation)
-    CARET: "CARET",                                  // ^ (XOR)
+	PERCENT: "PERCENT",                              // % 
+    AMPERSAND: "AMPERSAND",                          // & 
+    CARET: "CARET",                                  // ^ 
     MAGIC_VAR: "MAGIC_VAR",                          // $
 
 	// Literals
@@ -70,7 +82,7 @@ export const KEYWORDS = {
 	"function": TokenType.FUNCTION, "return": TokenType.RETURN, "struct": TokenType.STRUCT,
 	"if": TokenType.IF, "else": TokenType.ELSE,
 	"for": TokenType.FOR, "in": TokenType.IN, "to": TokenType.TO,
-    "while": TokenType.WHILE, // Added while
+    "while": TokenType.WHILE,
 	"try": TokenType.TRY, "catch": TokenType.CATCH, "review": TokenType.REVIEW, 
     "throw": TokenType.THROW, 
 	"true": TokenType.TRUE, "false": TokenType.FALSE,
@@ -82,6 +94,13 @@ export const KEYWORDS = {
 
     "as": TokenType.AS,
     "has": TokenType.HAS,
+    "is": TokenType.IS,             
+    "contains": TokenType.CONTAINS, 
+    "matches": TokenType.MATCHES,
+    "replace": TokenType.REPLACE,   
+    "with": TokenType.WITH,         
+    "split": TokenType.SPLIT,       
+    "joined": TokenType.JOINED,
     "delete": TokenType.DELETE,
     "search": TokenType.SEARCH,
 

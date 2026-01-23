@@ -54,11 +54,12 @@ export class Runtime {
         
         this.loadFunctions();
         
-        // NOTE: registerIntrinsics() removed. 
-        // Use external StandardLibrary.loadIntrinsics(runtime) instead.
-
         // Global magic variables
         this.globalEnv.define("$line_num", 0);
+
+        // Math constants
+        this.globalEnv.define("$pi", Math.PI);
+        this.globalEnv.define("$e", Math.E);
     }
 
     addIntrinsic(name, func) {
@@ -104,6 +105,10 @@ export class Runtime {
         
         if (value instanceof Map) {
             const newMap = new Map();
+            // Preserve Type Tag for Structs
+            if (value.__shift_type) {
+                newMap.__shift_type = value.__shift_type;
+            }
             for (const [k, v] of value) {
                 newMap.set(k, this.deepCopy(v));
             }
@@ -159,6 +164,9 @@ export class Runtime {
 
         // 3. Strict Return Type Check
         if (func.returnType) {
+            if (result === null && func.returnType.name !== 'none' && func.returnType.name !== 'null' && func.returnType.name !== 'nullable' && func.returnType.name !== 'any') {
+                throw new Error(`Runtime Error: Expected a return but none was supplied before function end.`);
+            }
             this.checkType(result, func.returnType);
         }
 
@@ -183,6 +191,8 @@ export class Runtime {
         // Structs are Maps at runtime
         if (typeInfo.type === 'StructType') {
              if (!(value instanceof Map)) throw new Error(`Runtime Error: Return type mismatch.`);
+             // Tag returned struct with its type name
+             value.__shift_type = typeInfo.name;
              return;
         }
 
@@ -385,27 +395,53 @@ export class Runtime {
     executeForInStatement(stmt, env) {
         const collection = this.evaluate(stmt.collection, env);
         
-        let iterable = [];
-
         if (Array.isArray(collection)) {
-            iterable = collection;
+            // LIST ITERATION
+            for (let i = 0; i < collection.length; i++) {
+                const item = collection[i];
+                const loopEnv = new Environment(env);
+                
+                if (stmt.valueIterator) {
+                    // for (index, item in list)
+                    loopEnv.define(stmt.iterator, i);      // index
+                    loopEnv.define(stmt.valueIterator, item); // item
+                } else {
+                    // for (item in list)
+                    loopEnv.define(stmt.iterator, item);
+                }
+
+                try {
+                    this.executeStatement(stmt.body, loopEnv);
+                } catch (e) {
+                    if (e instanceof BreakSignal) break;
+                    if (e instanceof SkipSignal) continue;
+                    throw e; 
+                }
+            }
         } else if (collection instanceof Map) {
-            iterable = Array.from(collection.keys());
+            // MAP ITERATION
+            for (const [key, value] of collection) {
+                const loopEnv = new Environment(env);
+                
+                if (stmt.valueIterator) {
+                    // for (key, value in map)
+                    loopEnv.define(stmt.iterator, key);
+                    loopEnv.define(stmt.valueIterator, value);
+                } else {
+                    // for (key in map)
+                    loopEnv.define(stmt.iterator, key);
+                }
+
+                try {
+                    this.executeStatement(stmt.body, loopEnv);
+                } catch (e) {
+                    if (e instanceof BreakSignal) break;
+                    if (e instanceof SkipSignal) continue;
+                    throw e; 
+                }
+            }
         } else {
             throw new Error(`Runtime Error: Cannot iterate over type '${typeof collection}'.`);
-        }
-
-        for (const item of iterable) {
-            const loopEnv = new Environment(env);
-            loopEnv.define(stmt.iterator, item);
-
-            try {
-                this.executeStatement(stmt.body, loopEnv);
-            } catch (e) {
-                if (e instanceof BreakSignal) break;
-                if (e instanceof SkipSignal) continue;
-                throw e; 
-            }
         }
     }
 
@@ -420,6 +456,12 @@ export class Runtime {
         } else {
             value = this.getDefaultValue(stmt.varType);
         }
+
+        // Tagging: If declaring a struct, tag the value with the struct name
+        if (stmt.varType.type === "StructType" && value instanceof Map) {
+            value.__shift_type = stmt.varType.name;
+        }
+
         env.define(stmt.name, value);
     }
 
@@ -433,11 +475,7 @@ export class Runtime {
                     return env.get("$pipe_value");
                 }
                 if (expr.name === "$line_num") {
-                    // Fix: Use the line number from the expression if available
-                    if (expr.line) {
-                        return expr.line;
-                    }
-                    // Fallback to statement-level tracking (e.g. for implicit usage)
+                    if (expr.line) return expr.line;
                     return this.globalEnv.get("$line_num");
                 }
                 return env.get(expr.name);
@@ -557,9 +595,123 @@ export class Runtime {
             case "TypeOfExpression":
                 return this.evaluateTypeOf(expr, env);
             
+            case "IsExpression":
+                return this.evaluateIs(expr, env);
+            
+            case "ReplaceExpression":
+                return this.evaluateReplace(expr, env);
+            
+            case "SplitExpression":
+                return this.evaluateSplit(expr, env);
+            
+            case "JoinExpression":
+                return this.evaluateJoin(expr, env);
+
             default:
                 throw new Error(`Runtime Error: Unsupported expression type '${expr.type}' in Task 6.`);
         }
+    }
+
+    evaluateIs(expr, env) {
+        const val = this.evaluate(expr.left, env);
+        let result = false;
+        const check = expr.check;
+
+        switch(check) {
+            case "string": result = (typeof val === 'string'); break;
+            
+            case "number": 
+                if (typeof val === 'number') {
+                    result = true;
+                } else if (typeof val === 'string') {
+                    const n = parseFloat(val);
+                    result = !isNaN(n) && isFinite(n);
+                } else {
+                    result = false;
+                }
+                break;
+            
+            case "bool": 
+                if (typeof val === 'boolean') {
+                    result = true;
+                } else if (typeof val === 'string') {
+                    result = (val === "1" || val === "0");
+                } else {
+                    result = false;
+                }
+                break;
+
+            case "list": result = Array.isArray(val); break;
+            case "map": result = (val instanceof Map); break;
+            case "null": result = (val === null); break;
+            
+            case "integer": 
+                if (typeof val === 'number') {
+                    result = Number.isInteger(val);
+                } else if (typeof val === 'string') {
+                    const n = parseFloat(val);
+                    result = !isNaN(n) && isFinite(n) && Number.isInteger(n);
+                } else {
+                    result = false;
+                }
+                break;
+
+            case "whitespace": 
+                result = (typeof val === 'string' && /^\s*$/.test(val)); 
+                break;
+            case "alpha":
+                result = (typeof val === 'string' && /^[a-zA-Z]+$/.test(val));
+                break;
+            case "numeric":
+                result = (typeof val === 'string' && /^[0-9]+$/.test(val));
+                break;
+            case "alphanumeric":
+                result = (typeof val === 'string' && /^[a-zA-Z0-9]+$/.test(val));
+                break;
+            case "email":
+                result = (typeof val === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val));
+                break;
+            default:
+                throw new Error(`Runtime Error: Unknown 'is' check '${check}'.`);
+        }
+
+        return expr.isNot ? !result : result;
+    }
+
+    evaluateReplace(expr, env) {
+        const source = String(this.evaluate(expr.source, env));
+        const replacement = String(this.evaluate(expr.replacement, env));
+        const patternRaw = String(this.evaluate(expr.pattern, env));
+
+        // Regex support "/p/f"
+        if (patternRaw.startsWith("/") && patternRaw.lastIndexOf("/") > 0) {
+            const lastSlash = patternRaw.lastIndexOf('/');
+            const pattern = patternRaw.substring(1, lastSlash);
+            const flags = patternRaw.substring(lastSlash + 1);
+            try {
+                const regex = new RegExp(pattern, flags);
+                return source.replace(regex, replacement);
+            } catch(e) {
+                throw new Error("Runtime Error: Invalid regular expression in replace.");
+            }
+        }
+
+        return source.replaceAll(patternRaw, replacement);
+    }
+
+    evaluateSplit(expr, env) {
+        const source = String(this.evaluate(expr.source, env));
+        const delimiter = String(this.evaluate(expr.delimiter, env));
+        return source.split(delimiter);
+    }
+
+    evaluateJoin(expr, env) {
+        const source = this.evaluate(expr.source, env);
+        if (!Array.isArray(source)) {
+            throw new Error("Runtime Error: Join requires a list.");
+        }
+        const delimiter = String(this.evaluate(expr.delimiter, env));
+        return source.join(delimiter);
     }
 
     evaluateCast(expr, env) {
@@ -568,7 +720,6 @@ export class Runtime {
 
         if (targetType === "string") {
             if (Array.isArray(val)) {
-                // Join list elements into a single string
                 return val.map(v => this.stringify(v)).join("");
             }
             return this.stringify(val);
@@ -590,7 +741,7 @@ export class Runtime {
              return Boolean(val);
         }
         if (targetType === "list" && typeof val === "string") {
-            return val.split(''); // Explicit string to list support for get_stringlength
+            return val.split(''); 
         }
         return val; 
     }
@@ -607,7 +758,7 @@ export class Runtime {
             size = val.length; 
         }
         else if (val instanceof Map) { 
-            type = "map"; 
+            type = val.__shift_type ? val.__shift_type : "map"; 
             size = val.size; 
         }
         else if (typeof val === 'number') { type = "number"; }
@@ -617,7 +768,6 @@ export class Runtime {
         } 
         else if (typeof val === 'boolean') { type = "bool"; }
         
-        // Ensure keys match InspectionResult struct
         map.set("$type", type);
         map.set("$size", size);
         return map;
@@ -635,7 +785,9 @@ export class Runtime {
         const val = this.evaluate(expr.argument, env);
         if (val === null) return "null";
         if (Array.isArray(val)) return "list";
-        if (val instanceof Map) return "map";
+        if (val instanceof Map) {
+            return val.__shift_type ? val.__shift_type : "map";
+        }
         if (typeof val === 'number') return "number";
         if (typeof val === 'string') return "string";
         if (typeof val === 'boolean') return "bool";
@@ -653,6 +805,12 @@ export class Runtime {
             if (this.isTruthy(left)) return true;
             return this.isTruthy(this.evaluate(expr.right, env));
         }
+        
+        if (expr.operator === "??") {
+            if (left !== null) return left;
+            return this.evaluate(expr.right, env);
+        }
+
         if (expr.operator === "xor") {
             const right = this.evaluate(expr.right, env);
             return this.isTruthy(left) !== this.isTruthy(right);
@@ -666,6 +824,31 @@ export class Runtime {
                  return left.has(right);
              }
              throw new Error("Runtime Error: 'has' operator only works on maps.");
+        }
+
+        if (expr.operator === "contains") {
+            if (Array.isArray(left)) {
+                return left.includes(right);
+            }
+            if (typeof left === 'string') {
+                return left.includes(String(right));
+            }
+            throw new Error("Runtime Error: 'contains' requires a list or string.");
+        }
+
+        if (expr.operator === "matches") {
+            const str = String(left);
+            const regexStr = String(right); 
+            const lastSlash = regexStr.lastIndexOf('/');
+            if (lastSlash <= 0) throw new Error("Runtime Error: Invalid regex format.");
+            const pattern = regexStr.substring(1, lastSlash);
+            const flags = regexStr.substring(lastSlash + 1);
+            
+            try { 
+                const regex = new RegExp(pattern, flags); 
+                return regex.test(str);
+            } 
+            catch(e) { throw new Error("Runtime Error: Invalid regular expression."); }
         }
 
         if (expr.operator === "search") {
@@ -716,6 +899,8 @@ export class Runtime {
             case "%": 
                 if (right === 0) throw new Error("Runtime Error: Modulo by zero.");
                 return left % right;
+            case "^":
+                    return Math.pow(left, right);
             case "==": return left === right;
             case "!=": return left !== right;
             case "<":  return left < right;

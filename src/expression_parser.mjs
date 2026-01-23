@@ -11,7 +11,7 @@ export class ExpressionParser {
 
     // Level 0: Assignment (a = b)
     assignment() {
-        const expr = this.pipeline();
+        let expr = this.pipeline();
 
         if (this.parser.match(TokenType.ASSIGN)) {
             const equalsToken = this.parser.previous();
@@ -32,7 +32,14 @@ export class ExpressionParser {
                     // Errors already added by validator
                 }
                 
-                return { type: "Assignment", name: varName, value: value };
+                return { 
+                    type: "Assignment", 
+                    start: expr.start,
+                    end: value.end,
+                    line: equalsToken.l,
+                    name: varName, 
+                    value: value 
+                };
             }
             else if (expr.type === "IndexExpression") {
                 
@@ -125,6 +132,9 @@ export class ExpressionParser {
                 
                 return { 
                     type: "IndexAssignment", 
+                    start: expr.start,
+                    end: value.end,
+                    line: equalsToken.l,
                     object: expr.object, 
                     index: expr.index, 
                     value: value 
@@ -139,14 +149,39 @@ export class ExpressionParser {
 
     // Level 0.5: Pipeline (|)
     pipeline() {
-        let expr = this.logicalOr();
+        let expr = this.nullCoalescing(); 
 
         while (this.parser.match(TokenType.PIPE)) {
             const operatorToken = this.parser.previous();
-            const right = this.logicalOr(); 
+            const right = this.nullCoalescing(); 
 
             expr = {
                 type: "PipelineExpression",
+                start: expr.start,
+                end: right.end,
+                line: operatorToken.l,
+                left: expr,
+                right: right
+            };
+        }
+
+        return expr;
+    }
+
+    // Level 0.7: Null Coalescing (??)
+    nullCoalescing() {
+        let expr = this.logicalOr();
+
+        while (this.parser.match(TokenType.QUESTION_QUESTION)) {
+            const operatorToken = this.parser.previous();
+            const right = this.logicalOr();
+
+            expr = {
+                type: "BinaryExpression",
+                start: expr.start,
+                end: right.end,
+                line: operatorToken.l,
+                operator: operatorToken.v,
                 left: expr,
                 right: right
             };
@@ -165,6 +200,9 @@ export class ExpressionParser {
 
             expr = {
                 type: "BinaryExpression",
+                start: expr.start,
+                end: right.end,
+                line: operatorToken.l,
                 operator: operatorToken.v,
                 left: expr,
                 right: right
@@ -184,6 +222,9 @@ export class ExpressionParser {
 
             expr = {
                 type: "BinaryExpression",
+                start: expr.start,
+                end: right.end,
+                line: operatorToken.l,
                 operator: operatorToken.v,
                 left: expr,
                 right: right
@@ -203,6 +244,9 @@ export class ExpressionParser {
 
             expr = {
                 type: "BinaryExpression",
+                start: expr.start,
+                end: right.end,
+                line: operatorToken.l,
                 operator: operatorToken.v,
                 left: expr,
                 right: right
@@ -238,6 +282,9 @@ export class ExpressionParser {
 
             expr = {
                 type: "BinaryExpression",
+                start: expr.start,
+                end: right.end,
+                line: operatorToken.l,
                 operator: operatorToken.v,
                 left: expr,
                 right: right
@@ -247,15 +294,98 @@ export class ExpressionParser {
         return expr;
     }
 
-    // Level 5: Comparison (<, >, <=, >=, has, search)
+    // Level 5: Comparison (<, >, <=, >=, has, search, is, contains, replace, split, joined, matches)
     comparison() {
         let expr = this.concatenation();
 
         while (this.parser.match(TokenType.LANGLE) || this.parser.match(TokenType.RANGLE) || 
             this.parser.match(TokenType.LESS_EQUAL) || this.parser.match(TokenType.GREATER_EQUAL) ||
-            this.parser.match(TokenType.HAS) || this.parser.match(TokenType.SEARCH)) {
+            this.parser.match(TokenType.HAS) || this.parser.match(TokenType.SEARCH) ||
+            this.parser.match(TokenType.CONTAINS) || this.parser.match(TokenType.IS) ||
+            this.parser.match(TokenType.REPLACE) || this.parser.match(TokenType.SPLIT) || this.parser.match(TokenType.JOINED) ||
+            this.parser.match(TokenType.MATCHES) 
+        ) {
             const operatorToken = this.parser.previous();
+
+            // 1. IS Operator
+            if (operatorToken.t === TokenType.IS) {
+                let isNot = false;
+                if (this.parser.match(TokenType.NOT)) {
+                    isNot = true;
+                }
+
+                let checkType = "";
+                let endPos = operatorToken.e;
+                
+                // Match type keywords (string, number) OR identifiers (alpha, email)
+                if (this.parser.matchTypeKeyword()) {
+                    const tok = this.parser.advance();
+                    checkType = tok.v;
+                    endPos = tok.e;
+                } else if (this.parser.match(TokenType.IDENTIFIER)) {
+                    const tok = this.parser.previous();
+                    checkType = tok.v;
+                    endPos = tok.e;
+                } else {
+                    throw this.parser.addError(this.parser.peek(), "Expect type or check name after 'is'.");
+                }
+
+                expr = {
+                    type: "IsExpression",
+                    start: expr.start,
+                    end: endPos,
+                    line: operatorToken.l,
+                    left: expr,
+                    check: checkType,
+                    isNot: isNot
+                };
+                continue;
+            }
+
+            // 2. REPLACE Operator
+            if (operatorToken.t === TokenType.REPLACE) {
+                const pattern = this.concatenation();
+                this.parser.consume(TokenType.WITH, "Expect 'with' after replace pattern.");
+                const replacement = this.concatenation();
+
+                expr = {
+                    type: "ReplaceExpression",
+                    start: expr.start,
+                    end: replacement.end,
+                    line: operatorToken.l,
+                    source: expr,
+                    pattern: pattern,
+                    replacement: replacement
+                };
+                continue;
+            }
+
+            // 3. SPLIT / JOINED Operators
+            if (operatorToken.t === TokenType.SPLIT || operatorToken.t === TokenType.JOINED) {
+                this.parser.consume(TokenType.WITH, `Expect 'with' after ${operatorToken.v}.`);
+                const delimiter = this.concatenation();
+
+                expr = {
+                    type: operatorToken.t === TokenType.SPLIT ? "SplitExpression" : "JoinExpression",
+                    start: expr.start,
+                    end: delimiter.end,
+                    line: operatorToken.l,
+                    source: expr,
+                    delimiter: delimiter
+                };
+                continue;
+            }
+
+            // 4. Standard Binary Ops (contains, search, has, matches, etc)
             const right = this.concatenation();
+
+            // CONTAINS Check
+            if (operatorToken.t === TokenType.CONTAINS) {
+                const leftType = this.parser.inferType(expr);
+                if (leftType !== "any" && leftType !== "list" && leftType !== "string") {
+                     // We allow list or string for 'contains'
+                }
+            }
 
             if (operatorToken.t === TokenType.SEARCH) {
                 const leftType = this.parser.inferType(expr);
@@ -279,8 +409,33 @@ export class ExpressionParser {
                 }
             }
 
+            if (operatorToken.t === TokenType.MATCHES) {
+                const leftType = this.parser.inferType(expr);
+                const rightType = this.parser.inferType(right);
+
+                // 1. Data must be string
+                if (leftType !== "any" && leftType !== "string") {
+                    throw this.parser.addError(operatorToken, "Matches data must be a string.");
+                }
+
+                // 2. Pattern must be string
+                if (rightType !== "any" && rightType !== "string") {
+                    throw this.parser.addError(operatorToken, "Matches expression must be a string.");
+                }
+
+                // 3. Pattern literal validation (heuristics)
+                if (right.type === "Literal" && typeof right.value === "string") {
+                    if (!right.value.startsWith("/")) {
+                        throw this.parser.addError(operatorToken, "Matches expression must be a valid regular expression.");
+                    }
+                }
+            }
+
             expr = {
                 type: "BinaryExpression",
+                start: expr.start,
+                end: right.end,
+                line: operatorToken.l,
                 operator: operatorToken.v,
                 left: expr,
                 right: right
@@ -300,6 +455,9 @@ export class ExpressionParser {
 
             expr = {
                 type: "BinaryExpression",
+                start: expr.start,
+                end: right.end,
+                line: operatorToken.l,
                 operator: operatorToken.v,
                 left: expr,
                 right: right
@@ -319,6 +477,9 @@ export class ExpressionParser {
 
             expr = {
                 type: "BinaryExpression",
+                start: expr.start,
+                end: right.end,
+                line: operatorToken.l,
                 operator: operatorToken.v,
                 left: expr,
                 right: right
@@ -329,11 +490,11 @@ export class ExpressionParser {
 
     // Level 7: Factor (*, /, %)
     factor() {
-        let expr = this.unary();
+        let expr = this.power(); // Changed from unary() to power()
 
         while (this.parser.match(TokenType.SLASH) || this.parser.match(TokenType.STAR) || this.parser.match(TokenType.PERCENT)) {
             const operatorToken = this.parser.previous();
-            const right = this.unary();
+            const right = this.power(); // Changed from unary() to power()
 
             if (operatorToken.v === '/' || operatorToken.v === '%') {
                 if (right.type === "Literal" && right.value === 0) {
@@ -344,6 +505,31 @@ export class ExpressionParser {
 
             expr = {
                 type: "BinaryExpression",
+                start: expr.start,
+                end: right.end,
+                line: operatorToken.l,
+                operator: operatorToken.v,
+                left: expr,
+                right: right
+            };
+        }
+
+        return expr;
+    }
+
+    // Level 7.5: Power (^) - New
+    power() {
+        let expr = this.unary();
+
+        while (this.parser.match(TokenType.CARET)) {
+            const operatorToken = this.parser.previous();
+            const right = this.unary();
+
+            expr = {
+                type: "BinaryExpression",
+                start: expr.start,
+                end: right.end,
+                line: operatorToken.l,
                 operator: operatorToken.v,
                 left: expr,
                 right: right
@@ -361,6 +547,9 @@ export class ExpressionParser {
 
             return {
                 type: "UnaryExpression",
+                start: operatorToken.s,
+                end: right.end,
+                line: operatorToken.l,
                 operator: operatorToken.v,
                 argument: right
             };
@@ -368,24 +557,46 @@ export class ExpressionParser {
 
         // inspect <expr>
         if (this.parser.match(TokenType.INSPECT)) {
+            const startToken = this.parser.previous();
             const right = this.unary();
-            return { type: "InspectExpression", argument: right };
+            return { 
+                type: "InspectExpression", 
+                start: startToken.s,
+                end: right.end,
+                line: startToken.l,
+                argument: right 
+            };
         }
 
         // pack <expr>
         if (this.parser.match(TokenType.PACK)) {
+            const startToken = this.parser.previous();
             const right = this.unary();
-            return { type: "PackExpression", argument: right };
+            return { 
+                type: "PackExpression", 
+                start: startToken.s,
+                end: right.end,
+                line: startToken.l,
+                argument: right 
+            };
         }
 
         // unpack <expr>
         if (this.parser.match(TokenType.UNPACK)) {
+            const startToken = this.parser.previous();
             const right = this.unary();
-            return { type: "UnpackExpression", argument: right };
+            return { 
+                type: "UnpackExpression", 
+                start: startToken.s,
+                end: right.end,
+                line: startToken.l,
+                argument: right 
+            };
         }
 
         // size of <expr>
         if (this.parser.match(TokenType.SIZE)) {
+            const startToken = this.parser.previous();
             this.parser.consume(TokenType.OF, "Expect 'of' after 'size'.");
             const right = this.unary();
             
@@ -394,14 +605,27 @@ export class ExpressionParser {
                  throw this.parser.addError(this.parser.previous(), "Cannot get size of primitive types");
             }
 
-            return { type: "SizeOfExpression", argument: right };
+            return { 
+                type: "SizeOfExpression", 
+                start: startToken.s,
+                end: right.end,
+                line: startToken.l,
+                argument: right 
+            };
         }
 
         // type of <expr>
         if (this.parser.match(TokenType.TYPE)) {
+            const startToken = this.parser.previous();
             this.parser.consume(TokenType.OF, "Expect 'of' after 'type'.");
             const right = this.unary();
-            return { type: "TypeOfExpression", argument: right };
+            return { 
+                type: "TypeOfExpression", 
+                start: startToken.s,
+                end: right.end,
+                line: startToken.l,
+                argument: right 
+            };
         }
 
         return this.cast();
@@ -414,6 +638,10 @@ export class ExpressionParser {
         while(this.parser.match(TokenType.AS)) {
             const asToken = this.parser.previous();
             const typeInfo = this.parser.parseType(); 
+            // Note: parseType doesn't return a Node, so it doesn't have an end.
+            // But if it was a generic, it consumed RANGLE.
+            // We need to approximate the end from previous token.
+            const endToken = this.parser.previous();
             
             let fromType = this.parser.inferType(expr);
             const toType = typeInfo.name;
@@ -475,6 +703,9 @@ export class ExpressionParser {
 
             expr = {
                 type: "CastExpression",
+                start: expr.start,
+                end: endToken.e,
+                line: asToken.l,
                 value: expr,
                 targetType: typeInfo
             };
@@ -485,22 +716,50 @@ export class ExpressionParser {
 
     // Level 9: Primary (Atomic values)
     primary() {
-        if (this.parser.match(TokenType.FALSE)) return { type: "Literal", value: false };
-        if (this.parser.match(TokenType.TRUE)) return { type: "Literal", value: true };
-        if (this.parser.match(TokenType.TYPE_NULL)) return { type: "Literal", value: null };
+        if (this.parser.match(TokenType.FALSE)) {
+            const t = this.parser.previous();
+            return { type: "Literal", value: false, start: t.s, end: t.e, line: t.l };
+        }
+        if (this.parser.match(TokenType.TRUE)) {
+            const t = this.parser.previous();
+            return { type: "Literal", value: true, start: t.s, end: t.e, line: t.l };
+        }
+        if (this.parser.match(TokenType.TYPE_NULL)) {
+            const t = this.parser.previous();
+            return { type: "Literal", value: null, start: t.s, end: t.e, line: t.l };
+        }
 
         if (this.parser.match(TokenType.MAGIC_VAR)) {
-            // FIX: Capture the line number from the token
             const token = this.parser.previous();
-            return { type: "MagicVariable", name: token.v, line: token.l };
+            return { 
+                type: "MagicVariable", 
+                start: token.s,
+                end: token.e,
+                line: token.l,
+                name: token.v
+            };
         }
 
         if (this.parser.match(TokenType.NUMBER)) {
-            return { type: "Literal", value: parseFloat(this.parser.previous().v) };
+            const token = this.parser.previous();
+            return { 
+                type: "Literal", 
+                start: token.s,
+                end: token.e,
+                line: token.l,
+                value: parseFloat(token.v) 
+            };
         }
 
         if (this.parser.match(TokenType.STRING)) {
-            return { type: "Literal", value: this.parser.previous().v };
+            const token = this.parser.previous();
+            return { 
+                type: "Literal", 
+                start: token.s,
+                end: token.e,
+                line: token.l,
+                value: token.v 
+            };
         }
 
         if (this.parser.match(TokenType.LBRACKET)) {
@@ -508,19 +767,26 @@ export class ExpressionParser {
         }
 
         if (this.parser.match(TokenType.IDENTIFIER)) {
-            const name = this.parser.previous().v;
+            const token = this.parser.previous();
+            const name = token.v;
             
             const symbol = this.parser.getVariable(name);
             if (!symbol) {
-                throw this.parser.addError(this.parser.previous(), "Undefined variable.");
+                throw this.parser.addError(token, "Undefined variable.");
             }
 
             let expr;
 
             if (this.parser.match(TokenType.LPAREN)) {
-                expr = this.finishCall(name);
+                expr = this.finishCall(name, token);
             } else {
-                expr = { type: "Variable", name: name };
+                expr = { 
+                    type: "Variable", 
+                    start: token.s,
+                    end: token.e,
+                    line: token.l,
+                    name: name 
+                };
             }
 
             while (this.parser.match(TokenType.LBRACKET)) {
@@ -531,18 +797,33 @@ export class ExpressionParser {
         }
 
         if (this.parser.match(TokenType.LPAREN)) {
+            const startToken = this.parser.previous();
             const expr = this.parse(); 
-            this.parser.consume(TokenType.RPAREN, "Expect ')' after expression.");
-            return { type: "Grouping", expression: expr };
+            const endToken = this.parser.consume(TokenType.RPAREN, "Expect ')' after expression.");
+            return { 
+                type: "Grouping", 
+                start: startToken.s,
+                end: endToken.e,
+                line: startToken.l,
+                expression: expr 
+            };
         }
 
         throw this.parser.addError(this.parser.peek(), "Expect expression.");
     }
 
     collectionLiteral() {
+        const startToken = this.parser.previous(); // LBRACKET
+
         if (this.parser.check(TokenType.RBRACKET)) {
-            this.parser.consume(TokenType.RBRACKET, "Compiler error");
-            return { type: "ListLiteral", elements: [] };
+            const endToken = this.parser.consume(TokenType.RBRACKET, "Compiler error");
+            return { 
+                type: "ListLiteral", 
+                start: startToken.s,
+                end: endToken.e,
+                line: startToken.l,
+                elements: [] 
+            };
         }
 
         const firstExpr = this.parse();
@@ -560,8 +841,14 @@ export class ExpressionParser {
                 entries.push({ key: key, value: value });
             }
 
-            this.parser.consume(TokenType.RBRACKET, "Expect ']' after map literal.");
-            return { type: "MapLiteral", entries: entries };
+            const endToken = this.parser.consume(TokenType.RBRACKET, "Expect ']' after map literal.");
+            return { 
+                type: "MapLiteral", 
+                start: startToken.s,
+                end: endToken.e,
+                line: startToken.l,
+                entries: entries 
+            };
         }
 
         const elements = [firstExpr];
@@ -570,12 +857,17 @@ export class ExpressionParser {
             elements.push(this.parse());
         }
 
-        this.parser.consume(TokenType.RBRACKET, "Expect ']' after list literal.");
-        return { type: "ListLiteral", elements: elements };
+        const endToken = this.parser.consume(TokenType.RBRACKET, "Expect ']' after list literal.");
+        return { 
+            type: "ListLiteral", 
+            start: startToken.s,
+            end: endToken.e,
+            line: startToken.l,
+            elements: elements 
+        };
     }
 
-    finishCall(calleeName) {
-        // Track that this function is used
+    finishCall(calleeName, calleeToken) {
         this.parser.markFunctionUsed(calleeName);
 
         const args = [];
@@ -585,10 +877,13 @@ export class ExpressionParser {
             } while (this.parser.match(TokenType.COMMA));
         }
 
-        this.parser.consume(TokenType.RPAREN, "Expect ')' after arguments.");
+        const endToken = this.parser.consume(TokenType.RPAREN, "Expect ')' after arguments.");
 
         return {
             type: "CallExpression",
+            start: calleeToken.s,
+            end: endToken.e,
+            line: calleeToken.l,
             callee: calleeName,
             arguments: args
         };
@@ -600,10 +895,13 @@ export class ExpressionParser {
             index = this.parse();
         }
 
-        this.parser.consume(TokenType.RBRACKET, "Expect ']' after index.");
+        const endToken = this.parser.consume(TokenType.RBRACKET, "Expect ']' after index.");
 
         return {
             type: "IndexExpression",
+            start: objectExpr.start,
+            end: endToken.e,
+            line: objectExpr.line,
             object: objectExpr,
             index: index
         };
