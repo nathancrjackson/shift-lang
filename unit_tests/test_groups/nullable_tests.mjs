@@ -150,4 +150,76 @@ export const nullable_tests = {
     return result;
 }`
     }
+,
+    "Null index on non-list error":
+    {
+        "tests": [{ type: "parser_error", expect: "Cannot access index on nullable that is not a list." }],
+        "code":
+`function start() number
+{
+    nullable<number> our_nullable = null;
+    number result = our_nullable[0];
+    return result;
+}`
+    }
+,
+    "Null index on map error":
+    {
+        "tests": [{ type: "parser_error", expect: "Cannot access index on nullable that is not a list." }],
+        "code":
+`function start() number
+{
+    nullable<map<number>> our_nullable = null;
+    number result = our_nullable[0];
+    return result;
+}`
+    }
+,
+    "Null index on list error":
+    {
+        "tests": [{ call: "start()", type: "runtime_error", expect: "Cannot access index on null value." }],
+        "code":
+`function start() number
+{
+    nullable<list<number>> our_nullable = null;
+    number result = our_nullable[0];
+    return result;
+}`
+    }
+,
+    "Null key on non-map error":
+    {
+        "tests": [{ type: "parser_error", expect: "Cannot access key on nullable that is not a map." }],
+        "code":
+`function start() number
+{
+    nullable<number> our_nullable = null;
+    number result = our_nullable["key"];
+    return result;
+}`
+    }
+,
+    "Null key on list error":
+    {
+        "tests": [{ type: "parser_error", expect: "Cannot access key on nullable that is not a map." }],
+        "code":
+`function start() number
+{
+    nullable<list<number>> our_nullable = null;
+    number result = our_nullable["key"];
+    return result;
+}`
+    }
+,
+    "Null key on map error":
+    {
+        "tests": [{ call: "start()", type: "runtime_error", expect: "Cannot access key on null value." }],
+        "code":
+`function start() number
+{
+    nullable<map<number>> our_nullable = null;
+    number result = our_nullable["key"];
+    return result;
+}`
+    }
 };
