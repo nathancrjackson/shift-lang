@@ -40,17 +40,17 @@ function create_dt_struct(date) {
     dt.set("second", date.getSeconds());
     dt.set("millisecond", date.getMilliseconds());
     dt.set("offset_minutes", date.getTimezoneOffset());
-    
+
     // Simple timezone extraction (heuristic)
     try {
-        const str = date.toString(); 
+        const str = date.toString();
         // e.g. "Mon Jan 19 2026 10:55:00 GMT+1100 (Australian Eastern Daylight Time)"
         const match = str.match(/\(([^)]+)\)$/);
         dt.set("timezone", match ? match[1] : "UTC");
-    } catch(e) {
+    } catch (e) {
         dt.set("timezone", "UTC");
     }
-    
+
     return dt;
 }
 
@@ -91,13 +91,15 @@ export const StandardLibrary = {
 
     // 2. Intrinsics (Native JS Implementations)
     intrinsics: {
-        "print_line": { 
-            returnType: "none", 
-            func: (args, runtime) => { console.log(args[0]); return null; } 
+        "print_line": {
+            returnType: "none",
+            params: [{ name: "val", type: "any" }],
+            func: (args, runtime) => { console.log(args[0]); return null; }
         },
         "convert_jsonstring_to_map": {
             returnType: "map",
             generic: "any",
+            params: [{ name: "json", type: "string" }],
             func: (args) => {
                 let json;
                 try {
@@ -114,6 +116,7 @@ export const StandardLibrary = {
         "convert_jsonstring_to_list": {
             returnType: "list",
             generic: "any",
+            params: [{ name: "json", type: "string" }],
             func: (args) => {
                 let json;
                 try {
@@ -129,6 +132,7 @@ export const StandardLibrary = {
         },
         "convert_map_to_jsonstring": {
             returnType: "string",
+            params: [{ name: "m", type: "map", generic: "any" }],
             func: (args) => {
                 const val = args[0];
                 if (!(val instanceof Map)) {
@@ -139,6 +143,7 @@ export const StandardLibrary = {
         },
         "convert_list_to_jsonstring": {
             returnType: "string",
+            params: [{ name: "l", type: "list", generic: "any" }],
             func: (args) => {
                 const val = args[0];
                 if (!Array.isArray(val)) {
@@ -147,17 +152,22 @@ export const StandardLibrary = {
                 return JSON.stringify(toJS(val));
             }
         },
-        
+
         // Random
         "generate_randomnumber": {
             returnType: "number",
+            params: [],
             func: (args) => Math.random()
         },
         "generate_randomint_from_range": {
             returnType: "number",
+            params: [{ name: "min", type: "number" }, { name: "max", type: "number" }],
             func: (args) => {
                 const min = Math.ceil(args[0]);
                 const max = Math.floor(args[1]);
+                if (typeof min !== 'number' || typeof max !== 'number' || isNaN(min) || isNaN(max)) {
+                    throw new Error("Runtime Error: Random range must be numbers.");
+                }
                 return Math.floor(Math.random() * (max - min + 1)) + min;
             }
         },
@@ -165,22 +175,27 @@ export const StandardLibrary = {
         // DateTime Intrinsics
         "get_datetime": {
             returnType: "DateTime",
+            params: [],
             func: (args) => create_dt_struct(new Date())
         },
         "get_datetime_as_unixtime": {
             returnType: "number",
+            params: [],
             func: (args) => Math.floor(Date.now() / 1000)
         },
         "get_datetime_as_iso8601": {
             returnType: "string",
+            params: [],
             func: (args) => new Date().toISOString()
         },
         "convert_unixtime_to_datetime": {
             returnType: "DateTime",
+            params: [{ name: "ts", type: "number" }],
             func: (args) => create_dt_struct(new Date(args[0] * 1000))
         },
         "convert_iso8601_to_datetime": {
             returnType: "DateTime",
+            params: [{ name: "iso", type: "string" }],
             func: (args) => {
                 const d = new Date(args[0]);
                 if (isNaN(d.getTime())) throw new Error("Runtime Error: Invalid ISO8601 date string.");
@@ -189,10 +204,11 @@ export const StandardLibrary = {
         },
         "convert_datetime_to_unixtime": {
             returnType: "number",
+            params: [{ name: "dt", type: "DateTime" }],
             func: (args) => {
                 const dt = args[0];
                 if (!(dt instanceof Map)) throw new Error("Runtime Error: Expected DateTime struct.");
-                
+
                 // Construct Date object from struct fields
                 // Note: JS Date(year, monthIndex, day, hours, minutes, seconds, milliseconds)
                 const d = new Date(
@@ -209,10 +225,11 @@ export const StandardLibrary = {
         },
         "convert_datetime_to_iso8601": {
             returnType: "string",
+            params: [{ name: "dt", type: "DateTime" }],
             func: (args) => {
                 const dt = args[0];
                 if (!(dt instanceof Map)) throw new Error("Runtime Error: Expected DateTime struct.");
-                
+
                 const d = new Date(
                     dt.get("year"),
                     dt.get("month") - 1,
@@ -229,66 +246,94 @@ export const StandardLibrary = {
         // Math Intrinsics
         "calc_sqrt": {
             returnType: "number",
-            func: (args) => Math.sqrt(args[0])
+            params: [{ name: "n", type: "number" }],
+            func: (args) => {
+                if (typeof args[0] !== 'number') throw new Error("Runtime Error: calc_sqrt expects number.");
+                return Math.sqrt(args[0]);
+            }
         },
         "calc_log10": {
             returnType: "number",
-            func: (args) => Math.log10(args[0])
+            params: [{ name: "n", type: "number" }],
+            func: (args) => {
+                if (typeof args[0] !== 'number') throw new Error("Runtime Error: calc_log10 expects number.");
+                return Math.log10(args[0]);
+            }
         },
         "calc_natlog": {
             returnType: "number",
-            func: (args) => Math.log(args[0])
+            params: [{ name: "n", type: "number" }],
+            func: (args) => {
+                if (typeof args[0] !== 'number') throw new Error("Runtime Error: calc_natlog expects number.");
+                return Math.log(args[0]);
+            }
         },
         "round_number": {
             returnType: "number",
+            params: [{ name: "n", type: "number" }],
             func: (args) => Math.round(args[0])
         },
         "round_number_up": {
             returnType: "number",
+            params: [{ name: "n", type: "number" }],
             func: (args) => Math.ceil(args[0])
         },
         "round_number_down": {
             returnType: "number",
+            params: [{ name: "n", type: "number" }],
             func: (args) => Math.floor(args[0])
         },
         "calc_absolute": {
             returnType: "number",
+            params: [{ name: "n", type: "number" }],
             func: (args) => Math.abs(args[0])
         },
         "calc_sin": {
             returnType: "number",
+            params: [{ name: "n", type: "number" }],
             func: (args) => Math.sin(args[0])
         },
         "calc_cos": {
             returnType: "number",
+            params: [{ name: "n", type: "number" }],
             func: (args) => Math.cos(args[0])
         },
         "calc_tan": {
             returnType: "number",
+            params: [{ name: "n", type: "number" }],
             func: (args) => Math.tan(args[0])
         },
         "calc_asin": {
             returnType: "number",
+            params: [{ name: "n", type: "number" }],
             func: (args) => Math.asin(args[0])
         },
         "calc_acos": {
             returnType: "number",
+            params: [{ name: "n", type: "number" }],
             func: (args) => Math.acos(args[0])
         },
         "calc_atan": {
             returnType: "number",
-            func: (args) => Math.atan(args[0])
+            params: [{ name: "n", type: "number" }],
+            func: (args) => {
+                if (typeof args[0] !== 'number') throw new Error("Runtime Error: calc_atan expects number.");
+                return Math.atan(args[0]);
+            }
         },
         "calc_atan2": {
             returnType: "number",
+            params: [{ name: "y", type: "number" }, { name: "x", type: "number" }],
             func: (args) => Math.atan2(args[0], args[1])
         },
         "convert_deg_to_rad": {
             returnType: "number",
+            params: [{ name: "deg", type: "number" }],
             func: (args) => args[0] * (Math.PI / 180)
         },
         "convert_rad_to_deg": {
             returnType: "number",
+            params: [{ name: "rad", type: "number" }],
             func: (args) => args[0] * (180 / Math.PI)
         }
 
@@ -380,11 +425,11 @@ function trim_string(string input_str) string {
                     typeObj.generic = { type: "Type", name: f.generic, generic: null };
                 }
                 if (f.type === "nullable" && f.generic) {
-                     typeObj = { 
-                         type: "Type", 
-                         name: "nullable", 
-                         generic: { type: "Type", name: f.generic, generic: null } 
-                     };
+                    typeObj = {
+                        type: "Type",
+                        name: "nullable",
+                        generic: { type: "Type", name: f.generic, generic: null }
+                    };
                 }
                 return { name: f.name, type: typeObj };
             });
@@ -392,7 +437,7 @@ function trim_string(string input_str) string {
         });
 
         for (const [name, def] of Object.entries(this.intrinsics)) {
-            let typeObj = { type: "Type", name: def.returnType, generic: null, initialized: true };
+            let typeObj = { type: "Type", name: def.returnType, generic: null, initialized: true, params: def.params || [] };
             if (def.generic) {
                 typeObj.generic = { type: "Type", name: def.generic, generic: null };
             }

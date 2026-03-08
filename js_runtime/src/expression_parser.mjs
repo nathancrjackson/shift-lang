@@ -2,7 +2,7 @@ import { TokenType } from './token_enums.mjs';
 
 export class ExpressionParser {
     constructor(parser) {
-        this.parser = parser; 
+        this.parser = parser;
     }
 
     parse() {
@@ -28,21 +28,21 @@ export class ExpressionParser {
                 // USE CENTRALIZED VALIDATION
                 try {
                     this.parser.validateAssignment(varType, value, equalsToken);
-                } catch(e) {
+                } catch (e) {
                     // Errors already added by validator
                 }
-                
-                return { 
-                    type: "Assignment", 
+
+                return {
+                    type: "Assignment",
                     start: expr.start,
                     end: value.end,
                     line: equalsToken.l,
-                    name: varName, 
-                    value: value 
+                    name: varName,
+                    value: value
                 };
             }
             else if (expr.type === "IndexExpression") {
-                
+
                 let depth = 0;
                 let root = expr;
 
@@ -58,48 +58,48 @@ export class ExpressionParser {
 
                     // --- STRUCT VALIDATION ---
                     if (varType && varType.type === "StructType") {
-                         // Validate assignment to a struct field
-                         
-                         const containerTypeName = this.parser.inferType(expr.object);
-                         
-                         if (this.parser.structDefinitions.has(containerTypeName)) {
-                             const def = this.parser.structDefinitions.get(containerTypeName);
-                             
-                             // 1. Validate Key (Must be literal string)
-                             if (expr.index.type !== "Literal" || typeof expr.index.value !== "string") {
-                                 throw this.parser.addError(equalsToken, "Struct keys must be string literals.");
-                             }
-                             
-                             const fieldName = expr.index.value;
-                             const field = def.fields.find(f => f.name === fieldName);
-                             
-                             // 2. Validate Schema Existence
-                             if (!field) {
-                                 throw this.parser.addError(expr.index, "Cannot set Struct element that is not in its defined schema");
-                             }
+                        // Validate assignment to a struct field
 
-                             // 3. IMMUTABILITY CHECK
-                             if (field.name.startsWith('$')) {
-                                 throw this.parser.addError(equalsToken, `Cannot assign to immutable field '${field.name}'.`);
-                             }
-                             
-                             // 4. Validate Value Type (USING CENTRALIZED LOGIC)
-                             // Note: Field type is the target, value is the expression
-                             try {
-                                 // Struct fields expect specific message if type check fails
-                                 this.parser.validateAssignment(field.type, value, equalsToken, "Struct field type mismatch.");
-                             } catch(e) {
-                                 // Suppress internal throw
-                             }
-                         }
+                        const containerTypeName = this.parser.inferType(expr.object);
+
+                        if (this.parser.structDefinitions.has(containerTypeName)) {
+                            const def = this.parser.structDefinitions.get(containerTypeName);
+
+                            // 1. Validate Key (Must be literal string)
+                            if (expr.index.type !== "Literal" || typeof expr.index.value !== "string") {
+                                throw this.parser.addError(equalsToken, "Struct keys must be string literals.");
+                            }
+
+                            const fieldName = expr.index.value;
+                            const field = def.fields.find(f => f.name === fieldName);
+
+                            // 2. Validate Schema Existence
+                            if (!field) {
+                                throw this.parser.addError(expr.index, "Cannot set Struct element that is not in its defined schema");
+                            }
+
+                            // 3. IMMUTABILITY CHECK
+                            if (field.name.startsWith('$')) {
+                                throw this.parser.addError(equalsToken, `Cannot assign to immutable field '${field.name}'.`);
+                            }
+
+                            // 4. Validate Value Type (USING CENTRALIZED LOGIC)
+                            // Note: Field type is the target, value is the expression
+                            try {
+                                // Struct fields expect specific message if type check fails
+                                this.parser.validateAssignment(field.type, value, equalsToken, "Struct field type mismatch.");
+                            } catch (e) {
+                                // Suppress internal throw
+                            }
+                        }
                     }
                     // --- END STRUCT VALIDATION ---
 
                     else if (varType && varType.generic) {
-                        
+
                         let currentGeneric = varType.generic;
                         let currentDepth = depth;
-                        
+
                         while (currentDepth > 1 && currentGeneric && currentGeneric.generic) {
                             currentGeneric = currentGeneric.generic;
                             currentDepth--;
@@ -119,25 +119,25 @@ export class ExpressionParser {
                         // VALUE TYPE CHECK (USING CENTRALIZED LOGIC)
                         // The target type is 'currentGeneric' (the type held inside the list/map)
                         try {
-                            const errorMsg = varType.name === "map" 
-                                ? "Map value type mismatch." 
+                            const errorMsg = varType.name === "map"
+                                ? "Map value type mismatch."
                                 : "List variable assignment type mismatch.";
-                                
+
                             this.parser.validateAssignment(currentGeneric, value, equalsToken, errorMsg);
                         } catch (e) {
                             // Suppress internal throw, errors are in parser.errors
                         }
                     }
                 }
-                
-                return { 
-                    type: "IndexAssignment", 
+
+                return {
+                    type: "IndexAssignment",
                     start: expr.start,
                     end: value.end,
                     line: equalsToken.l,
-                    object: expr.object, 
-                    index: expr.index, 
-                    value: value 
+                    object: expr.object,
+                    index: expr.index,
+                    value: value
                 };
             }
 
@@ -149,11 +149,11 @@ export class ExpressionParser {
 
     // Level 0.5: Pipeline (|)
     pipeline() {
-        let expr = this.nullCoalescing(); 
+        let expr = this.nullCoalescing();
 
         while (this.parser.match(TokenType.PIPE)) {
             const operatorToken = this.parser.previous();
-            const right = this.nullCoalescing(); 
+            const right = this.nullCoalescing();
 
             expr = {
                 type: "PipelineExpression",
@@ -271,11 +271,11 @@ export class ExpressionParser {
             if (leftType !== "any" && rightType !== "any") {
                 let match = false;
                 if (leftType === rightType) match = true;
-                if (leftType === "null" || rightType === "null") match = true; 
+                if (leftType === "null" || rightType === "null") match = true;
                 if (leftType === "nullable" || rightType === "nullable") match = true;
 
                 if (!match) {
-                     throw this.parser.addError(operatorToken, `Cannot compare different types: ${leftType} and ${rightType}`);
+                    throw this.parser.addError(operatorToken, `Cannot compare different types: ${leftType} and ${rightType}`);
                 }
             }
 
@@ -298,12 +298,12 @@ export class ExpressionParser {
     comparison() {
         let expr = this.concatenation();
 
-        while (this.parser.match(TokenType.LANGLE) || this.parser.match(TokenType.RANGLE) || 
+        while (this.parser.match(TokenType.LANGLE) || this.parser.match(TokenType.RANGLE) ||
             this.parser.match(TokenType.LESS_EQUAL) || this.parser.match(TokenType.GREATER_EQUAL) ||
             this.parser.match(TokenType.HAS) || this.parser.match(TokenType.SEARCH) ||
             this.parser.match(TokenType.CONTAINS) || this.parser.match(TokenType.IS) ||
             this.parser.match(TokenType.REPLACE) || this.parser.match(TokenType.SPLIT) || this.parser.match(TokenType.JOINED) ||
-            this.parser.match(TokenType.MATCHES) 
+            this.parser.match(TokenType.MATCHES)
         ) {
             const operatorToken = this.parser.previous();
 
@@ -316,7 +316,7 @@ export class ExpressionParser {
 
                 let checkType = "";
                 let endPos = operatorToken.e;
-                
+
                 // Match type keywords (string, number) OR identifiers (alpha, email)
                 if (this.parser.matchTypeKeyword()) {
                     const tok = this.parser.advance();
@@ -383,7 +383,7 @@ export class ExpressionParser {
             if (operatorToken.t === TokenType.CONTAINS) {
                 const leftType = this.parser.inferType(expr);
                 if (leftType !== "any" && leftType !== "list" && leftType !== "string") {
-                     // We allow list or string for 'contains'
+                    // We allow list or string for 'contains'
                 }
             }
 
@@ -469,7 +469,7 @@ export class ExpressionParser {
 
     // Level 6: Term (+, -) 
     term() {
-        let expr = this.factor(); 
+        let expr = this.factor();
 
         while (this.parser.match(TokenType.PLUS) || this.parser.match(TokenType.MINUS)) {
             const operatorToken = this.parser.previous();
@@ -559,12 +559,12 @@ export class ExpressionParser {
         if (this.parser.match(TokenType.INSPECT)) {
             const startToken = this.parser.previous();
             const right = this.unary();
-            return { 
-                type: "InspectExpression", 
+            return {
+                type: "InspectExpression",
                 start: startToken.s,
                 end: right.end,
                 line: startToken.l,
-                argument: right 
+                argument: right
             };
         }
 
@@ -572,12 +572,12 @@ export class ExpressionParser {
         if (this.parser.match(TokenType.PACK)) {
             const startToken = this.parser.previous();
             const right = this.unary();
-            return { 
-                type: "PackExpression", 
+            return {
+                type: "PackExpression",
                 start: startToken.s,
                 end: right.end,
                 line: startToken.l,
-                argument: right 
+                argument: right
             };
         }
 
@@ -585,12 +585,12 @@ export class ExpressionParser {
         if (this.parser.match(TokenType.UNPACK)) {
             const startToken = this.parser.previous();
             const right = this.unary();
-            return { 
-                type: "UnpackExpression", 
+            return {
+                type: "UnpackExpression",
                 start: startToken.s,
                 end: right.end,
                 line: startToken.l,
-                argument: right 
+                argument: right
             };
         }
 
@@ -599,18 +599,18 @@ export class ExpressionParser {
             const startToken = this.parser.previous();
             this.parser.consume(TokenType.OF, "Expect 'of' after 'size'.");
             const right = this.unary();
-            
+
             const argType = this.parser.inferType(right);
             if (["number", "bool", "null", "none", "nullable"].includes(argType)) {
-                 throw this.parser.addError(this.parser.previous(), "Cannot get size of primitive types");
+                throw this.parser.addError(this.parser.previous(), "Cannot get size of primitive types");
             }
 
-            return { 
-                type: "SizeOfExpression", 
+            return {
+                type: "SizeOfExpression",
                 start: startToken.s,
                 end: right.end,
                 line: startToken.l,
-                argument: right 
+                argument: right
             };
         }
 
@@ -619,12 +619,12 @@ export class ExpressionParser {
             const startToken = this.parser.previous();
             this.parser.consume(TokenType.OF, "Expect 'of' after 'type'.");
             const right = this.unary();
-            return { 
-                type: "TypeOfExpression", 
+            return {
+                type: "TypeOfExpression",
                 start: startToken.s,
                 end: right.end,
                 line: startToken.l,
-                argument: right 
+                argument: right
             };
         }
 
@@ -635,14 +635,14 @@ export class ExpressionParser {
     cast() {
         let expr = this.primary();
 
-        while(this.parser.match(TokenType.AS)) {
+        while (this.parser.match(TokenType.AS)) {
             const asToken = this.parser.previous();
-            const typeInfo = this.parser.parseType(); 
+            const typeInfo = this.parser.parseType();
             // Note: parseType doesn't return a Node, so it doesn't have an end.
             // But if it was a generic, it consumed RANGLE.
             // We need to approximate the end from previous token.
             const endToken = this.parser.previous();
-            
+
             let fromType = this.parser.inferType(expr);
             const toType = typeInfo.name;
 
@@ -664,7 +664,7 @@ export class ExpressionParser {
                 checkTo = typeInfo.generic.name;
             }
 
-            if (checkFrom !== "any" && checkTo !== "any") { 
+            if (checkFrom !== "any" && checkTo !== "any") {
                 const fromName = fromType === "nullable" && fromGeneric ? `nullable<${fromGeneric}>` : fromType;
 
                 if (checkFrom === "bool") {
@@ -674,8 +674,8 @@ export class ExpressionParser {
 
                 if (checkFrom === "number") {
                     if (checkTo === "list") {
-                         const sub = typeInfo.generic ? typeInfo.generic.name : "unknown";
-                         throw this.parser.addError(asToken, `Cannot cast from ${fromName} to list<${sub}>`);
+                        const sub = typeInfo.generic ? typeInfo.generic.name : "unknown";
+                        throw this.parser.addError(asToken, `Cannot cast from ${fromName} to list<${sub}>`);
                     }
                     if (checkTo === "map") throw this.parser.addError(asToken, `Error cannot cast from ${fromName} to map`);
                 }
@@ -731,8 +731,8 @@ export class ExpressionParser {
 
         if (this.parser.match(TokenType.MAGIC_VAR)) {
             const token = this.parser.previous();
-            return { 
-                type: "MagicVariable", 
+            return {
+                type: "MagicVariable",
                 start: token.s,
                 end: token.e,
                 line: token.l,
@@ -742,23 +742,23 @@ export class ExpressionParser {
 
         if (this.parser.match(TokenType.NUMBER)) {
             const token = this.parser.previous();
-            return { 
-                type: "Literal", 
+            return {
+                type: "Literal",
                 start: token.s,
                 end: token.e,
                 line: token.l,
-                value: parseFloat(token.v) 
+                value: parseFloat(token.v)
             };
         }
 
         if (this.parser.match(TokenType.STRING)) {
             const token = this.parser.previous();
-            return { 
-                type: "Literal", 
+            return {
+                type: "Literal",
                 start: token.s,
                 end: token.e,
                 line: token.l,
-                value: token.v 
+                value: token.v
             };
         }
 
@@ -769,7 +769,7 @@ export class ExpressionParser {
         if (this.parser.match(TokenType.IDENTIFIER)) {
             const token = this.parser.previous();
             const name = token.v;
-            
+
             const symbol = this.parser.getVariable(name);
             if (!symbol) {
                 throw this.parser.addError(token, "Undefined variable.");
@@ -780,12 +780,12 @@ export class ExpressionParser {
             if (this.parser.match(TokenType.LPAREN)) {
                 expr = this.finishCall(name, token);
             } else {
-                expr = { 
-                    type: "Variable", 
+                expr = {
+                    type: "Variable",
                     start: token.s,
                     end: token.e,
                     line: token.l,
-                    name: name 
+                    name: name
                 };
             }
 
@@ -798,14 +798,14 @@ export class ExpressionParser {
 
         if (this.parser.match(TokenType.LPAREN)) {
             const startToken = this.parser.previous();
-            const expr = this.parse(); 
+            const expr = this.parse();
             const endToken = this.parser.consume(TokenType.RPAREN, "Expect ')' after expression.");
-            return { 
-                type: "Grouping", 
+            return {
+                type: "Grouping",
                 start: startToken.s,
                 end: endToken.e,
                 line: startToken.l,
-                expression: expr 
+                expression: expr
             };
         }
 
@@ -817,20 +817,20 @@ export class ExpressionParser {
 
         if (this.parser.check(TokenType.RBRACKET)) {
             const endToken = this.parser.consume(TokenType.RBRACKET, "Compiler error");
-            return { 
-                type: "ListLiteral", 
+            return {
+                type: "ListLiteral",
                 start: startToken.s,
                 end: endToken.e,
                 line: startToken.l,
-                elements: [] 
+                elements: []
             };
         }
 
         const firstExpr = this.parse();
-        
+
         if (this.parser.match(TokenType.COLON)) {
             const entries = [];
-            
+
             const firstValue = this.parse();
             entries.push({ key: firstExpr, value: firstValue });
 
@@ -842,12 +842,12 @@ export class ExpressionParser {
             }
 
             const endToken = this.parser.consume(TokenType.RBRACKET, "Expect ']' after map literal.");
-            return { 
-                type: "MapLiteral", 
+            return {
+                type: "MapLiteral",
                 start: startToken.s,
                 end: endToken.e,
                 line: startToken.l,
-                entries: entries 
+                entries: entries
             };
         }
 
@@ -858,12 +858,12 @@ export class ExpressionParser {
         }
 
         const endToken = this.parser.consume(TokenType.RBRACKET, "Expect ']' after list literal.");
-        return { 
-            type: "ListLiteral", 
+        return {
+            type: "ListLiteral",
             start: startToken.s,
             end: endToken.e,
             line: startToken.l,
-            elements: elements 
+            elements: elements
         };
     }
 
@@ -873,11 +873,36 @@ export class ExpressionParser {
         const args = [];
         if (!this.parser.check(TokenType.RPAREN)) {
             do {
-                args.push(this.parse()); 
+                args.push(this.parse());
             } while (this.parser.match(TokenType.COMMA));
         }
 
         const endToken = this.parser.consume(TokenType.RPAREN, "Expect ')' after arguments.");
+
+        // --- CALL VALIDATION ---
+        const calleeVar = this.parser.getVariable(calleeName);
+        if (calleeVar && calleeVar.params) {
+            // 1. Check Argument Count
+            if (args.length !== calleeVar.params.length) {
+                this.parser.addError(calleeToken, `Function '${calleeName}' expects ${calleeVar.params.length} arguments but got ${args.length}.`);
+            } else {
+                // 2. Check Argument Types
+                for (let i = 0; i < args.length; i++) {
+                    const param = calleeVar.params[i];
+                    const arg = args[i];
+
+                    // Construct a type object compatible with validateAssignment
+                    const typeObj = { type: "Type", name: param.type, generic: param.generic };
+
+                    try {
+                        this.parser.validateAssignment(typeObj, arg, calleeToken, `Argument '${param.name}' expects type '${param.type}' in call to '${calleeName}'.`);
+                    } catch (e) {
+                        // generic validation error added by validationAssignment
+                    }
+                }
+            }
+        }
+        // --- END CALL VALIDATION ---
 
         return {
             type: "CallExpression",

@@ -1,35 +1,34 @@
-import {TokenType} from './token_enums.mjs';
+import { TokenType } from './token_enums.mjs';
 import { ExpressionParser } from './expression_parser.mjs';
 
-export class Parser
-{
-	constructor(tokens) {
-		this.tokens = tokens;
-		this.current = 0;
-		this.errors = [];
-		this.expressionParser = new ExpressionParser(this);
-        
-        this.currentReturnType = null; 
+export class Parser {
+    constructor(tokens) {
+        this.tokens = tokens;
+        this.current = 0;
+        this.errors = [];
+        this.expressionParser = new ExpressionParser(this);
+
+        this.currentReturnType = null;
         this.loopDepth = 0;
 
         this.scopes = [];
-        this.enterScope(); 
-        
+        this.enterScope();
+
         // Base types only. Standard Library types/structs must be loaded externally.
         this.knownTypes = new Set(["string", "number", "bool", "list", "map", "any", "null", "none", "nullable"]);
         this.structDefinitions = new Map();
-        
+
         // Tracking used functions for tree-shaking
         this.usedFunctions = new Set();
-	}
+    }
 
     markFunctionUsed(name) {
         this.usedFunctions.add(name);
     }
 
-	preScan() {
+    preScan() {
         const startPos = this.current;
-        
+
         // PASS 1: Struct Discovery
         this.current = 0;
         while (!this.isAtEnd()) {
@@ -64,37 +63,41 @@ export class Parser
     preParseFunction() {
         const nameToken = this.consume(TokenType.IDENTIFIER, "Expect function name.");
         this.consume(TokenType.LPAREN, "Expect '(' after function name.");
-        
-        // Parse parameters to advance the cursor past them correctly
+
+        const params = [];
+        // Parse parameters to advance the cursor past them correctly AND store them
         if (!this.check(TokenType.RPAREN)) {
             do {
-                this.parseType(); // Parse type (handles generics)
-                this.consume(TokenType.IDENTIFIER, "Expect parameter name.");
+                const typeInfo = this.parseType(); // Parse type (handles generics)
+                const paramName = this.consume(TokenType.IDENTIFIER, "Expect parameter name.");
+                params.push({ name: paramName.v, type: typeInfo.name, generic: typeInfo.generic });
             } while (this.match(TokenType.COMMA));
         }
-        
+
         this.consume(TokenType.RPAREN, "Expect ')' after parameters.");
 
         // Parse Return Type strictly with specific error messages
         const returnType = this.parseType("Expect function return type.", "Invalid function return type.");
-        
-        // Register the function with the CORRECT return type
-        this.defineVariable(nameToken.v, { 
-            type: "Type", 
-            name: returnType.name, 
-            initialized: true 
+
+        // Register the function with the CORRECT return type AND params
+        this.defineVariable(nameToken.v, {
+            type: "Type",
+            name: returnType.name,
+            generic: returnType.generic,
+            params: params,
+            initialized: true
         });
 
         this.consume(TokenType.LBRACE, "Expect '{' before function body.");
-        this.skipBlock(); 
+        this.skipBlock();
     }
 
     preParseStruct() {
         const nameToken = this.consume(TokenType.IDENTIFIER, "Expect struct name.");
-        this.knownTypes.add(nameToken.v); 
+        this.knownTypes.add(nameToken.v);
 
         this.consume(TokenType.LBRACKET, "Expect '[' to begin struct fields.");
-        this.skipList(); 
+        this.skipList();
     }
 
     skipBlock() {
@@ -115,12 +118,12 @@ export class Parser
         }
     }
 
-	inferType(expr, resolveNullable = false) {
+    inferType(expr, resolveNullable = false) {
         if (!expr) return "null";
 
         switch (expr.type) {
-			case "ListLiteral": return "list";
-            case "MapLiteral":  return "map";
+            case "ListLiteral": return "list";
+            case "MapLiteral": return "map";
 
             case "InspectExpression": return "InspectionResult"; // Hardcoded expectation of StdLib struct
             case "PackExpression": return "string";
@@ -139,11 +142,17 @@ export class Parser
 
             case "BinaryExpression":
                 if (["==", "!=", "<", ">", "<=", ">=", "and", "or", "xor", "has"].includes(expr.operator)) return "bool";
-                if (["-", "*", "/", "%", "+"].includes(expr.operator)) return "number";
+                if (["-", "*", "/", "%"].includes(expr.operator)) return "number";
+                if (expr.operator === "+") {
+                    const left = this.inferType(expr.left);
+                    const right = this.inferType(expr.right);
+                    if (left === "string" || right === "string") return "string";
+                    return "number";
+                }
                 if (expr.operator === "&") return "string";
                 if (expr.operator === "search") return "list";
                 return "any";
-            
+
             case "UnaryExpression":
                 if (expr.operator === "!" || expr.operator === "not") return "bool";
                 if (expr.operator === "-") return "number";
@@ -155,23 +164,23 @@ export class Parser
                 return "any";
 
             case "Variable":
-                 const varType = this.getVariable(expr.name);
-                 if (varType) return varType.name;
-                 return "any";
-            
+                const varType = this.getVariable(expr.name);
+                if (varType) return varType.name;
+                return "any";
+
             case "CastExpression":
                 return expr.targetType.name;
 
-			case "IndexExpression": {
-				let root = expr;
+            case "IndexExpression": {
+                let root = expr;
                 let chain = [];
-				while (root.type === "IndexExpression") {
-					chain.unshift(root.index); 
-					root = root.object;
-				}
+                while (root.type === "IndexExpression") {
+                    chain.unshift(root.index);
+                    root = root.object;
+                }
 
-				if (root.type === "Variable") {
-					let currentType = this.getVariable(root.name);
+                if (root.type === "Variable") {
+                    let currentType = this.getVariable(root.name);
                     if (!currentType) return "any";
 
                     let isResultNullable = false;
@@ -185,7 +194,7 @@ export class Parser
 
                         // 2. Unwrap Nullable
                         while (currentType.name === "nullable" && currentType.generic) {
-                             currentType = currentType.generic;
+                            currentType = currentType.generic;
                         }
 
                         // 3. Static Type Validation for Index Access
@@ -223,17 +232,17 @@ export class Parser
                                 if (field) {
                                     currentType = field.type;
                                 } else {
-                                    return "any"; 
+                                    return "any";
                                 }
                             } else {
-                                return "any"; 
+                                return "any";
                             }
-                        } 
+                        }
                         else {
-                            return "any"; 
+                            return "any";
                         }
                     }
-                    
+
                     // FIXED: If we encountered a nullable wrapper along the way, the result is nullable.
                     if (isResultNullable) {
                         if (resolveNullable) return currentType.name;
@@ -241,9 +250,9 @@ export class Parser
                     }
 
                     return currentType.name;
-				}
-				return "any";
-			}
+                }
+                return "any";
+            }
 
             default: return "any";
         }
@@ -252,7 +261,7 @@ export class Parser
     enterScope() { this.scopes.push(new Map()); }
     exitScope() { this.scopes.pop(); }
 
-	defineVariable(name, typeInfo, checkShadowing = false) {
+    defineVariable(name, typeInfo, checkShadowing = false) {
         if (this.scopes.length > 0) {
             if (checkShadowing) {
                 for (let i = this.scopes.length - 1; i > 0; i--) {
@@ -274,20 +283,20 @@ export class Parser
         return null;
     }
 
-	parse() {
-		const program = { 
-            type: "Program", 
+    parse() {
+        const program = {
+            type: "Program",
             start: this.tokens[0] ? this.tokens[0].s : 0,
             end: this.tokens[this.tokens.length - 1] ? this.tokens[this.tokens.length - 1].e : 0,
             line: 1,
-            structs: [], 
-            functions: [] 
+            structs: [],
+            functions: []
         };
 
         this.errors = [];
 
-		while (!this.isAtEnd()) {
-			try {
+        while (!this.isAtEnd()) {
+            try {
                 if (this.match(TokenType.STRUCT)) {
                     const structDecl = this.structDeclaration();
                     program.structs.push(structDecl);
@@ -298,12 +307,12 @@ export class Parser
                     this.addError(this.peek(), "Expect 'function' or 'struct' at top level.");
                     this.advance();
                 }
-			} catch (error) {
-				this.synchronize();
-			}
-		}
-		return { ast: program, errors: this.errors };
-	}
+            } catch (error) {
+                this.synchronize();
+            }
+        }
+        return { ast: program, errors: this.errors };
+    }
 
     structDeclaration() {
         const startToken = this.previous(); // STRUCT keyword
@@ -320,14 +329,14 @@ export class Parser
                 }
 
                 const typeInfo = this.parseType();
-                
+
                 let fieldNameToken;
                 if (this.match(TokenType.MAGIC_VAR)) {
                     fieldNameToken = this.previous();
                 } else {
                     fieldNameToken = this.consume(TokenType.IDENTIFIER, "Expect field name.");
                 }
-                
+
                 fields.push({
                     name: fieldNameToken.v,
                     type: typeInfo
@@ -350,37 +359,37 @@ export class Parser
         };
     }
 
-	functionDeclaration() {
+    functionDeclaration() {
         const startToken = this.previous(); // FUNCTION keyword
         const line = startToken.l;
 
-		const nameToken = this.consume(TokenType.IDENTIFIER, "Expect function name.");
-		this.consume(TokenType.LPAREN, "Expect '(' after function name.");
+        const nameToken = this.consume(TokenType.IDENTIFIER, "Expect function name.");
+        this.consume(TokenType.LPAREN, "Expect '(' after function name.");
 
-		const params = [];
-		if (!this.check(TokenType.RPAREN)) {
-			do {
-				const typeInfo = this.parseType();
-				const paramName = this.consume(TokenType.IDENTIFIER, "Expect parameter name.");
-				params.push({ type: "Parameter", dataType: typeInfo, name: paramName.v });
-			} while (this.match(TokenType.COMMA));
-		}
-		
-		this.consume(TokenType.RPAREN, "Expect ')' after parameters.");
-		
+        const params = [];
+        if (!this.check(TokenType.RPAREN)) {
+            do {
+                const typeInfo = this.parseType();
+                const paramName = this.consume(TokenType.IDENTIFIER, "Expect parameter name.");
+                params.push({ type: "Parameter", dataType: typeInfo, name: paramName.v });
+            } while (this.match(TokenType.COMMA));
+        }
+
+        this.consume(TokenType.RPAREN, "Expect ')' after parameters.");
+
         // Pass specific error messages for return types
         const returnType = this.parseType("Expect function return type.", "Invalid function return type.");
 
-		this.defineVariable(nameToken.v, { 
-			type: "Type", 
-			name: returnType.name,
-			initialized: true 
-		});
+        this.defineVariable(nameToken.v, {
+            type: "Type",
+            name: returnType.name,
+            initialized: true
+        });
 
-		this.consume(TokenType.LBRACE, "Expect '{' before function body.");
-        this.enterScope(); 
+        this.consume(TokenType.LBRACE, "Expect '{' before function body.");
+        this.enterScope();
 
-		params.forEach(p => {
+        params.forEach(p => {
             try {
                 this.defineVariable(p.name, p.dataType, true);
             } catch (e) {
@@ -389,37 +398,37 @@ export class Parser
         });
 
         const previousReturnType = this.currentReturnType;
-        this.currentReturnType = returnType.name; 
+        this.currentReturnType = returnType.name;
 
-		const body = this.parseBlock(); 
-        
+        const body = this.parseBlock();
+
         this.currentReturnType = previousReturnType;
-        this.exitScope(); 
+        this.exitScope();
 
-		return {
+        return {
             type: "FunctionDeclaration",
             start: startToken.s,
             end: body.end,
-			line: line,
-			name: nameToken.v,
-			params: params,
-			returnType: returnType,
-			body: body
-		};
-	}
+            line: line,
+            name: nameToken.v,
+            params: params,
+            returnType: returnType,
+            body: body
+        };
+    }
 
-	parseType(missingMsg = "Expect valid type name.", invalidMsg = "Expect valid type name.") {
-		const base_keyword = this.matchTypeKeyword();
-		if (base_keyword) {
+    parseType(missingMsg = "Expect valid type name.", invalidMsg = "Expect valid type name.") {
+        const base_keyword = this.matchTypeKeyword();
+        if (base_keyword) {
             const baseTypeToken = this.consume(base_keyword, "Compiler error");
             let generic = null;
 
             if (this.match(TokenType.LANGLE)) {
                 generic = this.parseType();
                 this.consume(TokenType.RANGLE, "Expect '>' after generic type.");
-                
-                if (base_keyword != TokenType.TYPE_LIST && 
-                    base_keyword != TokenType.TYPE_MAP && 
+
+                if (base_keyword != TokenType.TYPE_LIST &&
+                    base_keyword != TokenType.TYPE_MAP &&
                     base_keyword != TokenType.TYPE_NULLABLE) {
                     this.addError(baseTypeToken, "Base type does not support generics.");
                 }
@@ -439,51 +448,51 @@ export class Parser
 
         // It is NOT a type keyword AND NOT an identifier -> Missing Type
         throw this.addError(this.peek(), missingMsg);
-	}
+    }
 
-	parseBlock() {
+    parseBlock() {
         const startToken = this.previous(); // Should be the LBRACE
 
         this.enterScope();
-		const statements = [];
-		while (!this.check(TokenType.RBRACE) && !this.isAtEnd()) {
-			const statement = this.parseStatement();
-			if (statement) statements.push(statement);
-		}
-		const endToken = this.consume(TokenType.RBRACE, "Expect '}' after block.");
+        const statements = [];
+        while (!this.check(TokenType.RBRACE) && !this.isAtEnd()) {
+            const statement = this.parseStatement();
+            if (statement) statements.push(statement);
+        }
+        const endToken = this.consume(TokenType.RBRACE, "Expect '}' after block.");
         this.exitScope();
-		return { 
-            type: "Block", 
+        return {
+            type: "Block",
             start: startToken.s,
             end: endToken.e,
             line: startToken.l,
-            statements: statements 
+            statements: statements
         };
-	}
+    }
 
-	parseStatement() {
-		try {
-			if (this.match(TokenType.RETURN)) return this.returnStatement();
-			if (this.match(TokenType.IF)) return this.ifStatement();
-			if (this.match(TokenType.FOR)) return this.forStatement();
+    parseStatement() {
+        try {
+            if (this.match(TokenType.RETURN)) return this.returnStatement();
+            if (this.match(TokenType.IF)) return this.ifStatement();
+            if (this.match(TokenType.FOR)) return this.forStatement();
             if (this.match(TokenType.WHILE)) return this.whileStatement();
-			if (this.match(TokenType.BREAK)) return this.breakStatement();
+            if (this.match(TokenType.BREAK)) return this.breakStatement();
             if (this.match(TokenType.SKIP)) return this.skipStatement();
-			if (this.match(TokenType.TRY)) return this.tryStatement();
-			if (this.match(TokenType.THROW)) return this.throwStatement();
+            if (this.match(TokenType.TRY)) return this.tryStatement();
+            if (this.match(TokenType.THROW)) return this.throwStatement();
             if (this.match(TokenType.DELETE)) return this.deleteStatement();
-			if (this.matchTypeKeyword()) return this.variableDeclaration();
-            
+            if (this.matchTypeKeyword()) return this.variableDeclaration();
+
             if (this.check(TokenType.IDENTIFIER) && this.knownTypes.has(this.peek().v)) {
                 return this.variableDeclaration();
             }
 
-			return this.expressionStatement();
-		} catch (error) {
-			this.synchronize();
-			return null;
-		}
-	}
+            return this.expressionStatement();
+        } catch (error) {
+            this.synchronize();
+            return null;
+        }
+    }
 
     whileStatement() {
         const startToken = this.previous(); // WHILE
@@ -491,30 +500,30 @@ export class Parser
         const condition = this.parseExpression();
         this.consume(TokenType.RPAREN, "Expect ')' after while condition.");
         this.consume(TokenType.LBRACE, "Expect '{' before loop body.");
-        
+
         this.loopDepth++;
-        const body = this.parseBlock(); 
+        const body = this.parseBlock();
         this.loopDepth--;
 
-        return { 
-            type: "WhileStatement", 
+        return {
+            type: "WhileStatement",
             start: startToken.s,
             end: body.end,
-            condition: condition, 
-            body: body, 
-            line: startToken.l 
+            condition: condition,
+            body: body,
+            line: startToken.l
         };
     }
 
-	breakStatement() {
+    breakStatement() {
         const startToken = this.previous();
         if (this.loopDepth === 0) this.addError(startToken, "'break' can only be used inside a loop.");
         const endToken = this.consume(TokenType.SEMICOLON, "Expect ';' after 'break'.");
-        return { 
-            type: "BreakStatement", 
+        return {
+            type: "BreakStatement",
             start: startToken.s,
             end: endToken.e,
-            line: startToken.l 
+            line: startToken.l
         };
     }
 
@@ -522,23 +531,23 @@ export class Parser
         const startToken = this.previous();
         if (this.loopDepth === 0) this.addError(startToken, "'skip' can only be used inside a loop.");
         const endToken = this.consume(TokenType.SEMICOLON, "Expect ';' after 'skip'.");
-        return { 
-            type: "SkipStatement", 
+        return {
+            type: "SkipStatement",
             start: startToken.s,
             end: endToken.e,
-            line: startToken.l 
+            line: startToken.l
         };
     }
 
-	tryStatement() {
+    tryStatement() {
         const startToken = this.previous(); // TRY
         this.consume(TokenType.LBRACE, "Expect '{' before try block.");
         const tryBlock = this.parseBlock();
-        
+
         let catchBlock = null;
         let catchIdentifier = null;
         let reviewBlock = null;
-        
+
         let hasCatchOrReview = false;
         let endToken = tryBlock;
 
@@ -546,12 +555,12 @@ export class Parser
         if (this.match(TokenType.CATCH)) {
             hasCatchOrReview = true;
             this.consume(TokenType.LBRACE, "Expect '{' before catch block.");
-            
+
             this.enterScope();
             this.defineVariable("$thrown_message", { type: "Type", name: "string", initialized: true });
             catchBlock = this.parseBlock();
             this.exitScope();
-            
+
             catchIdentifier = "$thrown_message";
             endToken = catchBlock;
         }
@@ -560,12 +569,12 @@ export class Parser
         if (this.match(TokenType.REVIEW)) {
             hasCatchOrReview = true;
             this.consume(TokenType.LBRACE, "Expect '{' before review block.");
-            
+
             this.enterScope();
             this.defineVariable("$thrown_message", { type: "Type", name: "string", initialized: true });
             reviewBlock = this.parseBlock();
             this.exitScope();
-            
+
             if (!catchIdentifier) {
                 catchIdentifier = "$thrown_message";
             }
@@ -582,15 +591,15 @@ export class Parser
             end: endToken.end,
             tryBlock: tryBlock,
             catchIdentifier: catchIdentifier,
-            catchBlock: catchBlock, 
+            catchBlock: catchBlock,
             reviewBlock: reviewBlock,
             line: startToken.l
         };
     }
 
-	throwStatement() {
+    throwStatement() {
         const startToken = this.previous(); // THROW
-        
+
         let severity = "error";
         if (this.check(TokenType.IDENTIFIER)) {
             const severityToken = this.advance();
@@ -600,25 +609,25 @@ export class Parser
                 this.addError(severityToken, "Expected 'alert', 'error', or 'critical' after throw.");
             }
         } else {
-             this.addError(this.peek(), "Expected severity level (alert, error, critical) after throw.");
+            this.addError(this.peek(), "Expected severity level (alert, error, critical) after throw.");
         }
 
         const value = this.parseExpression();
         const endToken = this.consume(TokenType.SEMICOLON, "Expect ';' after throw value.");
-        return { 
-            type: "ThrowStatement", 
+        return {
+            type: "ThrowStatement",
             start: startToken.s,
             end: endToken.e,
-            severity: severity, 
-            argument: value, 
-            line: startToken.l 
+            severity: severity,
+            argument: value,
+            line: startToken.l
         };
     }
 
     deleteStatement() {
         const startToken = this.previous(); // DELETE
         const expr = this.parseExpression();
-        
+
         if (expr.type !== "IndexExpression") {
             this.addError(startToken, "Invalid delete target. Expected index expression (e.g. collection[key]).");
         } else {
@@ -631,37 +640,37 @@ export class Parser
         }
 
         const endToken = this.consume(TokenType.SEMICOLON, "Expect ';' after delete statement.");
-        return { 
-            type: "DeleteStatement", 
+        return {
+            type: "DeleteStatement",
             start: startToken.s,
             end: endToken.e,
-            target: expr, 
-            line: startToken.l 
+            target: expr,
+            line: startToken.l
         };
     }
 
-	parseExpression() { return this.expressionParser.parse(); }
+    parseExpression() { return this.expressionParser.parse(); }
 
-	returnStatement() {
-		const startToken = this.previous(); // RETURN
-		let value = null;
-		if (!this.check(TokenType.SEMICOLON)) value = this.parseExpression();
-		const endToken = this.consume(TokenType.SEMICOLON, "Expect ';' after return value.");
+    returnStatement() {
+        const startToken = this.previous(); // RETURN
+        let value = null;
+        if (!this.check(TokenType.SEMICOLON)) value = this.parseExpression();
+        const endToken = this.consume(TokenType.SEMICOLON, "Expect ';' after return value.");
 
-		if (this.currentReturnType !== null && this.currentReturnType !== "any") {
+        if (this.currentReturnType !== null && this.currentReturnType !== "any") {
             if (value === null) {
                 if (this.currentReturnType !== "none") {
                     this.addError(startToken, "Return type mismatch.");
                 }
             } else {
                 const inferredType = this.inferType(value);
-                
+
                 if (this.currentReturnType === "none") {
-                     this.addError(startToken, "Return type mismatch.");
+                    this.addError(startToken, "Return type mismatch.");
                 }
-                
+
                 const isNull = inferredType === "null";
-                
+
                 // FIXED RETURN TYPE LOGIC: Account for nullable target correctly
                 let match = (inferredType === this.currentReturnType);
                 if (!match) {
@@ -672,7 +681,7 @@ export class Parser
                         match = true;
                     }
                 }
-                
+
                 const isPrimitiveTarget = ["number", "bool"].includes(this.currentReturnType);
                 if (isNull && !isPrimitiveTarget) { match = true; } // null to nullable/string/list/map is fine
 
@@ -681,49 +690,49 @@ export class Parser
                 }
             }
         }
-		return { 
-            type: "ReturnStatement", 
+        return {
+            type: "ReturnStatement",
             start: startToken.s,
             end: endToken.e,
-            line: startToken.l, 
-            value: value 
+            line: startToken.l,
+            value: value
         };
-	}
+    }
 
-	ifStatement() {
-		const startToken = this.previous(); // IF
-		this.consume(TokenType.LPAREN, "Expect '(' after 'if'.");
-		const condition = this.parseExpression();
-		this.consume(TokenType.RPAREN, "Expect ')' after if condition.");
-		this.consume(TokenType.LBRACE, "Expect '{' before if body.");
-		const thenBranch = this.parseBlock();
-		let elseBranch = null;
+    ifStatement() {
+        const startToken = this.previous(); // IF
+        this.consume(TokenType.LPAREN, "Expect '(' after 'if'.");
+        const condition = this.parseExpression();
+        this.consume(TokenType.RPAREN, "Expect ')' after if condition.");
+        this.consume(TokenType.LBRACE, "Expect '{' before if body.");
+        const thenBranch = this.parseBlock();
+        let elseBranch = null;
         let endNode = thenBranch;
 
-		if (this.match(TokenType.ELSE)) {
-			if (this.match(TokenType.IF)) {
-				elseBranch = this.ifStatement();
-			} else {
-				this.consume(TokenType.LBRACE, "Expect '{' before else body.");
-				elseBranch = this.parseBlock();
-			}
+        if (this.match(TokenType.ELSE)) {
+            if (this.match(TokenType.IF)) {
+                elseBranch = this.ifStatement();
+            } else {
+                this.consume(TokenType.LBRACE, "Expect '{' before else body.");
+                elseBranch = this.parseBlock();
+            }
             endNode = elseBranch;
-		}
-		return { 
-            type: "IfStatement", 
+        }
+        return {
+            type: "IfStatement",
             start: startToken.s,
             end: endNode.end,
-            condition: condition, 
-            thenBranch: thenBranch, 
-            elseBranch: elseBranch, 
-            line: startToken.l 
+            condition: condition,
+            thenBranch: thenBranch,
+            elseBranch: elseBranch,
+            line: startToken.l
         };
-	}
+    }
 
-	forStatement() {
+    forStatement() {
         const startToken = this.previous(); // FOR
         this.consume(TokenType.LPAREN, "Expect '(' after 'for'.");
-        
+
         const iteratorToken = this.consume(TokenType.IDENTIFIER, "Expect iterator variable name.");
         let valueIteratorToken = null;
 
@@ -737,100 +746,100 @@ export class Parser
         let endValue = null;
         if (this.match(TokenType.TO)) {
             isRange = true;
-            endValue = this.parseExpression(); 
+            endValue = this.parseExpression();
         }
         this.consume(TokenType.RPAREN, "Expect ')' after for clauses.");
         this.consume(TokenType.LBRACE, "Expect '{' before loop body.");
         this.enterScope();
 
         let iterType = "any";
-        let valueIterType = "any"; 
-        
+        let valueIterType = "any";
+
         if (isRange) {
             iterType = "number";
             if (valueIteratorToken) {
-                 this.addError(valueIteratorToken, "Range loops cannot have two iterators.");
+                this.addError(valueIteratorToken, "Range loops cannot have two iterators.");
             }
         } else {
             const collectionType = this.inferType(startOrCollection);
 
             if (["list", "any"].includes(collectionType)) {
-                 iterType = "any"; 
-                 if (valueIteratorToken) {
-                     iterType = "number"; 
-                     valueIterType = "any";
-                 }
+                iterType = "any";
+                if (valueIteratorToken) {
+                    iterType = "number";
+                    valueIterType = "any";
+                }
             }
             else if (["map"].includes(collectionType) || this.structDefinitions.has(collectionType)) {
-                 iterType = "string"; 
-                 if (valueIteratorToken) {
-                     valueIterType = "any"; 
-                 }
+                iterType = "string";
+                if (valueIteratorToken) {
+                    valueIterType = "any";
+                }
             }
             else if (collectionType === "string") {
-                 this.addError(startToken, "Strings are not directly iterable. Use 'string as list<string>'.");
-            } 
+                this.addError(startToken, "Strings are not directly iterable. Use 'string as list<string>'.");
+            }
             else {
-                 this.addError(startToken, `Type '${collectionType}' is not iterable.`);
+                this.addError(startToken, `Type '${collectionType}' is not iterable.`);
             }
         }
 
         this.defineVariable(iteratorToken.v, { type: "Type", name: iterType, initialized: true });
-        
+
         if (valueIteratorToken) {
-             this.defineVariable(valueIteratorToken.v, { type: "Type", name: valueIterType, initialized: true });
+            this.defineVariable(valueIteratorToken.v, { type: "Type", name: valueIterType, initialized: true });
         }
 
-		this.loopDepth++;
+        this.loopDepth++;
         const body = this.parseBlock();
-		this.loopDepth--;
+        this.loopDepth--;
         this.exitScope();
         if (isRange) {
-            return { 
-                type: "ForRangeStatement", 
+            return {
+                type: "ForRangeStatement",
                 start: startToken.s,
                 end: body.end,
-                iterator: iteratorToken.v, 
-                startValue: startOrCollection, 
-                endValue: endValue, 
-                body: body, 
-                line: startToken.l 
+                iterator: iteratorToken.v,
+                startValue: startOrCollection,
+                endValue: endValue,
+                body: body,
+                line: startToken.l
             };
         } else {
-            return { 
-                type: "ForInStatement", 
+            return {
+                type: "ForInStatement",
                 start: startToken.s,
                 end: body.end,
-                iterator: iteratorToken.v, 
-                valueIterator: valueIteratorToken ? valueIteratorToken.v : null, 
-                collection: startOrCollection, 
-                body: body, 
-                line: startToken.l 
+                iterator: iteratorToken.v,
+                valueIterator: valueIteratorToken ? valueIteratorToken.v : null,
+                collection: startOrCollection,
+                body: body,
+                line: startToken.l
             };
         }
     }
 
-	getDefaultValue(typeInfo, visited = new Set()) {
+    getDefaultValue(typeInfo, visited = new Set()) {
         switch (typeInfo.name) {
             case "number": return { type: "Literal", value: 0, start: -1, end: -1, line: -1 };
             case "string": return { type: "Literal", value: "", start: -1, end: -1, line: -1 };
-            case "bool":   return { type: "Literal", value: false, start: -1, end: -1, line: -1 };
-            case "list":   return { type: "ListLiteral", elements: [], start: -1, end: -1, line: -1 };
-            case "map":    return { type: "MapLiteral", entries: [], start: -1, end: -1, line: -1 };
-            case "null":   return { type: "Literal", value: null, start: -1, end: -1, line: -1 };
-            case "none":   return { type: "Literal", value: null, start: -1, end: -1, line: -1 };
+            case "bool": return { type: "Literal", value: false, start: -1, end: -1, line: -1 };
+            case "list": return { type: "ListLiteral", elements: [], start: -1, end: -1, line: -1 };
+            case "map": return { type: "MapLiteral", entries: [], start: -1, end: -1, line: -1 };
+            case "null": return { type: "Literal", value: null, start: -1, end: -1, line: -1 };
+            case "none": return { type: "Literal", value: null, start: -1, end: -1, line: -1 };
             case "nullable": return { type: "Literal", value: null, start: -1, end: -1, line: -1 };
-            default:       
+            default:
                 if (typeInfo.type === "StructType") {
                     if (visited.has(typeInfo.name)) {
                         const path = Array.from(visited);
                         const parent = path[path.length - 1];
-                        
+
                         if (parent === typeInfo.name) {
-                             throw new Error(`Recursive struct definition detected for '${typeInfo.name}'. Use 'nullable<${typeInfo.name}>' or 'list<${typeInfo.name}>' to break the cycle.`);
+                            throw new Error(`Recursive struct definition detected for '${typeInfo.name}'. Use 'nullable<${typeInfo.name}>' or 'list<${typeInfo.name}>' to break the cycle.`);
                         } else {
-                             const cycle = [...path, typeInfo.name].join(" -> ");
-                             throw new Error(`Circular struct definition detected: ${cycle}. Use 'nullable' or 'list' generics to break the cycle.`);
+                            const cycle = [...path, typeInfo.name].join(" -> ");
+                            throw new Error(`Circular struct definition detected: ${cycle}. Use 'nullable' or 'list' generics to break the cycle.`);
                         }
                     }
 
@@ -846,12 +855,12 @@ export class Parser
 
                         const entries = structDef.fields.map(field => ({
                             key: { type: "Literal", value: field.name, start: -1, end: -1, line: -1 },
-                            value: this.getDefaultValue(field.type, newVisited) 
+                            value: this.getDefaultValue(field.type, newVisited)
                         }));
                         return { type: "MapLiteral", entries: entries, start: -1, end: -1, line: -1 };
                     }
                 }
-                return { type: "Literal", value: null, start: -1, end: -1, line: -1 }; 
+                return { type: "Literal", value: null, start: -1, end: -1, line: -1 };
         }
     }
 
@@ -876,7 +885,7 @@ export class Parser
             if (inferredVal === targetType.generic.name || inferredVal === "null" || inferredVal === "nullable") {
                 typeMatch = true;
                 if (inferredVal === targetType.generic.name && valueExpr.type === "MapLiteral") {
-                     this.validateStructLiteral(valueExpr, targetType.generic.name, token);
+                    this.validateStructLiteral(valueExpr, targetType.generic.name, token);
                 }
             }
         }
@@ -884,10 +893,10 @@ export class Parser
         // This supports the test case where we assign a nullable[index] (which is technically nullable) 
         // to a strict variable, relying on runtime checks.
         else if (inferredVal === "nullable" && targetType.name !== "nullable") {
-             const resolved = this.inferType(valueExpr, true);
-             if (resolved === targetType.name) {
-                 typeMatch = true;
-             }
+            const resolved = this.inferType(valueExpr, true);
+            if (resolved === targetType.name) {
+                typeMatch = true;
+            }
         }
 
         if (!typeMatch) {
@@ -900,29 +909,29 @@ export class Parser
             } else {
                 this.addError(token, customMismatchError || "Variable assignment type mismatch.");
             }
-            throw new Error("Assignment validation failed"); 
+            throw new Error("Assignment validation failed");
         }
     }
 
     validateStructLiteral(literal, structName, token) {
         const def = this.structDefinitions.get(structName);
-        if (!def) return; 
+        if (!def) return;
 
         def.fields.forEach(field => {
             const entry = literal.entries.find(e => e.key.value === field.name);
-            
+
             if (!entry) {
                 if (field.name.startsWith('$')) {
                     this.addError(token, `Missing required struct field: '${field.name}'.`);
                 } else {
                     try {
-                        const defaultVal = this.getDefaultValue(field.type, new Set([structName])); 
+                        const defaultVal = this.getDefaultValue(field.type, new Set([structName]));
                         literal.entries.push({
                             key: { type: "Literal", value: field.name, start: -1, end: -1, line: -1 },
                             value: defaultVal
                         });
                     } catch (e) {
-                         this.addError(token, e.message);
+                        this.addError(token, e.message);
                     }
                 }
             } else {
@@ -936,12 +945,12 @@ export class Parser
                     if (entry.value.type === "MapLiteral") {
                         this.validateStructLiteral(entry.value, field.type.name, token);
                     }
-                } 
+                }
                 else if (field.type.name === "nullable" && field.type.generic) {
                     if (valType === field.type.generic.name || valType === "null") {
                         typeMatch = true;
                         if (valType === field.type.generic.name && entry.value.type === "MapLiteral") {
-                             this.validateStructLiteral(entry.value, field.type.generic.name, token);
+                            this.validateStructLiteral(entry.value, field.type.generic.name, token);
                         }
                     }
                 }
@@ -951,7 +960,7 @@ export class Parser
                 }
             }
         });
-        
+
         literal.entries.forEach(entry => {
             if (!def.fields.find(f => f.name === entry.key.value)) {
                 this.addError(token, `Unknown field in struct initialization: '${entry.key.value}'.`);
@@ -959,21 +968,21 @@ export class Parser
         });
     }
 
-	variableDeclaration() {
-        const startToken = this.peek(); 
+    variableDeclaration() {
+        const startToken = this.peek();
         const typeInfo = this.parseType();
         const nameToken = this.consume(TokenType.IDENTIFIER, "Expect variable name.");
 
         if (typeInfo.name === "any") {
-             this.addError(nameToken, "Type 'any' is not allowed for variable declarations.");
+            this.addError(nameToken, "Type 'any' is not allowed for variable declarations.");
         }
-        
+
         if (typeInfo.name === "nullable" && typeInfo.generic && typeInfo.generic.name === "any") {
-             this.addError(nameToken, "Type 'nullable<any>' is not allowed.");
+            this.addError(nameToken, "Type 'nullable<any>' is not allowed.");
         }
 
         let initializer = null;
-		let isInitialized = true;
+        let isInitialized = true;
 
         if (this.match(TokenType.ASSIGN)) {
             initializer = this.parseExpression();
@@ -984,128 +993,117 @@ export class Parser
         } else {
             try {
                 initializer = this.getDefaultValue(typeInfo);
-            } catch(e) {
-                this.addError(nameToken, e.message); 
+            } catch (e) {
+                this.addError(nameToken, e.message);
             }
         }
 
         const endToken = this.consume(TokenType.SEMICOLON, "Expect ';' after variable declaration.");
 
-		try {
-            this.defineVariable(nameToken.v, { ...typeInfo, initialized: isInitialized }, true); 
+        try {
+            this.defineVariable(nameToken.v, { ...typeInfo, initialized: isInitialized }, true);
         } catch (e) {
             this.addError(nameToken, e.message);
         }
 
-		return { 
-            type: "VariableDeclaration", 
+        return {
+            type: "VariableDeclaration",
             start: startToken.s,
             end: endToken.e,
-            line: nameToken.l, 
-            varType: typeInfo, 
-            name: nameToken.v, 
-            initializer: initializer 
+            line: nameToken.l,
+            varType: typeInfo,
+            name: nameToken.v,
+            initializer: initializer
         };
     }
 
-	expressionStatement() {
-		const expr = this.parseExpression();
-		const endToken = this.consume(TokenType.SEMICOLON, "Expect ';' after expression.");
-		return { 
-            type: "ExpressionStatement", 
+    expressionStatement() {
+        const expr = this.parseExpression();
+        const endToken = this.consume(TokenType.SEMICOLON, "Expect ';' after expression.");
+        return {
+            type: "ExpressionStatement",
             start: expr.start,
             end: endToken.e,
             line: expr.line,
-            expression: expr 
+            expression: expr
         };
-	}
+    }
 
-	match(expectedType)
-	{
-		if (this.check(expectedType))
-		{
-			this.advance();
-			return true;
-		}
-		return false;
-	}
+    match(expectedType) {
+        if (this.check(expectedType)) {
+            this.advance();
+            return true;
+        }
+        return false;
+    }
 
-	matchTypeKeyword()
-	{
-		if (this.isAtEnd()) return false;
-		const tokenType = this.peek().t;
-		if (tokenType.startsWith("TYPE_")) return tokenType;
-		return null;
-	}
+    matchTypeKeyword() {
+        if (this.isAtEnd()) return false;
+        const tokenType = this.peek().t;
+        if (tokenType.startsWith("TYPE_")) return tokenType;
+        return null;
+    }
 
-	check(expectedType)
-	{
-		if (this.isAtEnd()) return false;
-		return this.peek().t === expectedType;
-	}
+    check(expectedType) {
+        if (this.isAtEnd()) return false;
+        return this.peek().t === expectedType;
+    }
 
-	advance()
-	{
-		if (!this.isAtEnd()) this.current++;
-		return this.previous();
-	}
+    advance() {
+        if (!this.isAtEnd()) this.current++;
+        return this.previous();
+    }
 
-	consume(expectedType, message)
-	{
-		if (this.check(expectedType)) return this.advance();
-		throw this.addError(this.peek(), message);
-	}
+    consume(expectedType, message) {
+        if (this.check(expectedType)) return this.advance();
+        throw this.addError(this.peek(), message);
+    }
 
-	isAtEnd()
-	{
-		return this.peek().t === TokenType.EOF;
-	}
+    isAtEnd() {
+        return this.peek().t === TokenType.EOF;
+    }
 
-	peek()
-	{
-		return this.tokens[this.current];
-	}
+    peek() {
+        return this.tokens[this.current];
+    }
 
-	previous()
-	{
-		return this.tokens[this.current - 1];
-	}
+    previous() {
+        return this.tokens[this.current - 1];
+    }
 
-	addError(token, message)
-	{
-		const err = { 
-			line: token.l, 
-			token: token.v, 
-			message: message 
-		};
-		this.errors.push(err);
-		return err;
-	}
+    addError(token, message) {
+        const err = {
+            line: token.l,
+            token: token.v,
+            message: message
+        };
+        this.errors.push(err);
+        return err;
+    }
 
-	synchronize()
-	{
-		this.advance();
+    synchronize() {
+        this.advance();
 
         let braceDepth = 0;
 
-		while (!this.isAtEnd()) {
+        while (!this.isAtEnd()) {
             const token = this.peek();
 
             if (token.t === TokenType.LBRACE) {
                 braceDepth++;
-            } 
+            }
             else if (token.t === TokenType.RBRACE) {
                 if (braceDepth > 0) {
                     braceDepth--;
                     this.advance();
                     if (braceDepth === 0) return;
-                    continue; 
+                    continue;
                 } else {
                     return;
                 }
             }
 
-			if (this.previous().t === TokenType.SEMICOLON && braceDepth === 0) return;
+            if (this.previous().t === TokenType.SEMICOLON && braceDepth === 0) return;
 
             if (braceDepth === 0) {
                 switch (token.t) {
@@ -1119,7 +1117,7 @@ export class Parser
                 }
             }
 
-			this.advance();
-		}
-	}
+            this.advance();
+        }
+    }
 }

@@ -26,6 +26,8 @@ import { complex_tests } from './test_modules/complex_tests.mjs';
 
 const test_suite = new UnitTestHandler();
 
+/*
+*/
 test_suite.addgroup('Lexer', lexer_tests);
 test_suite.addgroup('Function', function_tests);
 test_suite.addgroup('Variable', variable_tests);
@@ -48,6 +50,8 @@ test_suite.addgroup('Structs', structs_tests);
 test_suite.addgroup('Regex', regex_tests);
 test_suite.addgroup('Syntax', syntax_tests);
 test_suite.addgroup('Complex', complex_tests);
+/*
+*/
 
 const debugData = test_suite.run();
 

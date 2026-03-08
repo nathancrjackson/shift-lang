@@ -691,7 +691,7 @@ export class Runtime {
             try {
                 const regex = new RegExp(patRaw.substring(1, last), patRaw.substring(last + 1));
                 return src.replace(regex, rep);
-            } catch(e) { throw new Error("Invalid regex"); }
+            } catch(e) { throw new Error(`Runtime Error: Invalid regular expression in replace: ${e.message}`); }
         }
         return src.replaceAll(patRaw, rep);
     }
@@ -785,7 +785,9 @@ export class Runtime {
         if (expr.operator === "matches") {
              const str = String(left); const reg = String(right);
              const l = reg.lastIndexOf('/');
-             return new RegExp(reg.substring(1,l), reg.substring(l+1)).test(str);
+             try {
+                 return new RegExp(reg.substring(1,l), reg.substring(l+1)).test(str);
+             } catch(e) { throw new Error(`Runtime Error: Invalid regular expression in matches: ${e.message}`); }
         }
         
         if (expr.operator === "search") {
@@ -793,7 +795,10 @@ export class Runtime {
             const lastSlash = regStr.lastIndexOf('/');
             const pattern = regStr.substring(1, lastSlash);
             const flags = regStr.substring(lastSlash + 1);
-            const regex = new RegExp(pattern, flags);
+            let regex;
+            try {
+                regex = new RegExp(pattern, flags);
+            } catch(e) { throw new Error(`Runtime Error: Invalid regular expression in search: ${e.message}`); }
             const results = [];
             let match;
             if (!regex.global) {
