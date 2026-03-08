@@ -3,4 +3,5 @@ private/
 local/
 
 # Excluded generated content
-unit_tests/test_json/
+go_runtime/dist/*.shift
+go_runtime/unit_tests/tests_json/

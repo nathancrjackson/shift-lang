@@ -10,4 +10,3 @@ This document outlines the some of the tasks required to make Shift a robust, pr
 - Write usable Standard Library (in Shift where possible).
 - Write so many more tests, there are many, many, many different ways to cast, nest, loop or deliberately break things that are not being checked.
 - Create test suite for validating already compiled JSON AST.
-- A runtime in another language than Javascript
