@@ -24,6 +24,7 @@ import { structs_tests } from './test_modules/structs_tests.mjs';
 import { regex_tests } from './test_modules/regex_tests.mjs';
 import { syntax_tests } from './test_modules/syntax_tests.mjs';
 import { strict_intrinsics_tests } from './test_modules/strict_intrinsics_tests.mjs';
+import { import_tests } from './test_modules/import_tests.mjs';
 import { complex_tests } from './test_modules/complex_tests.mjs';
 
 const test_suite = new UnitTestHandler();
@@ -53,6 +54,7 @@ test_suite.addgroup('Structs', structs_tests);
 test_suite.addgroup('Regex', regex_tests);
 test_suite.addgroup('Syntax', syntax_tests);
 test_suite.addgroup('Strict Intrinsics', strict_intrinsics_tests);
+test_suite.addgroup('Imports', import_tests);
 test_suite.addgroup('Complex', complex_tests);
 /*
 */

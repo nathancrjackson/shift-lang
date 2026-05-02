@@ -1,0 +1,5 @@
+import "imports_self.shift";
+
+function basic_function(number result) number {
+    return result;
+}

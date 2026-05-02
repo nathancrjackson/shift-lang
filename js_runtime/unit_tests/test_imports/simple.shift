@@ -1,0 +1,3 @@
+function basic_function(number result) number {
+    return result;
+}

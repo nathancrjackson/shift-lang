@@ -7,10 +7,17 @@ export class Shift {
     /**
      * @param {string|null} stdLibCode - Custom standard library code (Shift). Pass null to use default.
      * @param {Object|null} stdLibIntrinsics - Custom intrinsics map. Pass null to use default StandardLibrary.intrinsics.
-     * @param {number} maxInstructions - Maximum stack machine loops permitted. Default is 1,000,000.
+     * @param {Object|number} options - Options object (e.g., importResolver) or maxInstructions integer for backward compatibility.
      */
-    constructor(stdLibCode = null, stdLibIntrinsics = null, maxInstructions = 1000000) {
-        this.maxInstructions = maxInstructions;
+    constructor(stdLibCode = null, stdLibIntrinsics = null, options = {}) {
+        if (typeof options === 'number') {
+            this.maxInstructions = options;
+            this.importResolver = null;
+        } else {
+            this.maxInstructions = options.maxInstructions !== undefined ? options.maxInstructions : 1000000;
+            this.importResolver = options.importResolver || null;
+        }
+
         this.stdLibAST = null;
         this.stdLibErrors = [];
 
@@ -37,7 +44,7 @@ export class Shift {
         // Compile the Standard Library (Shift code part) once during initialization
         const stdLexer = new Lexer(source);
         const stdTokens = stdLexer.tokenize().tokens;
-        const stdParser = new Parser(stdTokens);
+        const stdParser = new Parser(stdTokens, this.importResolver);
 
         // Load Definitions manually (Structs + Active Intrinsics)
         this._loadStructs(stdParser);
@@ -118,7 +125,7 @@ export class Shift {
         }
 
         // 2. Parser
-        const parser = new Parser(lexResult.tokens);
+        const parser = new Parser(lexResult.tokens, this.importResolver);
 
         // A. Load Definitions
         this._loadStructs(parser);
@@ -147,6 +154,7 @@ export class Shift {
         // 3. Tree Shaking / Linking
         // Merge used Standard Library functions into the User AST
         const finalAST = parseResult.ast;
+
         if (this.stdLibAST) {
             this.stdLibAST.functions.forEach(func => {
                 if (parser.usedFunctions.has(func.name)) {
