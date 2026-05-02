@@ -456,6 +456,9 @@ func (r *Runtime) evaluateReplace(expr *ast.ReplaceExpression, env *Environment)
 	patRaw, _ := r.evaluate(expr.Pattern, env)
 
 	src := r.stringify(srcRaw)
+	if len(src) > MaxStringLength {
+		return nil, fmt.Errorf("Runtime Error: String exceeds maximum length for regular expressions.")
+	}
 	rep := r.stringify(repRaw)
 	pat := r.stringify(patRaw)
 

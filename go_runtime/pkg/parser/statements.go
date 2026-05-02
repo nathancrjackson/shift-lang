@@ -143,7 +143,15 @@ func (p *Parser) functionDeclaration() *ast.FunctionDeclaration {
 	retStr := returnType.Name
 	p.currentReturnType = &retStr
 
+	startErrorCount := len(p.errors)
 	body := p.parseBlock()
+	hasBodyErrors := len(p.errors) > startErrorCount
+
+	if !hasBodyErrors && retStr != "none" && retStr != "null" && retStr != "any" {
+		if !p.hasGuaranteedReturn(body) {
+			p.addError(token.Token{Line: line, Lexeme: nameToken.Lexeme}, "Not all code paths return a value.")
+		}
+	}
 
 	p.currentReturnType = previousReturnType
 	p.exitScope()
@@ -635,5 +643,44 @@ func (p *Parser) forStatement() ast.Statement {
 			Collection:    startOrCollection,
 			Body:          body,
 		}
+	}
+}
+
+func (p *Parser) hasGuaranteedReturn(stmt ast.Statement) bool {
+	if stmt == nil {
+		return false
+	}
+
+	switch s := stmt.(type) {
+	case *ast.Block:
+		for _, bStmt := range s.Statements {
+			if p.hasGuaranteedReturn(bStmt) {
+				return true
+			}
+		}
+		return false
+	case *ast.ReturnStatement:
+		return true
+	case *ast.ThrowStatement:
+		return true
+	case *ast.IfStatement:
+		if s.ElseBranch != nil {
+			return p.hasGuaranteedReturn(s.ThenBranch) && p.hasGuaranteedReturn(s.ElseBranch)
+		}
+		return false
+	case *ast.TryStatement:
+		tryReturns := p.hasGuaranteedReturn(s.TryBlock)
+		if !tryReturns {
+			return false
+		}
+		if s.CatchBlock != nil && !p.hasGuaranteedReturn(s.CatchBlock) {
+			return false
+		}
+		if s.ReviewBlock != nil && !p.hasGuaranteedReturn(s.ReviewBlock) {
+			return false
+		}
+		return true
+	default:
+		return false
 	}
 }

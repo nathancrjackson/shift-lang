@@ -9,6 +9,8 @@ import (
 	"github.com/nathancrjackson/shift-lang/go_runtime/pkg/ast"
 )
 
+const MaxStringLength = 10000
+
 func (r *Runtime) evaluateBinary(expr *ast.BinaryExpression, env *Environment) (any, error) {
 	left, err := r.evaluate(expr.Left, env)
 	if err != nil {
@@ -205,6 +207,9 @@ func (r *Runtime) evaluateBinary(expr *ast.BinaryExpression, env *Environment) (
 
 	case "matches":
 		str := r.stringify(left)
+		if len(str) > MaxStringLength {
+			return nil, fmt.Errorf("Runtime Error: String exceeds maximum length for regular expressions.")
+		}
 		regStr := r.stringify(right)
 		lastSlash := strings.LastIndex(regStr, "/")
 		if !strings.HasPrefix(regStr, "/") || lastSlash <= 0 {
@@ -226,6 +231,9 @@ func (r *Runtime) evaluateBinary(expr *ast.BinaryExpression, env *Environment) (
 
 	case "search":
 		str := r.stringify(left)
+		if len(str) > MaxStringLength {
+			return nil, fmt.Errorf("Runtime Error: String exceeds maximum length for regular expressions.")
+		}
 		regStr := r.stringify(right)
 		lastSlash := strings.LastIndex(regStr, "/")
 		if !strings.HasPrefix(regStr, "/") || lastSlash <= 0 {
@@ -251,6 +259,7 @@ func (r *Runtime) evaluateBinary(expr *ast.BinaryExpression, env *Environment) (
 			match := re.FindStringSubmatchIndex(str)
 			if match != nil {
 				resMap := NewShiftMap()
+				resMap.StructName = "RegexResult"
 				resMap.Data["match"] = str[match[0]:match[1]]
 				resMap.Data["start"] = float64(match[0])
 				resMap.Data["end"] = float64(match[1])
@@ -270,6 +279,7 @@ func (r *Runtime) evaluateBinary(expr *ast.BinaryExpression, env *Environment) (
 			matches := re.FindAllStringSubmatchIndex(str, -1)
 			for _, match := range matches {
 				resMap := NewShiftMap()
+				resMap.StructName = "RegexResult"
 				resMap.Data["match"] = str[match[0]:match[1]]
 				resMap.Data["start"] = float64(match[0])
 				resMap.Data["end"] = float64(match[1])

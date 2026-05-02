@@ -45,19 +45,23 @@ type Runtime struct {
 	AST        *ast.Program
 	DebugMode  bool
 	GlobalEnv  *Environment
-	Functions  map[string]ast.FunctionDeclaration
-	Intrinsics map[string]func([]any, *Runtime) any
-	Stack      []*StackFrame
+	Functions        map[string]ast.FunctionDeclaration
+	Intrinsics       map[string]func([]any, *Runtime) any
+	Stack            []*StackFrame
+	instructionCount int
+	maxInstructions  int
 }
 
 func NewRuntime(prog *ast.Program, debugMode bool) *Runtime {
 	r := &Runtime{
 		AST:        prog,
 		DebugMode:  debugMode,
-		GlobalEnv:  NewEnvironment(nil),
-		Functions:  make(map[string]ast.FunctionDeclaration),
-		Intrinsics: make(map[string]func([]any, *Runtime) any),
-		Stack:      []*StackFrame{},
+		GlobalEnv:        NewEnvironment(nil),
+		Functions:        make(map[string]ast.FunctionDeclaration),
+		Intrinsics:       make(map[string]func([]any, *Runtime) any),
+		Stack:            []*StackFrame{},
+		instructionCount: 0,
+		maxInstructions:  1000000,
 	}
 
 	r.loadFunctions()
@@ -102,21 +106,37 @@ func (r *Runtime) stringify(val any) string {
 }
 
 func (r *Runtime) deepCopy(value any) any {
+	return r.deepCopyWithVisited(value, make(map[uintptr]any))
+}
+
+func (r *Runtime) deepCopyWithVisited(value any, visited map[uintptr]any) any {
 	if value == nil {
 		return nil
 	}
+	
+	val := reflect.ValueOf(value)
+	if val.Kind() == reflect.Ptr || val.Kind() == reflect.Slice || val.Kind() == reflect.Map {
+		ptr := val.Pointer()
+		if ptr != 0 {
+			if _, exists := visited[ptr]; exists {
+				return value
+			}
+			visited[ptr] = value
+		}
+	}
+
 	switch v := value.(type) {
 	case []any:
 		res := make([]any, len(v))
 		for i, item := range v {
-			res[i] = r.deepCopy(item)
+			res[i] = r.deepCopyWithVisited(item, visited)
 		}
 		return res
 	case *ShiftMap:
 		newMap := NewShiftMap()
 		newMap.StructName = v.StructName
 		for k, val := range v.Data {
-			newMap.Data[k] = r.deepCopy(val)
+			newMap.Data[k] = r.deepCopyWithVisited(val, visited)
 		}
 		return newMap
 	default:
@@ -179,9 +199,29 @@ func (r *Runtime) checkType(value any, typeInfo ast.TypeAnnotation) error {
 
 	valid := false
 	if expectedJS == "list" {
-		_, valid = value.([]any)
+		if arr, isArr := value.([]any); isArr {
+			valid = true
+			if typeInfo.Generic != nil {
+				for _, item := range arr {
+					err := r.checkType(item, *typeInfo.Generic)
+					if err != nil {
+						return fmt.Errorf("Runtime Error: Return type mismatch. Expected list of %s", typeInfo.Generic.Name)
+					}
+				}
+			}
+		}
 	} else if expectedJS == "map" {
-		_, valid = value.(*ShiftMap)
+		if sm, isMap := value.(*ShiftMap); isMap {
+			valid = true
+			if typeInfo.Generic != nil {
+				for _, item := range sm.Data {
+					err := r.checkType(item, *typeInfo.Generic)
+					if err != nil {
+						return fmt.Errorf("Runtime Error: Return type mismatch. Expected map of %s", typeInfo.Generic.Name)
+					}
+				}
+			}
+		}
 	} else {
 		// handle basic type matching
 		switch value.(type) {
@@ -246,8 +286,14 @@ func (r *Runtime) RunFunction(name string, args []any) (any, error) {
 	var finalResult any = nil
 	currentSignal := SignalNone
 	var signalValue any = nil
+	r.instructionCount = 0
 
 	for len(r.Stack) > 0 {
+		r.instructionCount++
+		if r.instructionCount > r.maxInstructions {
+			return nil, fmt.Errorf("Runtime Error: Maximum instruction limit exceeded (Possible infinite loop).")
+		}
+
 		frame := r.Stack[len(r.Stack)-1]
 
 		if currentSignal == SignalReturn {

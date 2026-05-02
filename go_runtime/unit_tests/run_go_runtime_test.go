@@ -96,7 +96,16 @@ func TestJSONSuite(t *testing.T) {
 			}
 
 			var tests map[string]TestCase
+			
+			// Attempt to unmarshal into the expected Map format
 			if err := json.Unmarshal(bytes, &tests); err != nil {
+				// --- GUARD: Check if it's in the old array format ---
+				var fallbackArray []TestCase
+				if arrayErr := json.Unmarshal(bytes, &fallbackArray); arrayErr == nil {
+					t.Fatalf("Test JSON format error in %s:\nExpected a JSON Object (map), but received a JSON Array.\nPlease update your JS converter script to output a mapped object.", path)
+				}
+
+				// Standard error fallback for truly broken JSON
 				t.Fatalf("Could not parse json in %s: %v", path, err)
 			}
 

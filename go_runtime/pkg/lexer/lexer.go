@@ -99,7 +99,11 @@ func (l *Lexer) scanToken() {
 	case '%':
 		l.addToken(token.PERCENT, "%")
 	case '|':
-		l.addToken(token.PIPE, "|")
+		if l.match('|') {
+			l.addError("Unsupported operator '||'. Use 'or' instead.")
+		} else {
+			l.addToken(token.PIPE, "|")
+		}
 	case '^':
 		l.addToken(token.CARET, "^")
 	case '$':
@@ -136,8 +140,7 @@ func (l *Lexer) scanToken() {
 		}
 	case '&':
 		if l.match('&') {
-			// Simulating JS AMPERSAND_AMPERSAND behavior described in lexer.mjs
-			l.addToken(token.TokenType("AMPERSAND_AMPERSAND"), "&&")
+			l.addError("Unsupported operator '&&'. Use 'and' instead.")
 		} else {
 			l.addToken(token.AMPERSAND, "&")
 		}
@@ -202,10 +205,12 @@ func (l *Lexer) string() {
 	for !l.isAtEnd() {
 		if l.peek() == '\\' {
 			l.advance() // Consume slash
-			if l.peek() == '\n' {
-				l.currentLine++
+			if !l.isAtEnd() {
+				if l.peek() == '\n' {
+					l.currentLine++
+				}
+				l.advance() // Consume escaped char
 			}
-			l.advance() // Consume escaped char
 			continue
 		}
 
@@ -363,9 +368,5 @@ func (l *Lexer) isAlphaNumeric(char rune) bool {
 }
 
 func (l *Lexer) isWhitespace(char rune) bool {
-	if char == '\n' {
-		l.currentLine++
-		return true
-	}
-	return char == ' ' || char == '\r' || char == '\t'
+	return char == '\n' || char == ' ' || char == '\r' || char == '\t'
 }

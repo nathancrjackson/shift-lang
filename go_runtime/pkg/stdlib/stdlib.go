@@ -166,18 +166,27 @@ var Intrinsics = map[string]IntrinsicDef{
 	"generate_randomint_from_range": {
 		ReturnType: "number",
 		Params: []ast.Parameter{
-			{Name: "min", DataType: ast.TypeAnnotation{Name: "number"}},
-			{Name: "max", DataType: ast.TypeAnnotation{Name: "number"}},
+			{Name: "num_x", DataType: ast.TypeAnnotation{Name: "number"}},
+			{Name: "num_y", DataType: ast.TypeAnnotation{Name: "number"}},
 		},
 		Func: func(args []any, rt *runtime.Runtime) any {
-			minF, ok1 := args[0].(float64)
-			maxF, ok2 := args[1].(float64)
+			num_x, ok1 := args[0].(float64)
+			num_y, ok2 := args[1].(float64)
 			if !ok1 || !ok2 {
 				panic(runtime.ShiftError{Message: "Runtime Error: Random range must be numbers."})
 			}
-			min := int(math.Ceil(minF))
-			max := int(math.Floor(maxF))
-			return float64(rand.Intn(max-min+1) + min)
+
+			// Determine true boundaries using math.Min/Max
+			min := int(math.Ceil(math.Min(num_x, num_y)))
+			max := int(math.Floor(math.Max(num_x, num_y)))
+			
+			// rand.Intn requires n > 0
+			rangeSize := max - min + 1
+			if rangeSize <= 0 {
+				return float64(min)
+			}
+
+			return float64(rand.Intn(rangeSize) + min)
 		},
 	},
 	"get_datetime": {
@@ -205,8 +214,14 @@ var Intrinsics = map[string]IntrinsicDef{
 		ReturnType: "DateTime",
 		Params:     []ast.Parameter{{Name: "ts", DataType: ast.TypeAnnotation{Name: "number"}}},
 		Func: func(args []any, rt *runtime.Runtime) any {
-			ts, _ := args[0].(float64)
-			return CreateDTStruct(time.Unix(int64(ts), 0))
+			ts, ok := args[0].(float64)
+			if !ok {
+				panic(runtime.ShiftError{Message: "Runtime Error: Expected number."})
+			}
+			
+			// Preserve sub-second precision (milliseconds/nanoseconds)
+			sec, dec := math.Modf(ts)
+			return CreateDTStruct(time.Unix(int64(sec), int64(dec*1e9)))
 		},
 	},
 	"convert_iso8601_to_datetime": {
@@ -265,7 +280,10 @@ var Intrinsics = map[string]IntrinsicDef{
 		ReturnType: "number",
 		Params:     []ast.Parameter{{Name: "n", DataType: ast.TypeAnnotation{Name: "number"}}},
 		Func: func(args []any, rt *runtime.Runtime) any {
-			n, _ := args[0].(float64)
+			n, ok := args[0].(float64)
+			if !ok {
+				panic(runtime.ShiftError{Message: "Runtime Error: calc_sqrt expects number."})
+			}
 			return math.Sqrt(n)
 		},
 	},
@@ -273,7 +291,10 @@ var Intrinsics = map[string]IntrinsicDef{
 		ReturnType: "number",
 		Params:     []ast.Parameter{{Name: "n", DataType: ast.TypeAnnotation{Name: "number"}}},
 		Func: func(args []any, rt *runtime.Runtime) any {
-			n, _ := args[0].(float64)
+			n, ok := args[0].(float64)
+			if !ok {
+				panic(runtime.ShiftError{Message: "Runtime Error: calc_log10 expects number."})
+			}
 			return math.Log10(n)
 		},
 	},
@@ -281,7 +302,10 @@ var Intrinsics = map[string]IntrinsicDef{
 		ReturnType: "number",
 		Params:     []ast.Parameter{{Name: "n", DataType: ast.TypeAnnotation{Name: "number"}}},
 		Func: func(args []any, rt *runtime.Runtime) any {
-			n, _ := args[0].(float64)
+			n, ok := args[0].(float64)
+			if !ok {
+				panic(runtime.ShiftError{Message: "Runtime Error: calc_natlog expects number."})
+			}
 			return math.Log(n)
 		},
 	},
@@ -321,7 +345,10 @@ var Intrinsics = map[string]IntrinsicDef{
 		ReturnType: "number",
 		Params:     []ast.Parameter{{Name: "n", DataType: ast.TypeAnnotation{Name: "number"}}},
 		Func: func(args []any, rt *runtime.Runtime) any {
-			n, _ := args[0].(float64)
+			n, ok := args[0].(float64)
+			if !ok {
+				panic(runtime.ShiftError{Message: "Runtime Error: calc_sin expects number."})
+			}
 			return math.Sin(n)
 		},
 	},
@@ -329,7 +356,10 @@ var Intrinsics = map[string]IntrinsicDef{
 		ReturnType: "number",
 		Params:     []ast.Parameter{{Name: "n", DataType: ast.TypeAnnotation{Name: "number"}}},
 		Func: func(args []any, rt *runtime.Runtime) any {
-			n, _ := args[0].(float64)
+			n, ok := args[0].(float64)
+			if !ok {
+				panic(runtime.ShiftError{Message: "Runtime Error: calc_cos expects number."})
+			}
 			return math.Cos(n)
 		},
 	},
@@ -337,7 +367,10 @@ var Intrinsics = map[string]IntrinsicDef{
 		ReturnType: "number",
 		Params:     []ast.Parameter{{Name: "n", DataType: ast.TypeAnnotation{Name: "number"}}},
 		Func: func(args []any, rt *runtime.Runtime) any {
-			n, _ := args[0].(float64)
+			n, ok := args[0].(float64)
+			if !ok {
+				panic(runtime.ShiftError{Message: "Runtime Error: calc_tan expects number."})
+			}
 			return math.Tan(n)
 		},
 	},
@@ -345,7 +378,10 @@ var Intrinsics = map[string]IntrinsicDef{
 		ReturnType: "number",
 		Params:     []ast.Parameter{{Name: "n", DataType: ast.TypeAnnotation{Name: "number"}}},
 		Func: func(args []any, rt *runtime.Runtime) any {
-			n, _ := args[0].(float64)
+			n, ok := args[0].(float64)
+			if !ok {
+				panic(runtime.ShiftError{Message: "Runtime Error: calc_asin expects number."})
+			}
 			return math.Asin(n)
 		},
 	},
@@ -353,7 +389,10 @@ var Intrinsics = map[string]IntrinsicDef{
 		ReturnType: "number",
 		Params:     []ast.Parameter{{Name: "n", DataType: ast.TypeAnnotation{Name: "number"}}},
 		Func: func(args []any, rt *runtime.Runtime) any {
-			n, _ := args[0].(float64)
+			n, ok := args[0].(float64)
+			if !ok {
+				panic(runtime.ShiftError{Message: "Runtime Error: calc_acos expects number."})
+			}
 			return math.Acos(n)
 		},
 	},
@@ -361,7 +400,10 @@ var Intrinsics = map[string]IntrinsicDef{
 		ReturnType: "number",
 		Params:     []ast.Parameter{{Name: "n", DataType: ast.TypeAnnotation{Name: "number"}}},
 		Func: func(args []any, rt *runtime.Runtime) any {
-			n, _ := args[0].(float64)
+			n, ok := args[0].(float64)
+			if !ok {
+				panic(runtime.ShiftError{Message: "Runtime Error: calc_atan expects number."})
+			}
 			return math.Atan(n)
 		},
 	},
@@ -372,8 +414,11 @@ var Intrinsics = map[string]IntrinsicDef{
 			{Name: "x", DataType: ast.TypeAnnotation{Name: "number"}},
 		},
 		Func: func(args []any, rt *runtime.Runtime) any {
-			y, _ := args[0].(float64)
-			x, _ := args[1].(float64)
+			y, okY := args[0].(float64)
+			x, okX := args[1].(float64)
+			if !okY || !okX {
+				panic(runtime.ShiftError{Message: "Runtime Error: calc_atan2 expects numbers."})
+			}
 			return math.Atan2(y, x)
 		},
 	},
@@ -381,7 +426,10 @@ var Intrinsics = map[string]IntrinsicDef{
 		ReturnType: "number",
 		Params:     []ast.Parameter{{Name: "deg", DataType: ast.TypeAnnotation{Name: "number"}}},
 		Func: func(args []any, rt *runtime.Runtime) any {
-			deg, _ := args[0].(float64)
+			deg, ok := args[0].(float64)
+			if !ok {
+				panic(runtime.ShiftError{Message: "Runtime Error: convert_deg_to_rad expects number."})
+			}
 			return deg * (math.Pi / 180.0)
 		},
 	},
@@ -389,7 +437,10 @@ var Intrinsics = map[string]IntrinsicDef{
 		ReturnType: "number",
 		Params:     []ast.Parameter{{Name: "rad", DataType: ast.TypeAnnotation{Name: "number"}}},
 		Func: func(args []any, rt *runtime.Runtime) any {
-			rad, _ := args[0].(float64)
+			rad, ok := args[0].(float64)
+			if !ok {
+				panic(runtime.ShiftError{Message: "Runtime Error: convert_rad_to_deg expects number."})
+			}
 			return rad * (180.0 / math.Pi)
 		},
 	},

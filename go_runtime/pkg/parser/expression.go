@@ -12,6 +12,12 @@ func (p *Parser) ParseExpression() ast.Expression {
 }
 
 func (p *Parser) parseExpression() ast.Expression {
+	p.depth++
+	defer func() { p.depth-- }()
+	if p.depth > MaxDepth {
+		p.addError(p.peek(), "Expression too deep (stack overflow prevention).")
+		return nil
+	}
 	return p.assignment()
 }
 

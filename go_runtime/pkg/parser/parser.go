@@ -44,7 +44,10 @@ type Parser struct {
 	knownTypes        map[string]bool
 	structDefinitions map[string]StructDef
 	usedFunctions     map[string]bool
+	depth             int
 }
+
+const MaxDepth = 500
 
 func NewParser(tokens []token.Token) *Parser {
 	p := &Parser{
@@ -61,6 +64,7 @@ func NewParser(tokens []token.Token) *Parser {
 		},
 		structDefinitions: make(map[string]StructDef),
 		usedFunctions:     make(map[string]bool),
+		depth:             0,
 	}
 	p.enterScope()
 	return p
