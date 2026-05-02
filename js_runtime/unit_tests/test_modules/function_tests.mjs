@@ -6,7 +6,7 @@ Function tests
 
 export const function_tests = {
     "Basic": {
-        "tests": [{ call:"start()", type: "number", expect: 10}],
+        "tests": [{ call: "start()", type: "number", expect: 10 }],
         "code": `function start() number { return 10; }`
     },
     "Hoisting": {
@@ -26,7 +26,7 @@ export const function_tests = {
     },
     "No return error": {
         "tests": [
-            { call: "main()", type: "runtime_error", expect: "Runtime Error: Expected a return but none was supplied before function end." }
+            { call: "main()", type: "parser_error", expect: "Not all code paths return a value." }
         ],
         "code": `
     function main() number {

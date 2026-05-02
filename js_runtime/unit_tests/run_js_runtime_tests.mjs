@@ -13,6 +13,7 @@ import { casting_tests } from './test_modules/casting_tests.mjs';
 import { while_tests } from './test_modules/while_tests.mjs';
 import { for_tests } from './test_modules/for_tests.mjs';
 import { nullable_tests } from './test_modules/nullable_tests.mjs';
+import { any_tests } from './test_modules/any_tests.mjs';
 import { list_tests } from './test_modules/list_tests.mjs';
 import { map_tests } from './test_modules/map_tests.mjs';
 import { inspection_tests } from './test_modules/inspection_tests.mjs';
@@ -22,6 +23,7 @@ import { trycatchreview_tests } from './test_modules/trycatchreview_tests.mjs';
 import { structs_tests } from './test_modules/structs_tests.mjs';
 import { regex_tests } from './test_modules/regex_tests.mjs';
 import { syntax_tests } from './test_modules/syntax_tests.mjs';
+import { strict_intrinsics_tests } from './test_modules/strict_intrinsics_tests.mjs';
 import { complex_tests } from './test_modules/complex_tests.mjs';
 
 const test_suite = new UnitTestHandler();
@@ -41,6 +43,7 @@ test_suite.addgroup('Casting', casting_tests);
 test_suite.addgroup('While', while_tests);
 test_suite.addgroup('For', for_tests);
 test_suite.addgroup('Nullable', nullable_tests);
+test_suite.addgroup('Any', any_tests);
 test_suite.addgroup('List', list_tests);
 test_suite.addgroup('Map', map_tests);
 test_suite.addgroup('Inspection', inspection_tests);
@@ -49,6 +52,7 @@ test_suite.addgroup('Try Catch Review', trycatchreview_tests);
 test_suite.addgroup('Structs', structs_tests);
 test_suite.addgroup('Regex', regex_tests);
 test_suite.addgroup('Syntax', syntax_tests);
+test_suite.addgroup('Strict Intrinsics', strict_intrinsics_tests);
 test_suite.addgroup('Complex', complex_tests);
 /*
 */

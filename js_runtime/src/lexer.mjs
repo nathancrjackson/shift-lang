@@ -70,7 +70,6 @@ export class Lexer
 			case '-': this.addToken(TokenType.MINUS, "-"); break;
 			case '*': this.addToken(TokenType.STAR, "*"); break;
 			case '%': this.addToken(TokenType.PERCENT, "%"); break;
-            case '|': this.addToken(TokenType.PIPE, "|"); break;
             case '^': this.addToken(TokenType.CARET, "^"); break;
             case '$': this.magicVariable(); break;
 
@@ -132,12 +131,21 @@ export class Lexer
             // Concatenation or Logic?
             case '&':
                 if (this.match('&')) {
-                    this.addToken(TokenType.AMPERSAND_AMPERSAND, "&&");
+                    this.addError("Unsupported operator '&&'. Use 'and' instead.");
                 } else {
                     this.addToken(TokenType.AMPERSAND, "&");
                 }
                 break;
 			
+            // Pipe or Logic?
+            case '|':
+                if (this.match('|')) {
+                    this.addError("Unsupported operator '||'. Use 'or' instead.");
+                } else {
+                    this.addToken(TokenType.PIPE, "|");
+                }
+                break;
+
 			// Is it a comment or a math division?
 			case '/':
 				if (this.match('/'))
@@ -214,10 +222,11 @@ export class Lexer
 	{
 		while (!this.isAtEnd())
 		{
-			// Handle the backslah case
+			// Handle the backslash case
 			if (this.peek() === '\\')
 			{
 				this.advance(); // Consume slash
+                if (this.isAtEnd()) break; // Prevent out-of-bounds on dangling slash
                 
                 // Track newline if we are escaping a line break
                 if (this.peek() === '\n') {
@@ -400,10 +409,6 @@ export class Lexer
 	}
 
 	isWhitespace(char) {
-		if (char === '\n') {
-			this.currentline++;
-			return true;
-		}
-		return [' ', '\r', '\t'].includes(char);
+		return [' ', '\r', '\t', '\n'].includes(char);
 	}
 }

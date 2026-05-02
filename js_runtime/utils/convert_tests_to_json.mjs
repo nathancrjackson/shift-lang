@@ -11,7 +11,7 @@
  *
  * Options:
  *   --dir <path>        Directory to scan for .mjs files (default: ../unit_tests/test_modules)
- *   --out <path>        Base directory for output .json files (default: ../unit_tests/test_json)
+ *   --out <path>        Base directory for output .json files (default: ../../go_runtime/unit_tests/tests_json)
  *   --all-exports       Instead of picking a single export, writes an object of all exports
  *   --min               Minify JSON output (no pretty-print)
  */

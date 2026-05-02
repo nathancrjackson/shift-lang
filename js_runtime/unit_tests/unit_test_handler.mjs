@@ -1,3 +1,4 @@
+import fs from 'fs';
 import { Lexer } from '../src/lexer.mjs';
 import { Parser } from '../src/parser.mjs';
 import { validateAST } from '../src/ast_validator.mjs';
@@ -33,14 +34,11 @@ export class UnitTestHandler {
         this.tests.push({ name, code, checks });
     }
 
-    addgroup(test_group, test_to_run)
-    {
-        for (const test_name in test_to_run)
-        {
-            if (test_to_run.hasOwnProperty(test_name))
-            {
+    addgroup(test_group, test_to_run) {
+        for (const test_name in test_to_run) {
+            if (test_to_run.hasOwnProperty(test_name)) {
                 const test_details = test_to_run[test_name];
-                this.add( `${test_group}: ${test_name}`, test_details['code'], test_details['tests'] );
+                this.add(`${test_group}: ${test_name}`, test_details['code'], test_details['tests']);
             }
         }
     }
@@ -69,7 +67,7 @@ export class UnitTestHandler {
         const stdLexer = new Lexer(StandardLibrary.source);
         const stdTokens = stdLexer.tokenize().tokens; // Assuming no lex errors in StdLib
         const stdParser = new Parser(stdTokens);
-        
+
         // Load intrinsics/structs into StdLib parser so it can parse itself
         StandardLibrary.loadDefinitions(stdParser);
         stdParser.preScan();
@@ -77,14 +75,14 @@ export class UnitTestHandler {
         const stdLibAST = stdParseResult.ast;
 
         if (stdParseResult.errors.length > 0) {
-             console.error("CRITICAL: Standard Library failed to compile!");
-             console.error(stdParseResult.errors);
-             return debugMap;
+            console.error("CRITICAL: Standard Library failed to compile!");
+            console.error(stdParseResult.errors);
+            return debugMap;
         }
 
         this.tests.forEach((test) => {
             const testFailures = [];
-            
+
             const currentDebug = {
                 testName: test.name,
                 success: false,
@@ -93,7 +91,7 @@ export class UnitTestHandler {
                 tokens: [],
                 ast: null,
                 runtime_logs: [],
-                errors: [] 
+                errors: []
             };
 
             // CHECK FOR CASCADING FLAG
@@ -111,10 +109,10 @@ export class UnitTestHandler {
             let parseErrors = [];
             let ast = null;
             let validationError = null; // Store validation error
-            
+
             if (lexErrors.length === 0) {
                 const parser = new Parser(lexResult.tokens);
-                
+
                 // A. Load Definitions (Structs & Intrinsics)
                 StandardLibrary.loadDefinitions(parser);
 
@@ -127,12 +125,12 @@ export class UnitTestHandler {
                         initialized: true
                     });
                 });
-                
+
                 // C. Parse User Code
                 parser.preScan();
                 const parseResult = parser.parse();
                 parseErrors = [...parseResult.errors];
-                
+
                 // D. Merge ASTs (Tree Shaking)
                 // Only add functions from StdLib that were actually used in User Code
                 const userAST = parseResult.ast;
@@ -159,10 +157,10 @@ export class UnitTestHandler {
             // --- VERIFY CHECKS ---
             test.checks.forEach((check, i) => {
                 // FIX: Only skip if it is purely a configuration flag (no expectation)
-                if (check.type === "parser_error_cascading" && !check.expect) return; 
+                if (check.type === "parser_error_cascading" && !check.expect) return;
 
-                const checkName = `Check #${i+1} (${check.type})`;
-                
+                const checkName = `Check #${i + 1} (${check.type})`;
+
                 const logEntry = {
                     input: check.call || "N/A",
                     expected: check.expect,
@@ -180,7 +178,7 @@ export class UnitTestHandler {
                 if (isLexerCheck) {
                     const foundIndex = lexErrors.findIndex(e => e.message.includes(check.expect));
                     logEntry.result_type = "LEXER_CHECK";
-                    
+
                     if (foundIndex !== -1) {
                         logEntry.actual = lexErrors[foundIndex].message;
                         lexErrors.splice(foundIndex, 1);
@@ -207,7 +205,7 @@ export class UnitTestHandler {
                 // 3. VALIDATION CHECKS (NEW)
                 else if (isValidationCheck) {
                     logEntry.result_type = "VALIDATION_CHECK";
-                    
+
                     if (validationError) {
                         logEntry.actual = validationError.message;
                         if (validationError.message.includes(check.expect)) {
@@ -226,21 +224,21 @@ export class UnitTestHandler {
 
                 // 4. RUNTIME CHECKS
                 else {
-                    const hasBlockingErrors = (lexResult.errors.length > 0 && !isLexerCheck) || 
-                                              (parseErrors.length > 0 && !isParserCheck) ||
-                                              (validationError !== null); // Block if unhandled validation error
-                    
+                    const hasBlockingErrors = (lexResult.errors.length > 0 && !isLexerCheck) ||
+                        (parseErrors.length > 0 && !isParserCheck) ||
+                        (validationError !== null); // Block if unhandled validation error
+
                     if (hasBlockingErrors) {
                         testFailures.push(`${checkName}: Skipped because of earlier compilation errors.`);
                         logEntry.actual = "SKIPPED";
                         logEntry.result_type = "SKIPPED";
-                    } 
+                    }
                     else {
                         let runtime = null;
                         try {
                             // Instantiate Runtime for this test
                             runtime = new Runtime(ast);
-                            
+
                             // ORCHESTRATION: Load Standard Library Intrinsics into Runtime
                             StandardLibrary.loadIntrinsics(runtime);
 
@@ -252,7 +250,7 @@ export class UnitTestHandler {
                                 const callLexer = new Lexer(check.call);
                                 const callTokens = callLexer.tokenize().tokens;
                                 const callParser = new Parser(callTokens);
-                                
+
                                 // HACK: Pre-define identifiers in the call parser to avoid "Undefined variable" 
                                 // errors during expression parsing. This allows 'start()' to parse even though 
                                 // 'start' isn't defined in the call string's scope.
@@ -260,7 +258,7 @@ export class UnitTestHandler {
                                     if (t.t === TokenType.IDENTIFIER) {
                                         // We don't care about the type here, just that it exists so the parser accepts it
                                         if (!callParser.getVariable(t.v)) {
-                                             callParser.defineVariable(t.v, {type: 'Type', name: 'any', initialized: true});
+                                            callParser.defineVariable(t.v, { type: 'Type', name: 'any', initialized: true });
                                         }
                                     }
                                 });
@@ -280,7 +278,7 @@ export class UnitTestHandler {
                                 // Fallback for tests that might not have a call (uncommon for runtime checks)
                                 // We treat the expectation as the actual to pass "mock" logic if needed, 
                                 // but ideally all runtime tests should have a call.
-                                actual = check.expect; 
+                                actual = check.expect;
                             }
 
                             logEntry.actual = actual;
@@ -332,7 +330,7 @@ export class UnitTestHandler {
                         }
                     }
                 }
-                
+
                 currentDebug.runtime_logs.push(logEntry);
             });
 
@@ -358,15 +356,15 @@ export class UnitTestHandler {
                     });
                 });
             } else if (parseErrors.length > 0) {
-                 // Log them but don't fail
-                 parseErrors.forEach(e => {
-                     currentDebug.errors.push({
+                // Log them but don't fail
+                parseErrors.forEach(e => {
+                    currentDebug.errors.push({
                         type: "ParserError (Ignored)",
                         line: e.line,
                         token: e.token || "",
                         message: e.message
                     });
-                 });
+                });
             }
 
             // Report Unexpected Validation Errors

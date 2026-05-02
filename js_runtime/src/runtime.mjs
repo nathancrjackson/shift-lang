@@ -44,8 +44,8 @@ class StackFrame {
         this.env = env;
         this.statements = statements;
         this.pc = 0; // Program Counter
-        this.waitingForExpr = false; 
-        this.exprResult = null; 
+        this.waitingForExpr = false;
+        this.exprResult = null;
     }
 }
 
@@ -56,9 +56,9 @@ export class Runtime {
         this.globalEnv = new Environment();
         this.functions = new Map();
         this.intrinsics = new Map();
-        
+
         this.loadFunctions();
-        
+
         // Global magic variables
         this.globalEnv.define("$line_num", 0);
         this.globalEnv.define("$pi", Math.PI);
@@ -66,6 +66,8 @@ export class Runtime {
 
         // The Execution Stack
         this.stack = [];
+        this.maxInstructions = 1000000;
+        this.instructionsRun = 0;
     }
 
     logDebug(msg) {
@@ -89,14 +91,19 @@ export class Runtime {
         return String(val);
     }
 
-    deepCopy(value) {
+    deepCopy(value, visited = new Set()) {
         if (value === null) return null;
         if (typeof value !== 'object') return value;
-        if (Array.isArray(value)) return value.map(item => this.deepCopy(item));
+        if (visited.has(value)) {
+            throw new Error(`Runtime Error: Circular reference detected during deep copy.`);
+        }
+        visited.add(value);
+
+        if (Array.isArray(value)) return value.map(item => this.deepCopy(item, visited));
         if (value instanceof Map) {
             const newMap = new Map();
             if (value.__shift_type) newMap.__shift_type = value.__shift_type;
-            for (const [k, v] of value) newMap.set(k, this.deepCopy(v));
+            for (const [k, v] of value) newMap.set(k, this.deepCopy(v, visited));
             return newMap;
         }
         return value;
@@ -106,14 +113,14 @@ export class Runtime {
         switch (typeInfo.name) {
             case "number": return 0;
             case "string": return "";
-            case "bool":   return false;
-            case "list":   return []; 
-            case "map":    return new Map(); 
-            case "null":   return null;
-            case "none":   return null;
+            case "bool": return false;
+            case "list": return [];
+            case "map": return new Map();
+            case "null": return null;
+            case "none": return null;
             case "nullable": return null;
-            case "any":    return null; 
-            default: return null; 
+            case "any": return null;
+            default: return null;
         }
     }
 
@@ -128,29 +135,39 @@ export class Runtime {
             return;
         }
         if (typeInfo.type === 'StructType') {
-             if (!(value instanceof Map)) throw new Error(`Runtime Error: Return type mismatch.`);
-             value.__shift_type = typeInfo.name;
-             return;
+            if (!(value instanceof Map)) throw new Error(`Runtime Error: Return type mismatch.`);
+            value.__shift_type = typeInfo.name;
+            return;
         }
         const actualType = typeof value;
-        
+
         // Strict Type Mapping
         let expectedJS = typeInfo.name;
         if (expectedJS === "bool") expectedJS = "boolean";
 
         const valid = (typeInfo.name === "list" && Array.isArray(value)) ||
-                      (typeInfo.name === "map" && value instanceof Map) ||
-                      (expectedJS === actualType);
-        
+            (typeInfo.name === "map" && value instanceof Map) ||
+            (expectedJS === actualType);
+
         if (!valid) throw new Error(`Runtime Error: Return type mismatch.`);
+
+        if (typeInfo.name === "list" && typeInfo.generic) {
+            for (let i = 0; i < value.length; i++) {
+                this.checkType(value[i], typeInfo.generic);
+            }
+        } else if (typeInfo.name === "map" && typeInfo.generic) {
+            for (const val of value.values()) {
+                this.checkType(val, typeInfo.generic);
+            }
+        }
     }
 
     // --- The Stack Machine Core ---
 
     runFunction(name, args = []) {
         const previousStack = this.stack;
-        this.stack = []; 
-        
+        this.stack = [];
+
         try {
             let func = null;
 
@@ -163,7 +180,7 @@ export class Runtime {
 
             if (!func) throw new Error(`Runtime Error: Function '${name}' not found.`);
             if (args.length !== func.params.length) {
-                 throw new Error(`Runtime Error: Function '${name}' expects ${func.params.length} arguments but got ${args.length}.`);
+                throw new Error(`Runtime Error: Function '${name}' expects ${func.params.length} arguments but got ${args.length}.`);
             }
 
             const fnEnv = new Environment(this.globalEnv);
@@ -175,7 +192,7 @@ export class Runtime {
 
             const initialFrame = new StackFrame("Function", fnEnv, func.body.statements);
             initialFrame.meta = { returnType: func.returnType, functionName: name };
-            
+
             this.stack.push(initialFrame);
             this.logDebug(`Pushed Function Frame: ${name} (Args: ${args.length})`);
 
@@ -184,6 +201,11 @@ export class Runtime {
             let signalValue = null;
 
             while (this.stack.length > 0) {
+                this.instructionsRun++;
+                if (this.instructionsRun > this.maxInstructions) {
+                    throw new ShiftCritical("Runtime Error: Execution exceeded maximum instruction limit.");
+                }
+
                 const frame = this.stack[this.stack.length - 1];
 
                 if (currentSignal === SIGNAL_RETURN) {
@@ -191,21 +213,21 @@ export class Runtime {
                         finalResult = signalValue;
                         this.stack.pop();
                         this.logDebug(`Popped Function Frame: ${frame.meta?.functionName} (Return: ${this.stringify(finalResult)})`);
-                        
+
                         if (frame.meta && frame.meta.returnType) {
                             this.checkType(finalResult, frame.meta.returnType);
                         }
-                        
+
                         if (this.stack.length === 0) return finalResult;
-                        
+
                         const callerFrame = this.stack[this.stack.length - 1];
                         callerFrame.exprResult = finalResult;
                         callerFrame.waitingForExpr = false;
-                        
+
                         currentSignal = SIGNAL_NONE;
                         signalValue = null;
                         continue;
-                    } 
+                    }
                     else {
                         this.stack.pop();
                         this.logDebug(`Popped Frame: ${frame.type} (Propagating Return)`);
@@ -216,12 +238,12 @@ export class Runtime {
                 if (currentSignal === SIGNAL_BREAK || currentSignal === SIGNAL_SKIP) {
                     if (frame.type === "Loop") {
                         if (currentSignal === SIGNAL_BREAK) {
-                            this.stack.pop(); 
+                            this.stack.pop();
                             this.logDebug(`Loop Terminated (Break)`);
-                            currentSignal = SIGNAL_NONE; 
+                            currentSignal = SIGNAL_NONE;
                         } else {
                             this.logDebug(`Loop Skipping`);
-                            currentSignal = SIGNAL_NONE; 
+                            currentSignal = SIGNAL_NONE;
                         }
                         continue;
                     } else if (frame.type === "Function") {
@@ -235,10 +257,10 @@ export class Runtime {
                 if (frame.pc >= frame.statements.length) {
                     this.stack.pop();
                     this.logDebug(`Popped Frame: ${frame.type} (Finished)`);
-                    
+
                     if (frame.type === "Function") {
                         const retType = frame.meta.returnType;
-                        if (retType.name !== 'none' && retType.name !== 'null' && 
+                        if (retType.name !== 'none' && retType.name !== 'null' &&
                             retType.name !== 'nullable' && retType.name !== 'any') {
                             throw new Error(`Runtime Error: Expected a return but none was supplied before function end.`);
                         }
@@ -254,7 +276,7 @@ export class Runtime {
                 }
 
                 const stmt = frame.statements[frame.pc];
-                
+
                 if (frame.type !== "Loop") {
                     frame.pc++;
                 }
@@ -266,12 +288,12 @@ export class Runtime {
                         if (sig !== SIGNAL_NONE) this.logDebug(`Signal Raised: ${sig}`);
                     });
                 } catch (e) {
-                    throw e; 
+                    throw e;
                 }
 
                 if (currentSignal !== SIGNAL_NONE) continue;
             }
-            
+
             return finalResult;
 
         } finally {
@@ -281,9 +303,9 @@ export class Runtime {
 
     executeStatement(stmt, frame, signalCallback) {
         if (stmt.line) {
-             try { this.globalEnv.assign("$line_num", stmt.line); } catch(e) {} 
+            try { this.globalEnv.assign("$line_num", stmt.line); } catch (e) { }
         }
-        
+
         this.logDebug(`Exec Stmt: ${stmt.type} (Line: ${stmt.line})`);
 
         switch (stmt.type) {
@@ -297,18 +319,18 @@ export class Runtime {
             case "ExpressionStatement":
                 this.evaluate(stmt.expression, frame.env);
                 break;
-            
+
             case "ReturnStatement": {
                 let retVal = null;
                 if (stmt.value) retVal = this.evaluate(stmt.value, frame.env);
                 signalCallback(SIGNAL_RETURN, retVal);
                 break;
             }
-            
+
             case "BreakStatement":
                 signalCallback(SIGNAL_BREAK, null);
                 break;
-                
+
             case "SkipStatement":
                 signalCallback(SIGNAL_SKIP, null);
                 break;
@@ -363,30 +385,30 @@ export class Runtime {
                     this.runProtectedBlock(stmt.tryBlock, frame.env, signalCallback);
                 } catch (e) {
                     if (e instanceof ShiftCritical) {
-                        throw e; 
-                    } 
+                        throw e;
+                    }
                     else if (e instanceof ShiftAlert) {
                         if (stmt.reviewBlock) {
                             const reviewEnv = new Environment(frame.env);
                             reviewEnv.define(stmt.catchIdentifier, e.message);
                             this.runProtectedBlock(stmt.reviewBlock, reviewEnv, signalCallback);
                         } else {
-                            throw e; 
+                            throw e;
                         }
-                    } 
+                    }
                     else if (e instanceof ShiftError || e instanceof Error) {
                         if (stmt.catchBlock) {
                             const catchEnv = new Environment(frame.env);
                             catchEnv.define(stmt.catchIdentifier, e.message);
                             this.runProtectedBlock(stmt.catchBlock, catchEnv, signalCallback);
                         } else {
-                            throw e; 
+                            throw e;
                         }
                     }
                 }
                 break;
             }
-            
+
             case "DeleteStatement":
                 this.executeDelete(stmt, frame.env);
                 break;
@@ -401,7 +423,7 @@ export class Runtime {
     runProtectedBlock(blockNode, env, parentSignalCallback) {
         const oldStyleExec = (statements, env) => {
             for (const stmt of statements) {
-                this.executeStatement(stmt, {env, type: "Protected"}, (sig, val) => {
+                this.executeStatement(stmt, { env, type: "Protected" }, (sig, val) => {
                     throw { type: "Signal", sig, val };
                 });
             }
@@ -415,7 +437,7 @@ export class Runtime {
                 } else {
                     throw new Error("Control flow signal unhandled in protected block.");
                 }
-                return; 
+                return;
             }
             throw e;
         }
@@ -424,12 +446,12 @@ export class Runtime {
     startLoop(stmt, env, type) {
         const loopEnv = new Environment(env);
         const loopFrame = new StackFrame("Loop", loopEnv, []);
-        
+
         if (type === "range") {
             const start = this.evaluate(stmt.startValue, env);
             const end = this.evaluate(stmt.endValue, env);
             if (typeof start !== 'number' || typeof end !== 'number') throw new Error("Range must be numbers");
-            
+
             loopFrame.iterState = {
                 type: "range",
                 current: start,
@@ -438,7 +460,7 @@ export class Runtime {
                 varName: stmt.iterator,
                 body: stmt.body
             };
-        } 
+        }
         else if (type === "while") {
             loopFrame.iterState = {
                 type: "while",
@@ -450,7 +472,7 @@ export class Runtime {
             const col = this.evaluate(stmt.collection, env);
             let items = [];
             let isMap = false;
-            
+
             if (Array.isArray(col)) items = col;
             else if (col instanceof Map) { items = Array.from(col.entries()); isMap = true; }
             else throw new Error("Not iterable");
@@ -466,7 +488,7 @@ export class Runtime {
             };
         }
 
-        loopFrame.statements = [{ type: "LoopStep" }]; 
+        loopFrame.statements = [{ type: "LoopStep" }];
         this.stack.push(loopFrame);
         this.logDebug(`Started Loop (${type})`);
     }
@@ -501,8 +523,8 @@ export class Runtime {
                     }
                 } else {
                     if (state.valVarName) {
-                        loopEnv.define(state.varName, state.index - 1); 
-                        loopEnv.define(state.valVarName, item); 
+                        loopEnv.define(state.varName, state.index - 1);
+                        loopEnv.define(state.valVarName, item);
                     } else {
                         loopEnv.define(state.varName, item);
                     }
@@ -512,7 +534,7 @@ export class Runtime {
         }
 
         if (shouldRun) {
-            frame.pc = 0; 
+            frame.pc = 0;
             this.logDebug(`Loop Step: Running Body`);
             this.pushBlock(state.body, loopEnv);
         } else {
@@ -523,10 +545,10 @@ export class Runtime {
 
     evaluate(expr, env) {
         this.logDebug(`Eval: ${expr.type}`);
-        
+
         switch (expr.type) {
             case "Literal": return expr.value;
-            case "MagicVariable": 
+            case "MagicVariable":
                 if (expr.name === "$line_num") {
                     return expr.line || this.globalEnv.get("$line_num");
                 }
@@ -593,7 +615,7 @@ export class Runtime {
     }
 
     evaluateRest(expr, env) {
-        switch(expr.type) {
+        switch (expr.type) {
             case "InspectExpression": {
                 const val = this.evaluate(expr.argument, env);
                 const map = new Map();
@@ -663,7 +685,7 @@ export class Runtime {
         const val = this.evaluate(expr.left, env);
         let res = false;
         const check = expr.check;
-        
+
         if (check === "string") res = typeof val === 'string';
         else if (check === "number") res = typeof val === 'number' || (typeof val === 'string' && !isNaN(parseFloat(val)));
         else if (check === "bool") res = typeof val === 'boolean' || (typeof val === 'string' && (val === "1" || val === "0"));
@@ -677,7 +699,7 @@ export class Runtime {
         else if (check === "alphanumeric") res = typeof val === 'string' && /^[a-zA-Z0-9]+$/.test(val);
         else if (check === "email") res = typeof val === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val);
         else throw new Error(`Unknown is check '${check}'`);
-        
+
         return expr.isNot ? !res : res;
     }
 
@@ -685,13 +707,13 @@ export class Runtime {
         const src = String(this.evaluate(expr.source, env));
         const rep = String(this.evaluate(expr.replacement, env));
         const patRaw = String(this.evaluate(expr.pattern, env));
-        
+
         if (patRaw.startsWith("/") && patRaw.lastIndexOf("/") > 0) {
             const last = patRaw.lastIndexOf('/');
             try {
                 const regex = new RegExp(patRaw.substring(1, last), patRaw.substring(last + 1));
                 return src.replace(regex, rep);
-            } catch(e) { throw new Error(`Runtime Error: Invalid regular expression in replace: ${e.message}`); }
+            } catch (e) { throw new Error(`Runtime Error: Invalid regular expression in replace: ${e.message}`); }
         }
         return src.replaceAll(patRaw, rep);
     }
@@ -700,7 +722,7 @@ export class Runtime {
         const val = this.evaluate(expr.value, env);
         const target = expr.targetType.name;
         const sourceType = this.getTypeName(val);
-        
+
         // Identity cast: If source already matches target, return directly
         if (sourceType === target) {
             return val;
@@ -732,13 +754,13 @@ export class Runtime {
             }
             if (typeof val === 'number') return val !== 0;
             if (typeof val === 'boolean') return val;
-            
+
             throw new Error(`Runtime Error: Cannot cast ${sourceType} to bool.`);
         }
 
         if (target === "list") {
             if (typeof val === "string") return val.split('');
-            if (Array.isArray(val)) return val; 
+            if (Array.isArray(val)) return val;
             throw new Error(`Runtime Error: Cannot cast ${sourceType} to list.`);
         }
 
@@ -750,18 +772,18 @@ export class Runtime {
         if (expr.operator === "and") return this.isTruthy(left) && this.isTruthy(this.evaluate(expr.right, env));
         if (expr.operator === "or") return this.isTruthy(left) || this.isTruthy(this.evaluate(expr.right, env));
         if (expr.operator === "??") return left !== null ? left : this.evaluate(expr.right, env);
-        
+
         if (expr.operator === "xor") {
             const right = this.evaluate(expr.right, env);
             return this.isTruthy(left) !== this.isTruthy(right);
         }
-        
+
         const right = this.evaluate(expr.right, env);
         if (expr.operator === "+") return left + right;
         if (expr.operator === "-") return left - right;
         if (expr.operator === "*") return left * right;
-        if (expr.operator === "/") { if(right===0) throw new Error("Runtime Error: Division by zero."); return left/right; }
-        if (expr.operator === "%") { if(right===0) throw new Error("Runtime Error: Modulo by zero."); return left%right; }
+        if (expr.operator === "/") { if (right === 0) throw new Error("Runtime Error: Division by zero."); return left / right; }
+        if (expr.operator === "%") { if (right === 0) throw new Error("Runtime Error: Modulo by zero."); return left % right; }
         if (expr.operator === "^") return Math.pow(left, right);
         if (expr.operator === "&") return this.stringify(left) + this.stringify(right);
         if (expr.operator === "==") return left === right;
@@ -770,7 +792,7 @@ export class Runtime {
         if (expr.operator === ">") return left > right;
         if (expr.operator === "<=") return left <= right;
         if (expr.operator === ">=") return left >= right;
-        
+
         if (expr.operator === "contains") {
             if (Array.isArray(left) || typeof left === 'string') return left.includes(right);
             throw new Error("Runtime Error: 'contains' requires a list or string.");
@@ -783,37 +805,41 @@ export class Runtime {
             throw new Error("Runtime Error: 'has' operator only works on maps.");
         }
         if (expr.operator === "matches") {
-             const str = String(left); const reg = String(right);
-             const l = reg.lastIndexOf('/');
-             try {
-                 return new RegExp(reg.substring(1,l), reg.substring(l+1)).test(str);
-             } catch(e) { throw new Error(`Runtime Error: Invalid regular expression in matches: ${e.message}`); }
+            const str = String(left); const reg = String(right);
+            if (str.length > 50000) throw new Error("Runtime Error: matches string too large (ReDoS protection).");
+            const l = reg.lastIndexOf('/');
+            try {
+                return new RegExp(reg.substring(1, l), reg.substring(l + 1)).test(str);
+            } catch (e) { throw new Error(`Runtime Error: Invalid regular expression in matches: ${e.message}`); }
         }
-        
+
         if (expr.operator === "search") {
             const str = String(left); const regStr = String(right);
+            if (str.length > 50000) throw new Error("Runtime Error: search string too large (ReDoS protection).");
             const lastSlash = regStr.lastIndexOf('/');
             const pattern = regStr.substring(1, lastSlash);
             const flags = regStr.substring(lastSlash + 1);
             let regex;
             try {
                 regex = new RegExp(pattern, flags);
-            } catch(e) { throw new Error(`Runtime Error: Invalid regular expression in search: ${e.message}`); }
+            } catch (e) { throw new Error(`Runtime Error: Invalid regular expression in search: ${e.message}`); }
             const results = [];
             let match;
             if (!regex.global) {
                 match = regex.exec(str);
                 if (match) {
-                     const resMap = new Map();
-                     resMap.set("match", match[0]);
-                     resMap.set("start", match.index);
-                     resMap.set("end", match.index + match[0].length);
-                     resMap.set("groups", match.slice(1));
-                     results.push(resMap);
+                    const resMap = new Map();
+                    resMap.__shift_type = "RegexResult";
+                    resMap.set("match", match[0]);
+                    resMap.set("start", match.index);
+                    resMap.set("end", match.index + match[0].length);
+                    resMap.set("groups", match.slice(1));
+                    results.push(resMap);
                 }
             } else {
                 while ((match = regex.exec(str)) !== null) {
                     const resMap = new Map();
+                    resMap.__shift_type = "RegexResult";
                     resMap.set("match", match[0]);
                     resMap.set("start", match.index);
                     resMap.set("end", match.index + match[0].length);
@@ -838,7 +864,7 @@ export class Runtime {
         const t = stmt.target;
         const obj = this.evaluate(t.object, env);
         const idx = this.evaluate(t.index, env);
-        
+
         if (obj instanceof Map) {
             if (!obj.has(idx)) throw new Error("Runtime Error: Map key does not exist.");
             obj.delete(idx);

@@ -7,15 +7,17 @@ export class Shift {
     /**
      * @param {string|null} stdLibCode - Custom standard library code (Shift). Pass null to use default.
      * @param {Object|null} stdLibIntrinsics - Custom intrinsics map. Pass null to use default StandardLibrary.intrinsics.
+     * @param {number} maxInstructions - Maximum stack machine loops permitted. Default is 1,000,000.
      */
-    constructor(stdLibCode = null, stdLibIntrinsics = null) {
+    constructor(stdLibCode = null, stdLibIntrinsics = null, maxInstructions = 1000000) {
+        this.maxInstructions = maxInstructions;
         this.stdLibAST = null;
         this.stdLibErrors = [];
-        
+
         // If stdLibIntrinsics is provided, use it. Otherwise use the default.
         const baseIntrinsics = stdLibIntrinsics !== null ? stdLibIntrinsics : StandardLibrary.intrinsics;
         this.intrinsics = new Map(Object.entries(baseIntrinsics));
-        
+
         this._initStandardLibrary(stdLibCode);
     }
 
@@ -40,14 +42,14 @@ export class Shift {
         // Load Definitions manually (Structs + Active Intrinsics)
         this._loadStructs(stdParser);
         this._loadIntrinsics(stdParser);
-        
+
         // Scan and parse
         stdParser.preScan();
         const result = stdParser.parse();
-        
+
         this.stdLibAST = result.ast;
         this.stdLibErrors = result.errors;
-        
+
         if (this.stdLibErrors.length > 0) {
             console.error("Shift Internal Error: Standard Library failed to compile.");
             this.stdLibErrors.forEach(e => console.error(`Line ${e.line}: ${e.message}`));
@@ -57,18 +59,18 @@ export class Shift {
     _loadStructs(parser) {
         StandardLibrary.structs.forEach(s => {
             parser.knownTypes.add(s.name);
-            
+
             const fields = s.fields.map(f => {
                 let typeObj = { type: "Type", name: f.type, generic: null };
                 if (f.generic) {
                     typeObj.generic = { type: "Type", name: f.generic, generic: null };
                 }
                 if (f.type === "nullable" && f.generic) {
-                     typeObj = { 
-                         type: "Type", 
-                         name: "nullable", 
-                         generic: { type: "Type", name: f.generic, generic: null } 
-                     };
+                    typeObj = {
+                        type: "Type",
+                        name: "nullable",
+                        generic: { type: "Type", name: f.generic, generic: null }
+                    };
                 }
                 return { name: f.name, type: typeObj };
             });
@@ -108,7 +110,7 @@ export class Shift {
         // 1. Lexer
         const lexer = new Lexer(sourceCode);
         const lexResult = lexer.tokenize();
-        
+
         if (lexResult.errors.length > 0) {
             const firstError = lexResult.errors[0];
             const line = firstError.line || firstError.endline || firstError.startline;
@@ -117,7 +119,7 @@ export class Shift {
 
         // 2. Parser
         const parser = new Parser(lexResult.tokens);
-        
+
         // A. Load Definitions
         this._loadStructs(parser);
         this._loadIntrinsics(parser);
@@ -155,7 +157,8 @@ export class Shift {
 
         // 4. Runtime Initialization
         const runtime = new Runtime(finalAST);
-        
+        runtime.maxInstructions = this.maxInstructions;
+
         // Load Intrinsic Implementations
         this._loadIntrinsicsIntoRuntime(runtime);
 

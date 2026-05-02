@@ -24,18 +24,6 @@ export const variable_tests = {
     },
 
 
-    "Any assignment type error":
-    {
-        "tests": [{ type: "parser_error", expect: "Type 'any' is not allowed for variable declarations." }],
-        "code":
-`function start() number
-{
-    any result = 10;
-    return result;
-}`
-    },
-
-
     "Redeclared from function declaration Error":
     {
         "tests": [{ type: "parser_error", expect: "Variable cannot be redeclared inside the same function." }],

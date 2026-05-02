@@ -10,6 +10,7 @@ export class Parser {
 
         this.currentReturnType = null;
         this.loopDepth = 0;
+        this.depth = 0;
 
         this.scopes = [];
         this.enterScope();
@@ -400,7 +401,15 @@ export class Parser {
         const previousReturnType = this.currentReturnType;
         this.currentReturnType = returnType.name;
 
+        const startErrorCount = this.errors.length;
         const body = this.parseBlock();
+        const hasBodyErrors = this.errors.length > startErrorCount;
+
+        if (!hasBodyErrors && returnType.name !== "none" && returnType.name !== "null" && returnType.name !== "any") {
+            if (!this.hasGuaranteedReturn(body)) {
+                this.addError({ l: line, v: nameToken.v }, "Not all code paths return a value.");
+            }
+        }
 
         this.currentReturnType = previousReturnType;
         this.exitScope();
@@ -415,6 +424,33 @@ export class Parser {
             returnType: returnType,
             body: body
         };
+    }
+
+    hasGuaranteedReturn(statement) {
+        if (!statement) return false;
+        if (statement.type === "Block") {
+            for (let i = 0; i < statement.statements.length; i++) {
+                if (this.hasGuaranteedReturn(statement.statements[i])) return true;
+            }
+            return false;
+        }
+        if (statement.type === "ReturnStatement" || statement.type === "ThrowStatement") {
+            return true;
+        }
+        if (statement.type === "IfStatement") {
+            if (statement.elseBranch) {
+                return this.hasGuaranteedReturn(statement.thenBranch) && this.hasGuaranteedReturn(statement.elseBranch);
+            }
+            return false;
+        }
+        if (statement.type === "TryStatement") {
+            let tryReturns = this.hasGuaranteedReturn(statement.tryBlock);
+            if (!tryReturns) return false;
+            if (statement.catchBlock && !this.hasGuaranteedReturn(statement.catchBlock)) return false;
+            if (statement.reviewBlock && !this.hasGuaranteedReturn(statement.reviewBlock)) return false;
+            return true;
+        }
+        return false;
     }
 
     parseType(missingMsg = "Expect valid type name.", invalidMsg = "Expect valid type name.") {
@@ -649,7 +685,15 @@ export class Parser {
         };
     }
 
-    parseExpression() { return this.expressionParser.parse(); }
+    parseExpression() {
+        this.depth++;
+        if (this.depth > 200) {
+            throw this.addError(this.peek(), "Expression too deep. Maximum nesting exceeded.");
+        }
+        const expr = this.expressionParser.parse();
+        this.depth--;
+        return expr;
+    }
 
     returnStatement() {
         const startToken = this.previous(); // RETURN
