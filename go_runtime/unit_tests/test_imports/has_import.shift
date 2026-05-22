@@ -1,0 +1,6 @@
+import "simple.shift";
+
+function calls_imported_function(number result) number
+{
+    return basic_function(result);
+}

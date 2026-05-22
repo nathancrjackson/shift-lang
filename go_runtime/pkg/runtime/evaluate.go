@@ -73,6 +73,7 @@ func (r *Runtime) evaluate(expr ast.Expression, env *Environment) (any, error) {
 		if err != nil {
 			return nil, err
 		}
+		val = r.deepCopy(val)
 		err = env.Assign(e.Name, val)
 		return val, err
 	case *ast.IndexAssignment:
@@ -84,6 +85,7 @@ func (r *Runtime) evaluate(expr ast.Expression, env *Environment) (any, error) {
 		if err != nil {
 			return nil, err
 		}
+		val = r.deepCopy(val)
 
 		if container == nil {
 			idx, iErr := r.evaluate(e.Index, env)
@@ -114,7 +116,7 @@ func (r *Runtime) evaluate(expr ast.Expression, env *Environment) (any, error) {
 				return nil, idxErr
 			}
 			idxF, isF := idxRaw.(float64)
-			if !isF || idxF != math.Trunc(idxF) {
+			if !isF || math.IsNaN(idxF) || math.IsInf(idxF, 0) || idxF != math.Trunc(idxF) {
 				return nil, fmt.Errorf("Runtime Error: List index must be integer value.")
 			}
 			idxI := int(idxF)
@@ -157,8 +159,15 @@ func (r *Runtime) evaluate(expr ast.Expression, env *Environment) (any, error) {
 		if err != nil {
 			return nil, err
 		}
+		prevVal, hasPrev := env.Values["$pipe_value"]
 		env.Define("$pipe_value", left)
-		return r.evaluate(e.Right, env)
+		res, err := r.evaluate(e.Right, env)
+		if hasPrev {
+			env.Define("$pipe_value", prevVal)
+		} else {
+			delete(env.Values, "$pipe_value")
+		}
+		return res, err
 	case *ast.IndexExpression:
 		return r.evaluateIndex(e, env)
 	case *ast.CallExpression:
@@ -324,7 +333,7 @@ func (r *Runtime) evaluateIndex(expr *ast.IndexExpression, env *Environment) (an
 
 	if arr, ok := obj.([]any); ok {
 		idxF, isF := idx.(float64)
-		if !isF || idxF != math.Trunc(idxF) {
+		if !isF || math.IsNaN(idxF) || math.IsInf(idxF, 0) || idxF != math.Trunc(idxF) {
 			return nil, fmt.Errorf("Runtime Error: List index must be integer value.")
 		}
 		idxI := int(idxF)
@@ -456,9 +465,6 @@ func (r *Runtime) evaluateReplace(expr *ast.ReplaceExpression, env *Environment)
 	patRaw, _ := r.evaluate(expr.Pattern, env)
 
 	src := r.stringify(srcRaw)
-	if len(src) > MaxStringLength {
-		return nil, fmt.Errorf("Runtime Error: String exceeds maximum length for regular expressions.")
-	}
 	rep := r.stringify(repRaw)
 	pat := r.stringify(patRaw)
 
@@ -466,6 +472,21 @@ func (r *Runtime) evaluateReplace(expr *ast.ReplaceExpression, env *Environment)
 		last := strings.LastIndex(pat, "/")
 		pattern := pat[1:last]
 		flags := pat[last+1:]
+
+		isSafePattern := r.VerifySafeRegex(pattern)
+		if !isSafePattern {
+			if !r.AllowUnsafeRegexFallback {
+				return nil, fmt.Errorf("Runtime Error: Strict Regex Protection prevents processing this complex pattern.")
+			}
+			if len(src) > r.UnsafeRegexMaxStringCeiling {
+				return nil, fmt.Errorf("Runtime Error: Suspicious regex running on string size (%d) exceeding your fallback structural safety limit of %d characters.", len(src), r.UnsafeRegexMaxStringCeiling)
+			}
+		} else {
+			if len(src) > 50000 {
+				return nil, fmt.Errorf("Runtime Error: replace source string too large (ReDoS protection).")
+			}
+		}
+
 		// Go regex doesn't exactly match JS flags, best effort:
 		reStr := pattern
 		if strings.Contains(flags, "i") {
@@ -474,7 +495,7 @@ func (r *Runtime) evaluateReplace(expr *ast.ReplaceExpression, env *Environment)
 
 		re, err := regexp.Compile(reStr)
 		if err != nil {
-			return nil, fmt.Errorf("Runtime Error: Invalid regular expression in replace")
+			return nil, fmt.Errorf("Runtime Error: Invalid regular expression in replace: %v", err)
 		}
 		return re.ReplaceAllString(src, rep), nil
 	}
@@ -587,7 +608,7 @@ func (r *Runtime) reassignLHS(target ast.Expression, val any, env *Environment) 
 		}
 		if a, isA := o.([]any); isA {
 			idxF, isF := i.(float64)
-			if !isF || idxF != math.Trunc(idxF) {
+			if !isF || math.IsNaN(idxF) || math.IsInf(idxF, 0) || idxF != math.Trunc(idxF) {
 				return fmt.Errorf("Runtime Error: List index must be integer")
 			}
 			idxI := int(idxF)

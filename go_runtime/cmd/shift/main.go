@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 
 	"github.com/nathancrjackson/shift-lang/go_runtime/pkg/ast"
@@ -84,8 +85,15 @@ func main() {
 		os.Exit(1)
 	}
 
+	absFileName, err := filepath.Abs(fileName)
+	if err != nil {
+		absFileName = fileName
+	}
+
 	// Parser
-	p := parser.NewParser(tokens)
+	p := parser.NewParser(tokens).
+		WithImportResolver(getImportResolver()).
+		WithCurrentFilePath(absFileName)
 	stdlib.LoadDefinitions(p)
 
 	// Inject standard library shift functions so typechecking passes

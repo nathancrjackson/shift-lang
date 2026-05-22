@@ -16,6 +16,8 @@ import (
 	"github.com/nathancrjackson/shift-lang/go_runtime/pkg/stdlib"
 )
 
+var IsCoreMode = false
+
 type CheckDef struct {
 	Call   *string `json:"call"`
 	Type   string  `json:"type"`
@@ -87,6 +89,9 @@ func TestJSONSuite(t *testing.T) {
 		if !strings.HasSuffix(file.Name(), ".json") {
 			continue
 		}
+		if IsCoreMode && file.Name() == "file_tests.json" {
+			continue
+		}
 
 		t.Run(file.Name(), func(t *testing.T) {
 			path := filepath.Join(testDir, file.Name())
@@ -119,7 +124,37 @@ func TestJSONSuite(t *testing.T) {
 					var parseResult parser.ParseResult
 
 					if len(lexRes.Errors) == 0 {
-						p = parser.NewParser(lexRes.Tokens)
+						testImportResolver := func(requestedPath string, currentFilePath string) (parser.ImportResolution, error) {
+							var fullPath string
+							if currentFilePath != "" {
+								parentDir := filepath.Dir(currentFilePath)
+								fullPath = filepath.Join(parentDir, requestedPath)
+							} else {
+								cwd, err := os.Getwd()
+								if err != nil {
+									return parser.ImportResolution{}, err
+								}
+								fullPath = filepath.Join(cwd, requestedPath)
+							}
+
+							absPath, err := filepath.Abs(fullPath)
+							if err != nil {
+								absPath = fullPath
+							}
+
+							bytes, err := os.ReadFile(absPath)
+							if err != nil {
+								return parser.ImportResolution{}, err
+							}
+
+							return parser.ImportResolution{
+								Code:         string(bytes),
+								ResolvedPath: absPath,
+							}, nil
+						}
+
+						p = parser.NewParser(lexRes.Tokens).
+							WithImportResolver(testImportResolver)
 						stdlib.LoadDefinitions(p)
 						for _, f := range stdParseResult.AST.Functions {
 							params := []ast.Parameter{}
@@ -196,6 +231,7 @@ func TestJSONSuite(t *testing.T) {
 						program.Functions = append(stdParseResult.AST.Functions, program.Functions...)
 
 						rt := runtime.NewRuntime(program, false)
+						rt.SetMaxInstructions(1000000)
 						stdlib.LoadIntrinsics(rt)
 
 						var actual any

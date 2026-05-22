@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/nathancrjackson/shift-lang/go_runtime/pkg/ast"
+	"github.com/nathancrjackson/shift-lang/go_runtime/pkg/lexer"
 	"github.com/nathancrjackson/shift-lang/go_runtime/pkg/token"
 )
 
@@ -34,6 +35,13 @@ type ParseResult struct {
 	Errors []ParserError
 }
 
+type ImportResolution struct {
+	Code         string
+	ResolvedPath string
+}
+
+type ImportResolver func(requestedPath string, currentFilePath string) (ImportResolution, error)
+
 type Parser struct {
 	tokens            []token.Token
 	current           int
@@ -45,6 +53,13 @@ type Parser struct {
 	structDefinitions map[string]StructDef
 	usedFunctions     map[string]bool
 	depth             int
+
+	importResolver    ImportResolver
+	importedFiles     map[string]bool
+	currentFilePath   string
+	importedStructs   []ast.StructDeclaration
+	importedFunctions []ast.FunctionDeclaration
+	importErrors      []ParserError
 }
 
 const MaxDepth = 500
@@ -65,8 +80,24 @@ func NewParser(tokens []token.Token) *Parser {
 		structDefinitions: make(map[string]StructDef),
 		usedFunctions:     make(map[string]bool),
 		depth:             0,
+		importedFiles:     make(map[string]bool),
 	}
 	p.enterScope()
+	return p
+}
+
+func (p *Parser) WithImportResolver(resolver ImportResolver) *Parser {
+	p.importResolver = resolver
+	return p
+}
+
+func (p *Parser) WithImportedFiles(files map[string]bool) *Parser {
+	p.importedFiles = files
+	return p
+}
+
+func (p *Parser) WithCurrentFilePath(path string) *Parser {
+	p.currentFilePath = path
 	return p
 }
 
@@ -80,8 +111,8 @@ func (p *Parser) Parse() ParseResult {
 			End:   0,
 			Line:  1,
 		},
-		Structs:   []ast.StructDeclaration{},
-		Functions: []ast.FunctionDeclaration{},
+		Structs:   append([]ast.StructDeclaration{}, p.importedStructs...),
+		Functions: append([]ast.FunctionDeclaration{}, p.importedFunctions...),
 	}
 
 	if len(p.tokens) > 0 {
@@ -89,7 +120,7 @@ func (p *Parser) Parse() ParseResult {
 		program.End = p.tokens[len(p.tokens)-1].Position
 	}
 
-	p.errors = []ParserError{}
+	p.errors = append([]ParserError{}, p.importErrors...)
 
 	for !p.isAtEnd() {
 		if p.match(token.STRUCT) {
@@ -101,6 +132,11 @@ func (p *Parser) Parse() ParseResult {
 			funcDecl := p.functionDeclaration()
 			if funcDecl != nil {
 				program.Functions = append(program.Functions, *funcDecl)
+			}
+		} else if p.match(token.IMPORT) {
+			p.advance() // Consume the path string literal
+			if p.check(token.SEMICOLON) {
+				p.advance()
 			}
 		} else {
 			p.addError(p.peek(), "Expect 'function' or 'struct' at top level.")
@@ -116,6 +152,16 @@ func (p *Parser) Parse() ParseResult {
 
 func (p *Parser) preScan() {
 	startPos := p.current
+
+	// PASS 0: Import Resolution
+	p.current = 0
+	for !p.isAtEnd() {
+		if p.match(token.IMPORT) {
+			p.resolveImport()
+		} else {
+			p.advance()
+		}
+	}
 
 	// PASS 1: Struct Discovery
 	p.current = 0
@@ -138,6 +184,119 @@ func (p *Parser) preScan() {
 	}
 
 	p.current = startPos
+}
+
+func (p *Parser) resolveImport() {
+	errorCountBefore := len(p.errors)
+	defer func() {
+		for i := errorCountBefore; i < len(p.errors); i++ {
+			p.importErrors = append(p.importErrors, p.errors[i])
+		}
+	}()
+
+	pathToken, err := p.consume(token.STRING, "Expect file path after 'import'.")
+	if err != nil {
+		p.synchronize()
+		return
+	}
+
+	if p.check(token.SEMICOLON) {
+		p.advance()
+	}
+
+	requestedPath := pathToken.Lexeme
+
+	if p.importResolver == nil {
+		p.addError(pathToken, "Imports are disabled in core mode. Provide an ImportResolver to enable imports.")
+		p.synchronize()
+		return
+	}
+
+	resolution, err := p.importResolver(requestedPath, p.currentFilePath)
+	if err != nil {
+		p.addError(pathToken, fmt.Sprintf("Failed to resolve import: %s", requestedPath))
+		p.synchronize()
+		return
+	}
+
+	resolvedPath := resolution.ResolvedPath
+	if resolvedPath == "" {
+		resolvedPath = requestedPath
+	}
+
+	if p.importedFiles[resolvedPath] {
+		return
+	}
+	p.importedFiles[resolvedPath] = true
+
+	// Lex the imported file
+	lex := lexer.NewLexer(resolution.Code)
+	lexRes := lex.Tokenize()
+
+	if len(lexRes.Errors) > 0 {
+		for _, lexErr := range lexRes.Errors {
+			p.addError(pathToken, fmt.Sprintf("Lexer error in imported file: %s - %s", requestedPath, lexErr.Message))
+		}
+		p.synchronize()
+		return
+	}
+
+	// Instantiate child parser
+	childParser := NewParser(lexRes.Tokens).
+		WithImportResolver(p.importResolver).
+		WithImportedFiles(p.importedFiles).
+		WithCurrentFilePath(resolvedPath)
+
+	// Inherit known types, struct definitions, and global scope
+	for k := range p.knownTypes {
+		childParser.knownTypes[k] = true
+	}
+	for k, v := range p.structDefinitions {
+		childParser.structDefinitions[k] = v
+	}
+	for k, v := range p.scopes[0] {
+		childParser.scopes[0][k] = v
+	}
+
+	// Run preScan and Parse on the imported file
+	childParser.preScan()
+	childAstResult := childParser.Parse()
+
+	if len(childAstResult.Errors) > 0 {
+		for _, parseErr := range childAstResult.Errors {
+			p.errors = append(p.errors, parseErr)
+		}
+		p.addError(pathToken, fmt.Sprintf("Parser error in imported file: %s", requestedPath))
+		p.synchronize()
+		return
+	}
+
+	// Keep AST pieces
+	p.importedStructs = append(p.importedStructs, childAstResult.AST.Structs...)
+	p.importedFunctions = append(p.importedFunctions, childAstResult.AST.Functions...)
+
+	// Pull back newly defined types
+	for k := range childParser.knownTypes {
+		p.knownTypes[k] = true
+	}
+	for k, v := range childParser.structDefinitions {
+		p.structDefinitions[k] = v
+	}
+
+	for k, v := range childParser.scopes[0] {
+		if _, exists := p.scopes[0][k]; !exists {
+			err := p.defineVariable(k, v, true)
+			if err != nil {
+				p.addError(pathToken, fmt.Sprintf("Import collision: '%s' is already defined.", k))
+				p.synchronize()
+				return
+			}
+		}
+	}
+
+	for funcName := range childParser.usedFunctions {
+		p.markFunctionUsed(funcName)
+	}
 }
 
 func (p *Parser) preParseStruct() {

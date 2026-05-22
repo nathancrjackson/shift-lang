@@ -19,6 +19,7 @@ const (
 	THROW    TokenType = "THROW"
 	TRUE     TokenType = "TRUE"
 	FALSE    TokenType = "FALSE"
+	IMPORT   TokenType = "IMPORT"
 
 	BREAK TokenType = "BREAK"
 	SKIP  TokenType = "SKIP"
@@ -106,7 +107,7 @@ const (
 )
 
 var Keywords = map[string]TokenType{
-	"function": FUNCTION, "return": RETURN, "struct": STRUCT,
+	"function": FUNCTION, "return": RETURN, "struct": STRUCT, "import": IMPORT,
 	"if": IF, "else": ELSE, "for": FOR, "in": IN, "to": TO, "while": WHILE,
 	"try": TRY, "catch": CATCH, "review": REVIEW, "throw": THROW,
 	"true": TRUE, "false": FALSE,

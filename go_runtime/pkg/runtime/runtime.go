@@ -4,10 +4,15 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"regexp"
 	"strings"
 
 	"github.com/nathancrjackson/shift-lang/go_runtime/pkg/ast"
 )
+
+var backreferenceRegex = regexp.MustCompile(`\\\d`)
+var nestedQuantifiersRegex = regexp.MustCompile(`\([^)]*[\*\+\?\}][^)]*\)[\*\+\?\}]`)
+var overlappingQuantifiersRegex = regexp.MustCompile(`\([^)]*[\*\+\?\}].*\|.*[\*\+\?\}][^)]*\)[\*\+\?\}]`)
 
 type FunctionMeta struct {
 	ReturnType   ast.TypeAnnotation
@@ -42,26 +47,30 @@ type StackFrame struct {
 }
 
 type Runtime struct {
-	AST        *ast.Program
-	DebugMode  bool
-	GlobalEnv  *Environment
-	Functions        map[string]ast.FunctionDeclaration
-	Intrinsics       map[string]func([]any, *Runtime) any
-	Stack            []*StackFrame
-	instructionCount int
-	maxInstructions  int
+	AST                         *ast.Program
+	DebugMode                   bool
+	GlobalEnv                   *Environment
+	Functions                   map[string]ast.FunctionDeclaration
+	Intrinsics                  map[string]func([]any, *Runtime) any
+	Stack                       []*StackFrame
+	instructionCount            int
+	maxInstructions             int
+	AllowUnsafeRegexFallback    bool
+	UnsafeRegexMaxStringCeiling int
 }
 
 func NewRuntime(prog *ast.Program, debugMode bool) *Runtime {
 	r := &Runtime{
-		AST:        prog,
-		DebugMode:  debugMode,
-		GlobalEnv:        NewEnvironment(nil),
-		Functions:        make(map[string]ast.FunctionDeclaration),
-		Intrinsics:       make(map[string]func([]any, *Runtime) any),
-		Stack:            []*StackFrame{},
-		instructionCount: 0,
-		maxInstructions:  1000000,
+		AST:                         prog,
+		DebugMode:                   debugMode,
+		GlobalEnv:                   NewEnvironment(nil),
+		Functions:                   make(map[string]ast.FunctionDeclaration),
+		Intrinsics:                  make(map[string]func([]any, *Runtime) any),
+		Stack:                       []*StackFrame{},
+		instructionCount:            0,
+		maxInstructions:             0,
+		AllowUnsafeRegexFallback:    true,
+		UnsafeRegexMaxStringCeiling: 120,
 	}
 
 	r.loadFunctions()
@@ -75,6 +84,10 @@ func NewRuntime(prog *ast.Program, debugMode bool) *Runtime {
 
 func (r *Runtime) AddIntrinsic(name string, f func([]any, *Runtime) any) {
 	r.Intrinsics[name] = f
+}
+
+func (r *Runtime) SetMaxInstructions(limit int) {
+	r.maxInstructions = limit
 }
 
 func (r *Runtime) loadFunctions() {
@@ -135,8 +148,15 @@ func (r *Runtime) deepCopyWithVisited(value any, visited map[uintptr]any) any {
 	case *ShiftMap:
 		newMap := NewShiftMap()
 		newMap.StructName = v.StructName
+		newMap.Keys = make([]string, len(v.Keys))
+		copy(newMap.Keys, v.Keys)
 		for k, val := range v.Data {
 			newMap.Data[k] = r.deepCopyWithVisited(val, visited)
+		}
+		if len(newMap.Keys) == 0 && len(v.Data) > 0 {
+			for k := range v.Data {
+				newMap.Keys = append(newMap.Keys, k)
+			}
 		}
 		return newMap
 	default:
@@ -252,7 +272,24 @@ func (r *Runtime) RunFunction(name string, args []any) (any, error) {
 
 	if fn, ok := r.Intrinsics[name]; ok {
 		r.logDebug("Running Intrinsic: " + name)
-		return fn(args, r), nil
+		var res any
+		var err error
+		func() {
+			defer func() {
+				if rec := recover(); rec != nil {
+					if e, ok := rec.(error); ok {
+						err = e
+					} else {
+						err = fmt.Errorf("panic: %v", rec)
+					}
+				}
+			}()
+			res = fn(args, r)
+		}()
+		if err != nil {
+			return nil, err
+		}
+		return res, nil
 	}
 
 	fn, ok := r.Functions[name]
@@ -289,9 +326,8 @@ func (r *Runtime) RunFunction(name string, args []any) (any, error) {
 	r.instructionCount = 0
 
 	for len(r.Stack) > 0 {
-		r.instructionCount++
-		if r.instructionCount > r.maxInstructions {
-			return nil, fmt.Errorf("Runtime Error: Maximum instruction limit exceeded (Possible infinite loop).")
+		if r.maxInstructions > 0 && r.instructionCount > r.maxInstructions {
+			return nil, fmt.Errorf("Runtime Error: Execution exceeded maximum instruction limit.")
 		}
 
 		frame := r.Stack[len(r.Stack)-1]
@@ -388,6 +424,12 @@ func (r *Runtime) RunFunction(name string, args []any) (any, error) {
 }
 
 func (r *Runtime) executeStatement(stmt ast.Statement, frame *StackFrame, signalCallback func(int, any), errOut *error) {
+	r.instructionCount++
+	if r.maxInstructions > 0 && r.instructionCount > r.maxInstructions {
+		*errOut = fmt.Errorf("Runtime Error: Execution exceeded maximum instruction limit.")
+		return
+	}
+
 	if stmt.GetLine() != 0 {
 		r.GlobalEnv.Assign("$line_num", stmt.GetLine())
 	}
@@ -417,7 +459,7 @@ func (r *Runtime) executeStatement(stmt ast.Statement, frame *StackFrame, signal
 				*errOut = err
 				return
 			}
-			val = v
+			val = r.deepCopy(v)
 		} else {
 			val = r.getDefaultValue(s.VarType)
 		}
@@ -623,7 +665,7 @@ func (r *Runtime) executeDelete(stmt *ast.DeleteStatement, env *Environment) err
 		sm.Delete(idxStr)
 	} else if arr, isArr := obj.([]any); isArr {
 		idxF, isF := idx.(float64)
-		if !isF || idxF != math.Trunc(idxF) {
+		if !isF || math.IsNaN(idxF) || math.IsInf(idxF, 0) || idxF != math.Trunc(idxF) {
 			return fmt.Errorf("Runtime Error: List index must be integer value.")
 		}
 		idxI := int(idxF)
@@ -637,27 +679,7 @@ func (r *Runtime) executeDelete(stmt *ast.DeleteStatement, env *Environment) err
 		newArr = append(newArr, arr[:idxI]...)
 		newArr = append(newArr, arr[idxI+1:]...)
 
-		var setLHS func(ast.Expression, any) error
-		setLHS = func(target ast.Expression, val any) error {
-			if v, ok := target.(*ast.Variable); ok {
-				env.Assign(v.Name, val)
-				return nil
-			}
-			if idxExp, ok := target.(*ast.IndexExpression); ok {
-				o, _ := r.evaluate(idxExp.Object, env)
-				i, _ := r.evaluate(idxExp.Index, env)
-				if m, isM := o.(*ShiftMap); isM {
-					m.Data[i.(string)] = val
-					return nil
-				}
-				if a, isA := o.([]any); isA {
-					a[int(i.(float64))] = val
-					return nil
-				}
-			}
-			return fmt.Errorf("Invalid target")
-		}
-		return setLHS(t.Object, newArr)
+		return r.reassignLHS(t.Object, newArr, env)
 	} else {
 		return fmt.Errorf("Cannot delete")
 	}
@@ -819,4 +841,17 @@ func (r *Runtime) startLoop(stmt ast.Statement, env *Environment, lType string, 
 	}
 
 	return nil
+}
+
+func (r *Runtime) VerifySafeRegex(pattern string) bool {
+	if backreferenceRegex.MatchString(pattern) {
+		return false
+	}
+	if nestedQuantifiersRegex.MatchString(pattern) {
+		return false
+	}
+	if overlappingQuantifiersRegex.MatchString(pattern) {
+		return false
+	}
+	return true
 }

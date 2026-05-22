@@ -207,9 +207,6 @@ func (r *Runtime) evaluateBinary(expr *ast.BinaryExpression, env *Environment) (
 
 	case "matches":
 		str := r.stringify(left)
-		if len(str) > MaxStringLength {
-			return nil, fmt.Errorf("Runtime Error: String exceeds maximum length for regular expressions.")
-		}
 		regStr := r.stringify(right)
 		lastSlash := strings.LastIndex(regStr, "/")
 		if !strings.HasPrefix(regStr, "/") || lastSlash <= 0 {
@@ -217,6 +214,20 @@ func (r *Runtime) evaluateBinary(expr *ast.BinaryExpression, env *Environment) (
 		}
 		pattern := regStr[1:lastSlash]
 		flags := regStr[lastSlash+1:]
+
+		isSafePattern := r.VerifySafeRegex(pattern)
+		if !isSafePattern {
+			if !r.AllowUnsafeRegexFallback {
+				return nil, fmt.Errorf("Runtime Error: Strict Regex Protection prevents processing this complex pattern.")
+			}
+			if len(str) > r.UnsafeRegexMaxStringCeiling {
+				return nil, fmt.Errorf("Runtime Error: Suspicious regex running on string size (%d) exceeding your fallback structural safety limit of %d characters.", len(str), r.UnsafeRegexMaxStringCeiling)
+			}
+		} else {
+			if len(str) > 50000 {
+				return nil, fmt.Errorf("Runtime Error: matches string too large (ReDoS protection).")
+			}
+		}
 
 		reStr := pattern
 		if strings.Contains(flags, "i") {
@@ -231,9 +242,6 @@ func (r *Runtime) evaluateBinary(expr *ast.BinaryExpression, env *Environment) (
 
 	case "search":
 		str := r.stringify(left)
-		if len(str) > MaxStringLength {
-			return nil, fmt.Errorf("Runtime Error: String exceeds maximum length for regular expressions.")
-		}
 		regStr := r.stringify(right)
 		lastSlash := strings.LastIndex(regStr, "/")
 		if !strings.HasPrefix(regStr, "/") || lastSlash <= 0 {
@@ -241,6 +249,20 @@ func (r *Runtime) evaluateBinary(expr *ast.BinaryExpression, env *Environment) (
 		}
 		pattern := regStr[1:lastSlash]
 		flags := regStr[lastSlash+1:]
+
+		isSafePattern := r.VerifySafeRegex(pattern)
+		if !isSafePattern {
+			if !r.AllowUnsafeRegexFallback {
+				return nil, fmt.Errorf("Runtime Error: Strict Regex Protection prevents processing this complex pattern.")
+			}
+			if len(str) > r.UnsafeRegexMaxStringCeiling {
+				return nil, fmt.Errorf("Runtime Error: Suspicious regex running on string size (%d) exceeding your fallback structural safety limit of %d characters.", len(str), r.UnsafeRegexMaxStringCeiling)
+			}
+		} else {
+			if len(str) > 50000 {
+				return nil, fmt.Errorf("Runtime Error: search string too large (ReDoS protection).")
+			}
+		}
 
 		reStr := pattern
 		if strings.Contains(flags, "i") {

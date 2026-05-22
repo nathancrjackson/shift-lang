@@ -1,10 +1,12 @@
 package stdlib
 
 import (
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"math"
 	"math/rand"
+	"reflect"
 	"time"
 
 	"github.com/nathancrjackson/shift-lang/go_runtime/pkg/ast"
@@ -34,21 +36,47 @@ func ToShift(val any) any {
 	}
 }
 
+func isFinite(f float64) bool {
+	return !math.IsNaN(f) && !math.IsInf(f, 0)
+}
+
 func ToJS(val any) any {
+	return toJSWithVisited(val, make(map[uintptr]any))
+}
+
+func toJSWithVisited(val any, visited map[uintptr]any) any {
 	if val == nil {
 		return nil
 	}
 	switch v := val.(type) {
 	case *runtime.ShiftMap:
+		ptr := reflect.ValueOf(v).Pointer()
+		if ptr != 0 {
+			if cached, exists := visited[ptr]; exists {
+				return cached
+			}
+		}
 		m := make(map[string]any)
+		if ptr != 0 {
+			visited[ptr] = m
+		}
 		for k, x := range v.Data {
-			m[k] = ToJS(x)
+			m[k] = toJSWithVisited(x, visited)
 		}
 		return m
 	case []any:
+		ptr := reflect.ValueOf(v).Pointer()
+		if ptr != 0 {
+			if cached, exists := visited[ptr]; exists {
+				return cached
+			}
+		}
 		res := make([]any, len(v))
+		if ptr != 0 {
+			visited[ptr] = res
+		}
 		for i, x := range v {
-			res[i] = ToJS(x)
+			res[i] = toJSWithVisited(x, visited)
 		}
 		return res
 	default:
@@ -95,7 +123,10 @@ var Intrinsics = map[string]IntrinsicDef{
 		Generic:    "any",
 		Params:     []ast.Parameter{{Name: "json", DataType: ast.TypeAnnotation{Name: "string"}}},
 		Func: func(args []any, rt *runtime.Runtime) any {
-			s, _ := args[0].(string)
+			s, ok := args[0].(string)
+			if !ok {
+				panic(runtime.ShiftError{Message: "Runtime Error: Expected string."})
+			}
 			var raw any
 			err := json.Unmarshal([]byte(s), &raw)
 			if err != nil {
@@ -113,7 +144,10 @@ var Intrinsics = map[string]IntrinsicDef{
 		Generic:    "any",
 		Params:     []ast.Parameter{{Name: "json", DataType: ast.TypeAnnotation{Name: "string"}}},
 		Func: func(args []any, rt *runtime.Runtime) any {
-			s, _ := args[0].(string)
+			s, ok := args[0].(string)
+			if !ok {
+				panic(runtime.ShiftError{Message: "Runtime Error: Expected string."})
+			}
 			var raw any
 			err := json.Unmarshal([]byte(s), &raw)
 			if err != nil {
@@ -172,8 +206,8 @@ var Intrinsics = map[string]IntrinsicDef{
 		Func: func(args []any, rt *runtime.Runtime) any {
 			num_x, ok1 := args[0].(float64)
 			num_y, ok2 := args[1].(float64)
-			if !ok1 || !ok2 {
-				panic(runtime.ShiftError{Message: "Runtime Error: Random range must be numbers."})
+			if !ok1 || !ok2 || !isFinite(num_x) || !isFinite(num_y) {
+				panic(runtime.ShiftError{Message: "Runtime Error: Random range must be finite numbers."})
 			}
 
 			// Determine true boundaries using math.Min/Max
@@ -215,20 +249,23 @@ var Intrinsics = map[string]IntrinsicDef{
 		Params:     []ast.Parameter{{Name: "ts", DataType: ast.TypeAnnotation{Name: "number"}}},
 		Func: func(args []any, rt *runtime.Runtime) any {
 			ts, ok := args[0].(float64)
-			if !ok {
-				panic(runtime.ShiftError{Message: "Runtime Error: Expected number."})
+			if !ok || !isFinite(ts) {
+				panic(runtime.ShiftError{Message: "Runtime Error: Expected finite number."})
 			}
 			
-			// Preserve sub-second precision (milliseconds/nanoseconds)
-			sec, dec := math.Modf(ts)
-			return CreateDTStruct(time.Unix(int64(sec), int64(dec*1e9)))
+			// Preserve sub-second precision (milliseconds)
+			msec := math.Round(ts * 1000)
+			return CreateDTStruct(time.Unix(int64(msec)/1000, (int64(msec)%1000)*1e6))
 		},
 	},
 	"convert_iso8601_to_datetime": {
 		ReturnType: "DateTime",
 		Params:     []ast.Parameter{{Name: "iso", DataType: ast.TypeAnnotation{Name: "string"}}},
 		Func: func(args []any, rt *runtime.Runtime) any {
-			iso, _ := args[0].(string)
+			iso, ok := args[0].(string)
+			if !ok {
+				panic(runtime.ShiftError{Message: "Runtime Error: Expected string."})
+			}
 			t, err := time.Parse(time.RFC3339, iso)
 			if err != nil {
 				panic(runtime.ShiftError{Message: "Runtime Error: Invalid ISO8601 date string."})
@@ -241,16 +278,22 @@ var Intrinsics = map[string]IntrinsicDef{
 		Params:     []ast.Parameter{{Name: "dt", DataType: ast.TypeAnnotation{Name: "DateTime"}}},
 		Func: func(args []any, rt *runtime.Runtime) any {
 			dt, ok := args[0].(*runtime.ShiftMap)
-			if !ok {
+			if !ok || dt.StructName != "DateTime" {
 				panic(runtime.ShiftError{Message: "Runtime Error: Expected DateTime struct."})
 			}
-			y, _ := dt.Data["year"].(float64)
-			m, _ := dt.Data["month"].(float64)
-			d, _ := dt.Data["day"].(float64)
-			h, _ := dt.Data["hour"].(float64)
-			min, _ := dt.Data["minute"].(float64)
-			s, _ := dt.Data["second"].(float64)
-			ms, _ := dt.Data["millisecond"].(float64)
+			y, okY := dt.Data["year"].(float64)
+			m, okM := dt.Data["month"].(float64)
+			d, okD := dt.Data["day"].(float64)
+			h, okH := dt.Data["hour"].(float64)
+			min, okMin := dt.Data["minute"].(float64)
+			s, okS := dt.Data["second"].(float64)
+			ms, okMs := dt.Data["millisecond"].(float64)
+			if !okY || !okM || !okD || !okH || !okMin || !okS || !okMs {
+				panic(runtime.ShiftError{Message: "Runtime Error: DateTime fields must be numbers."})
+			}
+			if !isFinite(y) || !isFinite(m) || !isFinite(d) || !isFinite(h) || !isFinite(min) || !isFinite(s) || !isFinite(ms) {
+				panic(runtime.ShiftError{Message: "Runtime Error: DateTime fields must be finite numbers."})
+			}
 
 			t := time.Date(int(y), time.Month(m), int(d), int(h), int(min), int(s), int(ms)*1e6, time.Local)
 			return float64(t.Unix())
@@ -261,16 +304,22 @@ var Intrinsics = map[string]IntrinsicDef{
 		Params:     []ast.Parameter{{Name: "dt", DataType: ast.TypeAnnotation{Name: "DateTime"}}},
 		Func: func(args []any, rt *runtime.Runtime) any {
 			dt, ok := args[0].(*runtime.ShiftMap)
-			if !ok {
+			if !ok || dt.StructName != "DateTime" {
 				panic(runtime.ShiftError{Message: "Runtime Error: Expected DateTime struct."})
 			}
-			y, _ := dt.Data["year"].(float64)
-			m, _ := dt.Data["month"].(float64)
-			d, _ := dt.Data["day"].(float64)
-			h, _ := dt.Data["hour"].(float64)
-			min, _ := dt.Data["minute"].(float64)
-			s, _ := dt.Data["second"].(float64)
-			ms, _ := dt.Data["millisecond"].(float64)
+			y, okY := dt.Data["year"].(float64)
+			m, okM := dt.Data["month"].(float64)
+			d, okD := dt.Data["day"].(float64)
+			h, okH := dt.Data["hour"].(float64)
+			min, okMin := dt.Data["minute"].(float64)
+			s, okS := dt.Data["second"].(float64)
+			ms, okMs := dt.Data["millisecond"].(float64)
+			if !okY || !okM || !okD || !okH || !okMin || !okS || !okMs {
+				panic(runtime.ShiftError{Message: "Runtime Error: DateTime fields must be numbers."})
+			}
+			if !isFinite(y) || !isFinite(m) || !isFinite(d) || !isFinite(h) || !isFinite(min) || !isFinite(s) || !isFinite(ms) {
+				panic(runtime.ShiftError{Message: "Runtime Error: DateTime fields must be finite numbers."})
+			}
 
 			t := time.Date(int(y), time.Month(m), int(d), int(h), int(min), int(s), int(ms)*1e6, time.Local)
 			return t.UTC().Format(time.RFC3339)
@@ -313,7 +362,10 @@ var Intrinsics = map[string]IntrinsicDef{
 		ReturnType: "number",
 		Params:     []ast.Parameter{{Name: "n", DataType: ast.TypeAnnotation{Name: "number"}}},
 		Func: func(args []any, rt *runtime.Runtime) any {
-			n, _ := args[0].(float64)
+			n, ok := args[0].(float64)
+			if !ok {
+				panic(runtime.ShiftError{Message: "Runtime Error: expected number."})
+			}
 			return math.Round(n)
 		},
 	},
@@ -321,7 +373,10 @@ var Intrinsics = map[string]IntrinsicDef{
 		ReturnType: "number",
 		Params:     []ast.Parameter{{Name: "n", DataType: ast.TypeAnnotation{Name: "number"}}},
 		Func: func(args []any, rt *runtime.Runtime) any {
-			n, _ := args[0].(float64)
+			n, ok := args[0].(float64)
+			if !ok {
+				panic(runtime.ShiftError{Message: "Runtime Error: expected number."})
+			}
 			return math.Ceil(n)
 		},
 	},
@@ -329,7 +384,10 @@ var Intrinsics = map[string]IntrinsicDef{
 		ReturnType: "number",
 		Params:     []ast.Parameter{{Name: "n", DataType: ast.TypeAnnotation{Name: "number"}}},
 		Func: func(args []any, rt *runtime.Runtime) any {
-			n, _ := args[0].(float64)
+			n, ok := args[0].(float64)
+			if !ok {
+				panic(runtime.ShiftError{Message: "Runtime Error: expected number."})
+			}
 			return math.Floor(n)
 		},
 	},
@@ -337,7 +395,10 @@ var Intrinsics = map[string]IntrinsicDef{
 		ReturnType: "number",
 		Params:     []ast.Parameter{{Name: "n", DataType: ast.TypeAnnotation{Name: "number"}}},
 		Func: func(args []any, rt *runtime.Runtime) any {
-			n, _ := args[0].(float64)
+			n, ok := args[0].(float64)
+			if !ok {
+				panic(runtime.ShiftError{Message: "Runtime Error: expected number."})
+			}
 			return math.Abs(n)
 		},
 	},
@@ -444,6 +505,90 @@ var Intrinsics = map[string]IntrinsicDef{
 			return rad * (180.0 / math.Pi)
 		},
 	},
+	"read_file": {
+		ReturnType: "string",
+		Params:     []ast.Parameter{{Name: "path", DataType: ast.TypeAnnotation{Name: "string"}}},
+		Func: func(args []any, rt *runtime.Runtime) any {
+			panic(runtime.ShiftError{Message: "Runtime Error: read_file is disabled in core mode."})
+		},
+	},
+	"write_file": {
+		ReturnType: "none",
+		Params:     []ast.Parameter{{Name: "path", DataType: ast.TypeAnnotation{Name: "string"}}, {Name: "content", DataType: ast.TypeAnnotation{Name: "string"}}},
+		Func: func(args []any, rt *runtime.Runtime) any {
+			panic(runtime.ShiftError{Message: "Runtime Error: write_file is disabled in core mode."})
+		},
+	},
+	"create_file": {
+		ReturnType: "none",
+		Params:     []ast.Parameter{{Name: "path", DataType: ast.TypeAnnotation{Name: "string"}}},
+		Func: func(args []any, rt *runtime.Runtime) any {
+			panic(runtime.ShiftError{Message: "Runtime Error: create_file is disabled in core mode."})
+		},
+	},
+	"delete_file": {
+		ReturnType: "none",
+		Params:     []ast.Parameter{{Name: "path", DataType: ast.TypeAnnotation{Name: "string"}}},
+		Func: func(args []any, rt *runtime.Runtime) any {
+			panic(runtime.ShiftError{Message: "Runtime Error: delete_file is disabled in core mode."})
+		},
+	},
+	"file_exists": {
+		ReturnType: "bool",
+		Params:     []ast.Parameter{{Name: "path", DataType: ast.TypeAnnotation{Name: "string"}}},
+		Func: func(args []any, rt *runtime.Runtime) any {
+			panic(runtime.ShiftError{Message: "Runtime Error: file_exists is disabled in core mode."})
+		},
+	},
+	"copy_file": {
+		ReturnType: "none",
+		Params:     []ast.Parameter{{Name: "source", DataType: ast.TypeAnnotation{Name: "string"}}, {Name: "dest", DataType: ast.TypeAnnotation{Name: "string"}}},
+		Func: func(args []any, rt *runtime.Runtime) any {
+			panic(runtime.ShiftError{Message: "Runtime Error: copy_file is disabled in core mode."})
+		},
+	},
+	"move_file": {
+		ReturnType: "none",
+		Params:     []ast.Parameter{{Name: "source", DataType: ast.TypeAnnotation{Name: "string"}}, {Name: "dest", DataType: ast.TypeAnnotation{Name: "string"}}},
+		Func: func(args []any, rt *runtime.Runtime) any {
+			panic(runtime.ShiftError{Message: "Runtime Error: move_file is disabled in core mode."})
+		},
+	},
+	"create_folder": {
+		ReturnType: "none",
+		Params:     []ast.Parameter{{Name: "path", DataType: ast.TypeAnnotation{Name: "string"}}},
+		Func: func(args []any, rt *runtime.Runtime) any {
+			panic(runtime.ShiftError{Message: "Runtime Error: create_folder is disabled in core mode."})
+		},
+	},
+	"delete_folder": {
+		ReturnType: "none",
+		Params:     []ast.Parameter{{Name: "path", DataType: ast.TypeAnnotation{Name: "string"}}},
+		Func: func(args []any, rt *runtime.Runtime) any {
+			panic(runtime.ShiftError{Message: "Runtime Error: delete_folder is disabled in core mode."})
+		},
+	},
+	"folder_exists": {
+		ReturnType: "bool",
+		Params:     []ast.Parameter{{Name: "path", DataType: ast.TypeAnnotation{Name: "string"}}},
+		Func: func(args []any, rt *runtime.Runtime) any {
+			panic(runtime.ShiftError{Message: "Runtime Error: folder_exists is disabled in core mode."})
+		},
+	},
+	"copy_folder": {
+		ReturnType: "none",
+		Params:     []ast.Parameter{{Name: "source", DataType: ast.TypeAnnotation{Name: "string"}}, {Name: "dest", DataType: ast.TypeAnnotation{Name: "string"}}},
+		Func: func(args []any, rt *runtime.Runtime) any {
+			panic(runtime.ShiftError{Message: "Runtime Error: copy_folder is disabled in core mode."})
+		},
+	},
+	"move_folder": {
+		ReturnType: "none",
+		Params:     []ast.Parameter{{Name: "source", DataType: ast.TypeAnnotation{Name: "string"}}, {Name: "dest", DataType: ast.TypeAnnotation{Name: "string"}}},
+		Func: func(args []any, rt *runtime.Runtime) any {
+			panic(runtime.ShiftError{Message: "Runtime Error: move_folder is disabled in core mode."})
+		},
+	},
 }
 
 type StructDef struct {
@@ -484,81 +629,8 @@ var Structs = []StructDef{
 	},
 }
 
-const Source = `function get_substring(string input_str, number start_index, nullable<number> end_index) string {
-    list<number> unpacked_str = unpack input_str;
-    list<number> substring_list;
-    number true_end = size of input_str;
-    if (end_index != null)
-    {
-        true_end = end_index as number;
-    }
-
-    for ( index in start_index to (true_end - 1))
-    {
-        substring_list[] = unpacked_str[index];
-    }
-
-    return pack substring_list;
-}
-
-function transform_ansistring_to_uppercase(string input_str) string {
-    list<number> charnum_list = unpack input_str;
-
-    for (index in 0 to (size of charnum_list - 1))
-    {
-        if (charnum_list[index] >= 97 and charnum_list[index] <= 122)
-        {
-            charnum_list[index] = charnum_list[index] - 32;
-        }
-    }
-
-    return pack charnum_list;
-}
-
-function transform_ansistring_to_lowercase(string input_str) string {
-    list<number> charnum_list = unpack input_str;
-
-    for (index in 0 to (size of charnum_list - 1))
-    {
-        if (charnum_list[index] >= 65 and charnum_list[index] <= 90)
-        {
-            charnum_list[index] = charnum_list[index] + 32;
-        }
-    }
-
-    return pack charnum_list;
-}
-
-function trim_string(string input_str) string {
-    list<string> exploded_input = input_str as list<string>;
-    bool do_loop = true;
-
-    while(do_loop)
-    {
-        if (exploded_input[0] == " ") { delete exploded_input[0]; }
-        else if (exploded_input[0] == "\r") { delete exploded_input[0]; }
-        else if (exploded_input[0] == "\n") { delete exploded_input[0]; }
-        else if (exploded_input[0] == "\t") { delete exploded_input[0]; }
-        else { do_loop = false; }
-    }
-
-    do_loop = true;
-    number reverse_cursor = size of exploded_input - 1;
-    while(do_loop)
-    {
-        if (exploded_input[reverse_cursor] == " ")
-            { delete exploded_input[reverse_cursor]; reverse_cursor = reverse_cursor - 1; }
-        else if (exploded_input[reverse_cursor] == "\r")
-            { delete exploded_input[reverse_cursor]; reverse_cursor = reverse_cursor - 1; }
-        else if (exploded_input[reverse_cursor] == "\n")
-            { delete exploded_input[reverse_cursor]; reverse_cursor = reverse_cursor - 1; }
-        else if (exploded_input[reverse_cursor] == "\t")
-            { delete exploded_input[reverse_cursor]; reverse_cursor = reverse_cursor - 1; }
-        else { do_loop = false; }
-    }
-
-    return exploded_input as string;
-}`
+//go:embed stdlib.shift
+var Source string
 
 func LoadDefinitions(p *parser.Parser) {
 	for _, s := range Structs {
@@ -577,6 +649,15 @@ func LoadDefinitions(p *parser.Parser) {
 
 func LoadIntrinsics(r *runtime.Runtime) {
 	for name, def := range Intrinsics {
-		r.AddIntrinsic(name, def.Func)
+		paramCount := len(def.Params)
+		intrinsicFunc := def.Func
+		intrinsicName := name
+		wrappedFunc := func(args []any, rt *runtime.Runtime) any {
+			if len(args) < paramCount {
+				panic(runtime.ShiftError{Message: fmt.Sprintf("Runtime Error: Intrinsic '%s' expects %d arguments but got %d.", intrinsicName, paramCount, len(args))})
+			}
+			return intrinsicFunc(args, rt)
+		}
+		r.AddIntrinsic(name, wrappedFunc)
 	}
 }
