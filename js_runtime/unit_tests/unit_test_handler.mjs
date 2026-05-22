@@ -6,6 +6,7 @@ import { validateAST } from '../src/ast_validator.mjs';
 import { Runtime } from '../src/runtime.mjs';
 import { TokenType } from '../src/token_enums.mjs';
 import { StandardLibrary } from '../src/standard_library.mjs';
+import { NodeFSIntrinsics } from '../src/node_fs.mjs';
 
 // ANSI Colors
 const CLR = {
@@ -256,9 +257,22 @@ export class UnitTestHandler {
                         try {
                             // Instantiate Runtime for this test
                             runtime = new Runtime(ast);
+                            runtime.maxInstructions = 1000000;
 
                             // ORCHESTRATION: Load Standard Library Intrinsics into Runtime
                             StandardLibrary.loadIntrinsics(runtime);
+
+                            // Load filesystem extras (active Node FS intrinsics) for test verification
+                            for (const [name, def] of Object.entries(NodeFSIntrinsics)) {
+                                const paramCount = def.params ? def.params.length : 0;
+                                const wrappedFunc = (args, rt) => {
+                                    if (args.length < paramCount) {
+                                        throw new Error(`Runtime Error: Intrinsic '${name}' expects ${paramCount} arguments but got ${args.length}.`);
+                                    }
+                                    return def.func(args, rt);
+                                };
+                                runtime.addIntrinsic(name, wrappedFunc);
+                            }
 
                             // Execute Logic
                             let actual = null;

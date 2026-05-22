@@ -199,5 +199,26 @@ export const strict_intrinsics_tests = {
             return dt["millisecond"] as number;
         }
         `
+    },
+
+    "Round Number Nil check": {
+        "tests": [{ call: "main()", type: "runtime_error", expect: "Cannot cast null to number." }],
+        "code": `
+        function main() number {
+            nullable<number> val = null;
+            return round_number(val as number);
+        }
+        `
+    },
+
+    "DateTime Convert Expected DateTime Struct": {
+        "tests": [{ call: "main()", type: "runtime_error", expect: "Expected DateTime struct" }],
+        "code": `
+        function main() number {
+            map<any> m;
+            m["year"] = 2026;
+            return convert_datetime_to_unixtime(m as DateTime);
+        }
+        `
     }
 };

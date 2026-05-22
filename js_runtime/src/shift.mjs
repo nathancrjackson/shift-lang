@@ -163,6 +163,8 @@ export class Shift {
             });
         }
 
+        this.finalAST = finalAST;
+
         // 4. Runtime Initialization
         const runtime = new Runtime(finalAST);
         runtime.maxInstructions = this.maxInstructions;

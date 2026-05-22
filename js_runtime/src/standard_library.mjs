@@ -1,3 +1,19 @@
+let stdlibSource = `standardLibrarySourcePlaceholder`;
+if (typeof process !== 'undefined') {
+	try {
+		const moduleLib = await import('module');
+		const urlLib = await import('url');
+		const require = moduleLib.createRequire(import.meta.url);
+		const fs = require('fs');
+		const path = require('path');
+		const __dirname = path.dirname(urlLib.fileURLToPath(import.meta.url));
+		const stdlibPath = path.resolve(__dirname, '../../go_runtime/pkg/stdlib/stdlib.shift');
+		stdlibSource = fs.readFileSync(stdlibPath, 'utf8');
+	} catch (e) {
+		// Fallback
+	}
+}
+
 // Helper to convert JS structure (Object/Array) to Shift structure (Map/List)
 function toShift(val) {
 	if (val === null) return null;
@@ -16,18 +32,31 @@ function toShift(val) {
 
 // Helper to convert Shift structure (Map/List) to JS structure (Object/Array)
 function toJS(val) {
+	return toJSWithVisited(val, new Map());
+}
+
+function toJSWithVisited(val, visited) {
 	if (val instanceof Map) {
+		if (visited.has(val)) return visited.get(val);
 		const obj = {};
+		visited.set(val, obj);
 		for (const [k, v] of val) {
-			obj[k] = toJS(v);
+			obj[k] = toJSWithVisited(v, visited);
 		}
 		return obj;
 	}
 	if (Array.isArray(val)) {
-		return val.map(toJS);
+		if (visited.has(val)) return visited.get(val);
+		const arr = [];
+		visited.set(val, arr);
+		for (let i = 0; i < val.length; i++) {
+			arr.push(toJSWithVisited(val[i], visited));
+		}
+		return arr;
 	}
 	return val;
 }
+
 
 // Helper to create a DateTime struct from a JS Date object
 function create_dt_struct(date) {
@@ -166,8 +195,8 @@ export const StandardLibrary = {
 				const num_x = args[0];
 				const num_y = args[1];
 				
-				if (typeof num_x !== 'number' || typeof num_y !== 'number' || isNaN(num_x) || isNaN(num_y)) {
-					throw new Error("Runtime Error: Random range must be numbers.");
+				if (typeof num_x !== 'number' || typeof num_y !== 'number' || !Number.isFinite(num_x) || !Number.isFinite(num_y)) {
+					throw new Error("Runtime Error: Random range must be finite numbers.");
 				}
 
 				// Automatically determine min and max regardless of argument order
@@ -197,7 +226,13 @@ export const StandardLibrary = {
 		"convert_unixtime_to_datetime": {
 			returnType: "DateTime",
 			params: [{ name: "ts", type: "number" }],
-			func: (args) => create_dt_struct(new Date(args[0] * 1000))
+			func: (args) => {
+				const ts = args[0];
+				if (typeof ts !== 'number' || !Number.isFinite(ts)) {
+					throw new Error("Runtime Error: Expected finite number.");
+				}
+				return create_dt_struct(new Date(ts * 1000));
+			}
 		},
 //		  LESS STRICT VERSION
 //        "convert_iso8601_to_datetime": {
@@ -229,7 +264,15 @@ export const StandardLibrary = {
 			params: [{ name: "dt", type: "DateTime" }],
 			func: (args) => {
 				const dt = args[0];
-				if (!(dt instanceof Map)) throw new Error("Runtime Error: Expected DateTime struct.");
+				if (!(dt instanceof Map) || dt.__shift_type !== "DateTime") throw new Error("Runtime Error: Expected DateTime struct.");
+
+				const fields = ["year", "month", "day", "hour", "minute", "second", "millisecond"];
+				for (const field of fields) {
+					const val = dt.get(field);
+					if (typeof val !== 'number' || !Number.isFinite(val)) {
+						throw new Error(`Runtime Error: DateTime fields must be finite numbers.`);
+					}
+				}
 
 				// Construct Date object from struct fields
 				// Note: JS Date(year, monthIndex, day, hours, minutes, seconds, milliseconds)
@@ -250,7 +293,15 @@ export const StandardLibrary = {
 			params: [{ name: "dt", type: "DateTime" }],
 			func: (args) => {
 				const dt = args[0];
-				if (!(dt instanceof Map)) throw new Error("Runtime Error: Expected DateTime struct.");
+				if (!(dt instanceof Map) || dt.__shift_type !== "DateTime") throw new Error("Runtime Error: Expected DateTime struct.");
+
+				const fields = ["year", "month", "day", "hour", "minute", "second", "millisecond"];
+				for (const field of fields) {
+					const val = dt.get(field);
+					if (typeof val !== 'number' || !Number.isFinite(val)) {
+						throw new Error(`Runtime Error: DateTime fields must be finite numbers.`);
+					}
+				}
 
 				const d = new Date(
 					dt.get("year"),
@@ -270,7 +321,7 @@ export const StandardLibrary = {
 			returnType: "number",
 			params: [{ name: "n", type: "number" }],
 			func: (args) => {
-				if (typeof args[0] !== 'number') throw new Error("Runtime Error: calc_sqrt expects number.");
+				if (typeof args[0] !== 'number' || isNaN(args[0])) throw new Error("Runtime Error: calc_sqrt expects number.");
 				return Math.sqrt(args[0]);
 			}
 		},
@@ -278,7 +329,7 @@ export const StandardLibrary = {
 			returnType: "number",
 			params: [{ name: "n", type: "number" }],
 			func: (args) => {
-				if (typeof args[0] !== 'number') throw new Error("Runtime Error: calc_log10 expects number.");
+				if (typeof args[0] !== 'number' || isNaN(args[0])) throw new Error("Runtime Error: calc_log10 expects number.");
 				return Math.log10(args[0]);
 			}
 		},
@@ -286,157 +337,180 @@ export const StandardLibrary = {
 			returnType: "number",
 			params: [{ name: "n", type: "number" }],
 			func: (args) => {
-				if (typeof args[0] !== 'number') throw new Error("Runtime Error: calc_natlog expects number.");
+				if (typeof args[0] !== 'number' || isNaN(args[0])) throw new Error("Runtime Error: calc_natlog expects number.");
 				return Math.log(args[0]);
 			}
 		},
 		"round_number": {
 			returnType: "number",
 			params: [{ name: "n", type: "number" }],
-			func: (args) => Math.round(args[0])
+			func: (args) => {
+				if (typeof args[0] !== 'number' || isNaN(args[0])) throw new Error("Runtime Error: round_number expects number.");
+				return Math.round(args[0]);
+			}
 		},
 		"round_number_up": {
 			returnType: "number",
 			params: [{ name: "n", type: "number" }],
-			func: (args) => Math.ceil(args[0])
+			func: (args) => {
+				if (typeof args[0] !== 'number' || isNaN(args[0])) throw new Error("Runtime Error: round_number_up expects number.");
+				return Math.ceil(args[0]);
+			}
 		},
 		"round_number_down": {
 			returnType: "number",
 			params: [{ name: "n", type: "number" }],
-			func: (args) => Math.floor(args[0])
+			func: (args) => {
+				if (typeof args[0] !== 'number' || isNaN(args[0])) throw new Error("Runtime Error: round_number_down expects number.");
+				return Math.floor(args[0]);
+			}
 		},
 		"calc_absolute": {
 			returnType: "number",
 			params: [{ name: "n", type: "number" }],
-			func: (args) => Math.abs(args[0])
+			func: (args) => {
+				if (typeof args[0] !== 'number' || isNaN(args[0])) throw new Error("Runtime Error: calc_absolute expects number.");
+				return Math.abs(args[0]);
+			}
 		},
 		"calc_sin": {
 			returnType: "number",
 			params: [{ name: "n", type: "number" }],
-			func: (args) => Math.sin(args[0])
+			func: (args) => {
+				if (typeof args[0] !== 'number' || isNaN(args[0])) throw new Error("Runtime Error: calc_sin expects number.");
+				return Math.sin(args[0]);
+			}
 		},
 		"calc_cos": {
 			returnType: "number",
 			params: [{ name: "n", type: "number" }],
-			func: (args) => Math.cos(args[0])
+			func: (args) => {
+				if (typeof args[0] !== 'number' || isNaN(args[0])) throw new Error("Runtime Error: calc_cos expects number.");
+				return Math.cos(args[0]);
+			}
 		},
 		"calc_tan": {
 			returnType: "number",
 			params: [{ name: "n", type: "number" }],
-			func: (args) => Math.tan(args[0])
+			func: (args) => {
+				if (typeof args[0] !== 'number' || isNaN(args[0])) throw new Error("Runtime Error: calc_tan expects number.");
+				return Math.tan(args[0]);
+			}
 		},
 		"calc_asin": {
 			returnType: "number",
 			params: [{ name: "n", type: "number" }],
-			func: (args) => Math.asin(args[0])
+			func: (args) => {
+				if (typeof args[0] !== 'number' || isNaN(args[0])) throw new Error("Runtime Error: calc_asin expects number.");
+				return Math.asin(args[0]);
+			}
 		},
 		"calc_acos": {
 			returnType: "number",
 			params: [{ name: "n", type: "number" }],
-			func: (args) => Math.acos(args[0])
+			func: (args) => {
+				if (typeof args[0] !== 'number' || isNaN(args[0])) throw new Error("Runtime Error: calc_acos expects number.");
+				return Math.acos(args[0]);
+			}
 		},
 		"calc_atan": {
 			returnType: "number",
 			params: [{ name: "n", type: "number" }],
 			func: (args) => {
-				if (typeof args[0] !== 'number') throw new Error("Runtime Error: calc_atan expects number.");
+				if (typeof args[0] !== 'number' || isNaN(args[0])) throw new Error("Runtime Error: calc_atan expects number.");
 				return Math.atan(args[0]);
 			}
 		},
 		"calc_atan2": {
 			returnType: "number",
 			params: [{ name: "y", type: "number" }, { name: "x", type: "number" }],
-			func: (args) => Math.atan2(args[0], args[1])
+			func: (args) => {
+				if (typeof args[0] !== 'number' || isNaN(args[0]) || typeof args[1] !== 'number' || isNaN(args[1])) {
+					throw new Error("Runtime Error: calc_atan2 expects numbers.");
+				}
+				return Math.atan2(args[0], args[1]);
+			}
 		},
 		"convert_deg_to_rad": {
 			returnType: "number",
 			params: [{ name: "deg", type: "number" }],
-			func: (args) => args[0] * (Math.PI / 180)
+			func: (args) => {
+				if (typeof args[0] !== 'number' || isNaN(args[0])) throw new Error("Runtime Error: convert_deg_to_rad expects number.");
+				return args[0] * (Math.PI / 180);
+			}
 		},
 		"convert_rad_to_deg": {
 			returnType: "number",
 			params: [{ name: "rad", type: "number" }],
-			func: (args) => args[0] * (180 / Math.PI)
+			func: (args) => {
+				if (typeof args[0] !== 'number' || isNaN(args[0])) throw new Error("Runtime Error: convert_rad_to_deg expects number.");
+				return args[0] * (180 / Math.PI);
+			}
+		},
+		"read_file": {
+			returnType: "string",
+			params: [{ name: "path", type: "string" }],
+			func: (args) => { throw new Error("Runtime Error: read_file is disabled in core mode."); }
+		},
+		"write_file": {
+			returnType: "none",
+			params: [{ name: "path", type: "string" }, { name: "content", type: "string" }],
+			func: (args) => { throw new Error("Runtime Error: write_file is disabled in core mode."); }
+		},
+		"create_file": {
+			returnType: "none",
+			params: [{ name: "path", type: "string" }],
+			func: (args) => { throw new Error("Runtime Error: create_file is disabled in core mode."); }
+		},
+		"delete_file": {
+			returnType: "none",
+			params: [{ name: "path", type: "string" }],
+			func: (args) => { throw new Error("Runtime Error: delete_file is disabled in core mode."); }
+		},
+		"file_exists": {
+			returnType: "bool",
+			params: [{ name: "path", type: "string" }],
+			func: (args) => { throw new Error("Runtime Error: file_exists is disabled in core mode."); }
+		},
+		"copy_file": {
+			returnType: "none",
+			params: [{ name: "source", type: "string" }, { name: "dest", type: "string" }],
+			func: (args) => { throw new Error("Runtime Error: copy_file is disabled in core mode."); }
+		},
+		"move_file": {
+			returnType: "none",
+			params: [{ name: "source", type: "string" }, { name: "dest", type: "string" }],
+			func: (args) => { throw new Error("Runtime Error: move_file is disabled in core mode."); }
+		},
+		"create_folder": {
+			returnType: "none",
+			params: [{ name: "path", type: "string" }],
+			func: (args) => { throw new Error("Runtime Error: create_folder is disabled in core mode."); }
+		},
+		"delete_folder": {
+			returnType: "none",
+			params: [{ name: "path", type: "string" }],
+			func: (args) => { throw new Error("Runtime Error: delete_folder is disabled in core mode."); }
+		},
+		"folder_exists": {
+			returnType: "bool",
+			params: [{ name: "path", type: "string" }],
+			func: (args) => { throw new Error("Runtime Error: folder_exists is disabled in core mode."); }
+		},
+		"copy_folder": {
+			returnType: "none",
+			params: [{ name: "source", type: "string" }, { name: "dest", type: "string" }],
+			func: (args) => { throw new Error("Runtime Error: copy_folder is disabled in core mode."); }
+		},
+		"move_folder": {
+			returnType: "none",
+			params: [{ name: "source", type: "string" }, { name: "dest", type: "string" }],
+			func: (args) => { throw new Error("Runtime Error: move_folder is disabled in core mode."); }
 		}
-
 	},
 
 	// 3. Shift Standard Library (Written in Shift)
-	source: `function get_substring(string input_str, number start_index, nullable<number> end_index) string {
-	list<number> unpacked_str = unpack input_str;
-	list<number> substring_list;
-	number true_end = size of input_str;
-	if (end_index != null)
-	{
-		true_end = end_index as number;
-	}
-
-	for ( index in start_index to (true_end - 1))
-	{
-		substring_list[] = unpacked_str[index];
-	}
-
-	return pack substring_list;
-}
-
-function transform_ansistring_to_uppercase(string input_str) string {
-	list<number> charnum_list = unpack input_str;
-
-	for (index in 0 to (size of charnum_list - 1))
-	{
-		if (charnum_list[index] >= 97 and charnum_list[index] <= 122)
-		{
-			charnum_list[index] = charnum_list[index] - 32;
-		}
-	}
-
-	return pack charnum_list;
-}
-
-function transform_ansistring_to_lowercase(string input_str) string {
-	list<number> charnum_list = unpack input_str;
-
-	for (index in 0 to (size of charnum_list - 1))
-	{
-		if (charnum_list[index] >= 65 and charnum_list[index] <= 90)
-		{
-			charnum_list[index] = charnum_list[index] + 32;
-		}
-	}
-
-	return pack charnum_list;
-}
-
-function trim_string(string input_str) string {
-	list<string> exploded_input = input_str as list<string>;
-	bool do_loop = true;
-
-	while(do_loop)
-	{
-		if (exploded_input[0] == " ") { delete exploded_input[0]; }
-		else if (exploded_input[0] == "\r") { delete exploded_input[0]; }
-		else if (exploded_input[0] == "\n") { delete exploded_input[0]; }
-		else if (exploded_input[0] == "\t") { delete exploded_input[0]; }
-		else { do_loop = false; }
-	}
-
-	do_loop = true;
-	number reverse_cursor = size of exploded_input - 1;
-	while(do_loop)
-	{
-		if (exploded_input[reverse_cursor] == " ")
-			{ delete exploded_input[reverse_cursor]; reverse_cursor = reverse_cursor - 1; }
-		else if (exploded_input[reverse_cursor] == "\r")
-			{ delete exploded_input[reverse_cursor]; reverse_cursor = reverse_cursor - 1; }
-		else if (exploded_input[reverse_cursor] == "\n")
-			{ delete exploded_input[reverse_cursor]; reverse_cursor = reverse_cursor - 1; }
-		else if (exploded_input[reverse_cursor] == "\t")
-			{ delete exploded_input[reverse_cursor]; reverse_cursor = reverse_cursor - 1; }
-		else { do_loop = false; }
-	}
-
-	return exploded_input as string;
-}`,
+	source: stdlibSource,
 
 	loadDefinitions(parser) {
 		this.structs.forEach(s => {
@@ -469,7 +543,14 @@ function trim_string(string input_str) string {
 
 	loadIntrinsics(runtime) {
 		for (const [name, def] of Object.entries(this.intrinsics)) {
-			runtime.addIntrinsic(name, def.func);
+			const paramCount = def.params ? def.params.length : 0;
+			const wrappedFunc = (args, rt) => {
+				if (args.length < paramCount) {
+					throw new Error(`Runtime Error: Intrinsic '${name}' expects ${paramCount} arguments but got ${args.length}.`);
+				}
+				return def.func(args, rt);
+			};
+			runtime.addIntrinsic(name, wrappedFunc);
 		}
 	}
 };

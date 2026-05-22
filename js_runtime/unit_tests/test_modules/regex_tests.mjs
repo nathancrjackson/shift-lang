@@ -111,5 +111,72 @@ export const regex_tests = {
     results = "1000000" search "0";
     return size of results;
 }`
+    },
+
+/* -----
+    ReDoS & Safety Fallback Tests
+    ----- */
+
+    "Unsafe Regex Fallback - Short Input (Pass)":
+    {
+        "tests": [{ call: "test_fallback_pass()", type: "bool", expect: true }],
+        "code":
+`function test_fallback_pass() bool {
+    // (a+)+ is a classic nested quantifier pattern.
+    // Since the input string is tiny, the engine allows it under fallback mode.
+    return "aaa" matches "/(a+)+/g";
+}`
+    }
+,
+    "Unsafe Regex Fallback - Exceed Ceiling (Fail)":
+    {
+        "tests": [{ call: "test_fallback_fail()", type: "runtime_error", expect: "Suspicious regex running on string size" }],
+        "code":
+`function test_fallback_fail() bool {
+    // A catastrophic backtracking pattern evaluated against an input
+    // that exceeds the unsafe structural safety cap (120 characters).
+    string malicious_input = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    return malicious_input matches "/(a+)+/g";
+}`
+    }
+,
+    "Prohibited Feature - Backreference Rejection":
+    {
+        "tests": [{ call: "test_backref_ceiling()", type: "runtime_error", expect: "Suspicious regex running on string size" }],
+        "code":
+`function test_backref_ceiling() bool {
+    // Backreferences use \\1, triggering the suspicious pattern flag.
+    // Should fail if the evaluated string is longer than 120 characters.
+    string long_input = "ababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab";
+    return long_input matches "/(a|b)\\\\1/g";
+}`
+    }
+,
+    "Dangerous Alternation Overlap Detection":
+    {
+        "tests": [{ call: "test_bad_alternation()", type: "runtime_error", expect: "Suspicious regex running on string size" }],
+        "code":
+`function test_bad_alternation() bool {
+    // Detects overlapping quantified alternations like (a+|b+)+
+    string payload = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    return payload matches "/(a+|b+)+/g";
+}`
+    }
+,
+    "Safe Regex - System Absolute Boundary Limit":
+    {
+        "tests": [{ call: "test_absolute_limit()", type: "runtime_error", expect: "string too large (ReDoS protection)" }],
+        "code":
+`function test_absolute_limit() bool {
+    // Even if a regex is 100% flat and safe (like /word/), 
+    // any input string exceeding 50,000 characters is rejected outright.
+    
+    // Building a massive string utilizing loop mechanics
+    string massive_input = "start";
+    for (i in 1 to 500) {
+        massive_input = massive_input & "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    }
+    return massive_input matches "/word/g";
+}`
     }
 };

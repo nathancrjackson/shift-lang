@@ -9,14 +9,14 @@ export const list_tests = {
     {
         "tests": [{ call: "start()", type: "number", expect: 10 }],
         "code":
-`function start() number
+            `function start() number
 {
     list<number> result;
     result[] = 10;
     return result[0];
 }`
     }
-,
+    ,
     "Literal assignment":
     {
         "tests": [
@@ -28,12 +28,12 @@ export const list_tests = {
             { call: "get_number(1.5)", type: "runtime_error", expect: "List index must be integer value." }
         ],
         "code":
-`function get_number(number index) number {
+            `function get_number(number index) number {
     list<number> result = [10, 20, 30];
     return result[index];
 }`
     }
-,
+    ,
     "Element deletion":
     {
         "tests": [
@@ -41,13 +41,13 @@ export const list_tests = {
             { call: "get_number(1)", type: "number", expect: 30 }
         ],
         "code":
-`function get_number(number index) number {
+            `function get_number(number index) number {
     list<number> result = [10, 20, 30];
     delete result[1];
     return result[index];
 }`
     }
-,
+    ,
     "Element number checking with contains":
     {
         "tests": [
@@ -55,12 +55,12 @@ export const list_tests = {
             { call: "check_number(10)", type: "bool", expect: true }
         ],
         "code":
-`function check_number(number num_to_check) bool {
+            `function check_number(number num_to_check) bool {
     list<number> our_list = [10, 20, 30];
     return our_list contains num_to_check;
 }`
     }
-,
+    ,
     "Element string checking with contains":
     {
         "tests": [
@@ -69,47 +69,47 @@ export const list_tests = {
             { call: "check_string(\"Apples\")", type: "bool", expect: true }
         ],
         "code":
-`function check_string(string str_to_check) bool {
+            `function check_string(string str_to_check) bool {
     list<number> our_list = ["Apples", "Bananas", "Cheese"];
     return our_list contains str_to_check;
 }`
     }
-,
+    ,
     "Assignment type error":
     {
         "tests": [{ type: "parser_error", expect: "List variable assignment type mismatch." }],
         "code":
-`function start() number
+            `function start() number
 {
     list<number> result;
     result[] = "A string :O";
     return result[0];
 }`
     }
-,
+    ,
     "Assignment as map error":
     {
         "tests": [{ type: "parser_error", expect: "List cannot be set using map." }],
         "code":
-`function start() number
+            `function start() number
 {
     list<number> result = ["name": "Nathan", "role": "Admin"];
     return result[0];
 }`
     }
-,
+    ,
     "Return type error":
     {
         "tests": [{ type: "parser_error", expect: "Return type mismatch." }],
         "code":
-`function start() list<number>
+            `function start() list<number>
 {
     list<number> result;
     result[] = 10;
     return result[0];
 }`
     }
-,
+    ,
     "Assignment any test":
     {
         "tests": [
@@ -118,19 +118,19 @@ export const list_tests = {
             { call: "start(\"10\")", type: "runtime_error", expect: "Return type mismatch." }
         ],
         "code":
-`function start(any value) number
+            `function start(any value) number
 {
     list<any> result;
     result[] = value;
     return result[0];
 }`
     }
-,
+    ,
     "Empty list return":
     {
         "tests": [{ call: "check_empty()", type: "number", expect: 0 }],
         "code":
-`function get_empty_list() list<string> {
+            `function get_empty_list() list<string> {
     list<string> nothing; 
     return nothing;
 }
@@ -140,12 +140,12 @@ function check_empty() number {
     return size of result;
 }`
     }
-,
+    ,
     "Nested":
     {
         "tests": [{ call: "matrix_test()", type: "number", expect: 4 }],
         "code":
-`function matrix_test() number {
+            `function matrix_test() number {
     // A list of lists of numbers (2D Array)
     list<list<number>> matrix;
     
@@ -157,6 +157,20 @@ function check_empty() number {
 
     // Access: matrix[1] returns row2, [0] returns 4
     return matrix[1][0]; 
+}`
+    }
+    ,
+    "Pass-By-Value Boundary Isolation":
+    {
+        "tests": [{ call: "test_value_isolation()", type: "bool", expect: true }],
+        "code":
+            `function test_value_isolation() bool {
+    list<list<number>> matrix_a = [[1, 2]];
+    list<list<number>> matrix_b = matrix_a; // Trigger copy
+
+    matrix_b[0][0] = 99; // Mutate copy
+
+    return matrix_a[0][0] == 1; // Must remain true!
 }`
     }
 };

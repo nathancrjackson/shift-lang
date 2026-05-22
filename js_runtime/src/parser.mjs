@@ -104,7 +104,7 @@ export class Parser {
             const requestedPath = pathToken.v;
 
             if (!this.importResolver) {
-                throw this.addError(pathToken, "Import resolver is not configured.");
+                throw this.addError(pathToken, "Imports are disabled in core mode. Provide an importResolver to enable imports.");
             }
 
             let sourceCode;

@@ -66,8 +66,12 @@ export class Runtime {
 
         // The Execution Stack
         this.stack = [];
-        this.maxInstructions = 1000000;
+        this.maxInstructions = 0;
         this.instructionsRun = 0;
+
+        // Configurable Regex Safety Controls
+        this.allowUnsafeRegexFallback = true;  // If false, suspicious patterns crash instantly
+        this.unsafeRegexMaxStringCeiling = 120; // Highly restrictive character cap for suspicious patterns
     }
 
     logDebug(msg) {
@@ -162,6 +166,19 @@ export class Runtime {
         }
     }
 
+    verifySafeRegex(pattern) {
+        // 1. Prohibit backreferences (\1, \2)
+        if (/\\\d/.test(pattern)) return false;
+
+        // 2. Detect nested quantifiers (e.g., (a+)+, (.*)*)
+        if (/\([^)]*[\*\+\?\}][^)]*\)[\*\+\?\}]/.test(pattern)) return false;
+
+        // 3. Detect overlapping quantifiers across alternations (e.g., (a+|b+)+)
+        if (/\([^)]*[\*\+\?\}].*\|.*[\*\+\?\}][^)]*\)[\*\+\?\}]/.test(pattern)) return false;
+
+        return true; // Pattern structural composition passed safety benchmarks
+    }
+
     // --- The Stack Machine Core ---
 
     runFunction(name, args = []) {
@@ -202,7 +219,7 @@ export class Runtime {
 
             while (this.stack.length > 0) {
                 this.instructionsRun++;
-                if (this.instructionsRun > this.maxInstructions) {
+                if (this.maxInstructions > 0 && this.instructionsRun > this.maxInstructions) {
                     throw new ShiftCritical("Runtime Error: Execution exceeded maximum instruction limit.");
                 }
 
@@ -311,7 +328,7 @@ export class Runtime {
         switch (stmt.type) {
             case "VariableDeclaration": {
                 if (stmt.name.startsWith('$')) throw new Error(`Runtime Error: Cannot declare magic variable '${stmt.name}'.`);
-                let val = stmt.initializer ? this.evaluate(stmt.initializer, frame.env) : this.getDefaultValue(stmt.varType);
+                let val = stmt.initializer ? this.deepCopy(this.evaluate(stmt.initializer, frame.env)) : this.getDefaultValue(stmt.varType);
                 if (stmt.varType.type === "StructType" && val instanceof Map) val.__shift_type = stmt.varType.name;
                 frame.env.define(stmt.name, val);
                 break;
@@ -563,15 +580,14 @@ export class Runtime {
             }
             case "Assignment": {
                 if (expr.name.startsWith('$')) throw new Error(`Runtime Error: Cannot assign to magic variable '${expr.name}'.`);
-                const value = this.evaluate(expr.value, env);
+                const value = this.deepCopy(this.evaluate(expr.value, env));
                 env.assign(expr.name, value);
                 return value;
             }
             case "IndexAssignment": {
                 const container = this.evaluate(expr.object, env);
-                const value = this.evaluate(expr.value, env);
+                const value = this.deepCopy(this.evaluate(expr.value, env));
                 if (container === null) {
-                    // Specific null check for index assignment
                     const index = this.evaluate(expr.index, env);
                     if (typeof index === 'number') throw new Error("Runtime Error: Cannot access index on null value.");
                     if (typeof index === 'string') throw new Error("Runtime Error: Cannot access key on null value.");
@@ -601,8 +617,18 @@ export class Runtime {
             case "Grouping": return this.evaluate(expr.expression, env);
             case "PipelineExpression": {
                 const left = this.evaluate(expr.left, env);
+                const hasPrev = env.values.has("$pipe_value");
+                const prevVal = hasPrev ? env.values.get("$pipe_value") : undefined;
                 env.define("$pipe_value", left);
-                return this.evaluate(expr.right, env);
+                try {
+                    return this.evaluate(expr.right, env);
+                } finally {
+                    if (hasPrev) {
+                        env.define("$pipe_value", prevVal);
+                    } else {
+                        env.values.delete("$pipe_value");
+                    }
+                }
             }
             case "IndexExpression": return this.evaluateIndex(expr, env);
             case "CallExpression": {
@@ -636,8 +662,18 @@ export class Runtime {
                 if (typeof val === "string") return val.length;
                 throw new Error("Runtime Error: Cannot get size of primitive types");
             }
-            case "PackExpression": return String.fromCharCode(...this.evaluate(expr.argument, env));
-            case "UnpackExpression": return String(this.evaluate(expr.argument, env)).split('').map(c => c.charCodeAt(0));
+            case "PackExpression": {
+                const bytes = this.evaluate(expr.argument, env);
+                if (!Array.isArray(bytes)) throw new Error("Runtime Error: pack requires a list of numbers.");
+                
+                let result = "";
+                const chunkSize = 10000;
+                for (let i = 0; i < bytes.length; i += chunkSize) {
+                    result += String.fromCodePoint(...bytes.slice(i, i + chunkSize));
+                }
+                return result;
+            }
+            case "UnpackExpression": return [...String(this.evaluate(expr.argument, env))].map(c => c.codePointAt(0));
             case "TypeOfExpression": return this.getTypeName(this.evaluate(expr.argument, env));
             case "IsExpression": return this.evaluateIs(expr, env);
             case "ReplaceExpression": return this.evaluateReplace(expr, env);
@@ -710,8 +746,23 @@ export class Runtime {
 
         if (patRaw.startsWith("/") && patRaw.lastIndexOf("/") > 0) {
             const last = patRaw.lastIndexOf('/');
+            const pattern = patRaw.substring(1, last);
+            const flags = patRaw.substring(last + 1);
+
+            const isSafePattern = this.verifySafeRegex(pattern);
+            if (!isSafePattern) {
+                if (!this.allowUnsafeRegexFallback) {
+                    throw new Error("Runtime Error: Strict Regex Protection prevents processing this complex pattern.");
+                }
+                if (src.length > this.unsafeRegexMaxStringCeiling) {
+                    throw new Error(`Runtime Error: Suspicious regex running on string size (${src.length}) exceeding your fallback structural safety limit of ${this.unsafeRegexMaxStringCeiling} characters.`);
+                }
+            } else {
+                if (src.length > 50000) throw new Error("Runtime Error: replace source string too large (ReDoS protection).");
+            }
+
             try {
-                const regex = new RegExp(patRaw.substring(1, last), patRaw.substring(last + 1));
+                const regex = new RegExp(pattern, flags);
                 return src.replace(regex, rep);
             } catch (e) { throw new Error(`Runtime Error: Invalid regular expression in replace: ${e.message}`); }
         }
@@ -723,7 +774,6 @@ export class Runtime {
         const target = expr.targetType.name;
         const sourceType = this.getTypeName(val);
 
-        // Identity cast: If source already matches target, return directly
         if (sourceType === target) {
             return val;
         }
@@ -779,7 +829,11 @@ export class Runtime {
         }
 
         const right = this.evaluate(expr.right, env);
-        if (expr.operator === "+") return left + right;
+        if (expr.operator === "+") {
+            if (typeof left === "number" && typeof right === "number") return left + right;
+            if (typeof left === "string" && typeof right === "string") return left + right;
+            throw new Error(`Runtime Error: Type Mismatch. Cannot add ${typeof left} and ${typeof right}.`);
+        }
         if (expr.operator === "-") return left - right;
         if (expr.operator === "*") return left * right;
         if (expr.operator === "/") { if (right === 0) throw new Error("Runtime Error: Division by zero."); return left / right; }
@@ -806,19 +860,47 @@ export class Runtime {
         }
         if (expr.operator === "matches") {
             const str = String(left); const reg = String(right);
-            if (str.length > 50000) throw new Error("Runtime Error: matches string too large (ReDoS protection).");
             const l = reg.lastIndexOf('/');
+            const pattern = reg.substring(1, l);
+            const flags = reg.substring(l + 1);
+
+            const isSafePattern = this.verifySafeRegex(pattern);
+
+            if (!isSafePattern) {
+                if (!this.allowUnsafeRegexFallback) {
+                    throw new Error("Runtime Error: Strict Regex Protection prevents processing this complex pattern.");
+                }
+                if (str.length > this.unsafeRegexMaxStringCeiling) {
+                    throw new Error(`Runtime Error: Suspicious regex running on string size (${str.length}) exceeding your fallback structural safety limit of ${this.unsafeRegexMaxStringCeiling} characters.`);
+                }
+            } else {
+                if (str.length > 50000) throw new Error("Runtime Error: matches string too large (ReDoS protection).");
+            }
+
             try {
-                return new RegExp(reg.substring(1, l), reg.substring(l + 1)).test(str);
+                return new RegExp(pattern, flags).test(str);
             } catch (e) { throw new Error(`Runtime Error: Invalid regular expression in matches: ${e.message}`); }
         }
 
         if (expr.operator === "search") {
             const str = String(left); const regStr = String(right);
-            if (str.length > 50000) throw new Error("Runtime Error: search string too large (ReDoS protection).");
             const lastSlash = regStr.lastIndexOf('/');
             const pattern = regStr.substring(1, lastSlash);
             const flags = regStr.substring(lastSlash + 1);
+
+            const isSafePattern = this.verifySafeRegex(pattern);
+
+            if (!isSafePattern) {
+                if (!this.allowUnsafeRegexFallback) {
+                    throw new Error("Runtime Error: Strict Regex Protection prevents processing this complex pattern.");
+                }
+                if (str.length > this.unsafeRegexMaxStringCeiling) {
+                    throw new Error(`Runtime Error: Suspicious regex running on string size (${str.length}) exceeding your fallback structural safety limit of ${this.unsafeRegexMaxStringCeiling} characters.`);
+                }
+            } else {
+                if (str.length > 50000) throw new Error("Runtime Error: search string too large (ReDoS protection).");
+            }
+
             let regex;
             try {
                 regex = new RegExp(pattern, flags);

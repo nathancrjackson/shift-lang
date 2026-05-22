@@ -1,4 +1,4 @@
-import schema from './ast_schema.json' assert { type: 'json' };
+import schema from './ast_schema.json' with { type: 'json' };
 
 /**
  * Validates a Shift AST Node against the formal JSON schema.
