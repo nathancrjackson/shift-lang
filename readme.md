@@ -197,5 +197,48 @@ function main() number {
 - **Logic:** C-Style symbols (`&&`, `||`) are rejected in favor of readable words (`and`, `or`).
 - **Uninitialized Variables:** Rejected. Solved via Zero-Value/Nullable strategy.
 
+## Security & Sandboxing
+
+To ensure safe execution of untrusted scripts in host environments, Shift provides built-in sandboxing and security controls.
+
+### 1. Core Mode (Default Sandboxed Execution)
+By default, the Shift runtimes run in a highly sandboxed **Core Mode**, preventing scripts from accessing host resources:
+- **Disabled Imports**: Any `import` statement in a script will fail parsing with an error indicating that imports are disabled. To permit imports, the embedding application must explicitly supply an import resolver.
+- **Disabled Filesystem Access**: The built-in filesystem intrinsics are disabled and throw an error or panic indicating they are disabled in core mode.
+
+#### Build-Time Omission
+For embedding environments, Shift guarantees that filesystem-bound code is completely omitted from compiled binaries/libraries rather than remaining dormant:
+- **Go**: Building with the `-tags core` compiler flag completely excludes standard filesystem packages and OS call code from compiling into the output binary.
+- **JavaScript**: Bundling using `node utils/lib_bundler.js --core` generates a standalone `shift_core_lib.mjs` that is completely free of Node's `fs`, `path`, or native module leaks.
+
+### 2. Filesystem & Directory Intrinsics
+When standard mode is enabled (e.g., using standard Go compilation or importing `NodeShift` in JS), Shift exposes the following active intrinsics:
+- `read_file(string path) string`
+- `write_file(string path, string content) none`
+- `create_file(string path) none`
+- `delete_file(string path) none`
+- `file_exists(string path) bool`
+- `copy_file(string source, string dest) none`
+- `move_file(string source, string dest) none`
+- `create_folder(string path) none`
+- `delete_folder(string path) none`
+- `folder_exists(string path) bool`
+- `copy_folder(string source, string dest) none`
+- `move_folder(string source, string dest) none`
+
+In JavaScript, `NodeShift` provides Node.js-based filesystem access and relative path imports out-of-the-box:
+```javascript
+import { NodeShift } from './node_fs.mjs';
+const engine = new NodeShift(); // Loaded with filesystem operations and default import resolver
+```
+
+### 3. Developer Integration & Custom Import Resolvers
+For detailed examples on how to integrate Shift into your own Go or JavaScript application, supply custom import resolvers, enforce instruction limits, or build/test the runtimes, please refer to the [Developer Deep Dive Guide](deepdive.md).
+
+### 4. Instruction Limit (Infinite Loop Protection)
+To prevent resource exhaustion from infinite loops or long-running computations, the interpreter includes execution instruction limit protection:
+- **Default**: Disabled (`0`). By default, there is no instruction limit enforced.
+- **Configuring a Limit**: You can set the instruction limit on the runtime instance (`maxInstructions` in JavaScript, or via `SetMaxInstructions` in Go). If the number of executed statements exceeds this limit, the interpreter halts execution immediately and raises an instruction limit error.
+
 ## Project Sponsors
 - [DTC Group](https://dtc.group)
