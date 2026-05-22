@@ -35,11 +35,13 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.21'
+          cache: false
       - name: Build Go binaries
+        working-directory: go_runtime
         run: |
-          mkdir -p go_runtime/dist
-          GOOS=linux GOARCH=amd64 go build -o go_runtime/dist/shift go_runtime/cmd/shift/main.go
-          GOOS=windows GOARCH=amd64 go build -o go_runtime/dist/shift.exe go_runtime/cmd/shift/main.go
+          mkdir -p dist
+          GOOS=linux GOARCH=amd64 go build -o dist/shift cmd/shift/main.go
+          GOOS=windows GOARCH=amd64 go build -o dist/shift.exe cmd/shift/main.go
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
