@@ -3,5 +3,12 @@ private/
 local/
 
 # Excluded generated content
+docs/*.html
 go_runtime/dist/*.shift
+go_runtime/dist/shift
+go_runtime/dist/shift.exe
+js_runtime/dist/*.mjs
 go_runtime/unit_tests/tests_json/
+
+# Randome outputs
+*.txt
