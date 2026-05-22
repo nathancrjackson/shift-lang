@@ -40,8 +40,8 @@ jobs:
         working-directory: go_runtime
         run: |
           mkdir -p dist
-          GOOS=linux GOARCH=amd64 go build -o dist/shift cmd/shift/main.go
-          GOOS=windows GOARCH=amd64 go build -o dist/shift.exe cmd/shift/main.go
+          GOOS=linux GOARCH=amd64 go build -o dist/shift ./cmd/shift
+          GOOS=windows GOARCH=amd64 go build -o dist/shift.exe ./cmd/shift
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
