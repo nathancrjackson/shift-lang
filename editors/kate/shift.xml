@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE language SYSTEM "syntax.dtd">
+<language name="Shift" version="1" kateversion="5.0" section="Sources" extensions="*.shift" mimetype="text/x-shift" author="Nathan CR Jackson" license="MIT">
+  <highlighting>
+    <list name="keywords">
+      <item>function</item>
+      <item>struct</item>
+      <item>return</item>
+      <item>try</item>
+      <item>catch</item>
+      <item>review</item>
+      <item>throw</item>
+      <item>if</item>
+      <item>else</item>
+      <item>while</item>
+      <item>for</item>
+      <item>in</item>
+      <item>to</item>
+      <item>break</item>
+      <item>skip</item>
+      <item>delete</item>
+      <item>and</item>
+      <item>or</item>
+      <item>xor</item>
+      <item>not</item>
+      <item>as</item>
+      <item>split</item>
+      <item>with</item>
+      <item>joined</item>
+      <item>contains</item>
+      <item>has</item>
+      <item>matches</item>
+      <item>search</item>
+      <item>replace</item>
+      <item>error</item>
+      <item>alert</item>
+      <item>critical</item>
+      <item>inspect</item>
+      <item>pack</item>
+      <item>unpack</item>
+    </list>
+
+    <list name="types">
+      <item>string</item>
+      <item>number</item>
+      <item>bool</item>
+      <item>null</item>
+      <item>any</item>
+      <item>nullable</item>
+      <item>list</item>
+      <item>map</item>
+    </list>
+
+    <contexts>
+      <context name="Normal" attribute="Normal Text" lineEndContext="#stay">
+        <keyword attribute="Keyword" context="#stay" String="keywords" />
+        <keyword attribute="Data Type" context="#stay" String="types" />
+        
+        <RegExpr attribute="Keyword" context="#stay" String="\b(size of|type of)\b" />
+        
+        <RegExpr attribute="Magic Variable" context="#stay" String="\$[a-zA-Z_][a-zA-Z0-9_]*" />
+        
+        <Detect2Chars attribute="Comment" context="CommentLine" char="/" char1="/" />
+        <Detect2Chars attribute="Comment" context="CommentBlock" char="/" char1="*" beginRegion="CommentBlock" />
+        
+        <DetectChar attribute="String" context="String" char="&quot;" />
+        
+        <Float attribute="Float" context="#stay" />
+        <Int attribute="Decimal" context="#stay" />
+        
+        <DetectChar attribute="Symbol" context="#stay" char="{" beginRegion="BraceBlock" />
+        <DetectChar attribute="Symbol" context="#stay" char="}" endRegion="BraceBlock" />
+      </context>
+
+      <context name="CommentLine" attribute="Comment" lineEndContext="#pop">
+        <IncludeRules context="##Comments" />
+      </context>
+
+      <context name="CommentBlock" attribute="Comment" lineEndContext="#stay">
+        <Detect2Chars attribute="Comment" context="#pop" char="*" char1="/" endRegion="CommentBlock" />
+        <IncludeRules context="##Comments" />
+      </context>
+
+      <context name="String" attribute="String" lineEndContext="#stay">
+        <LineContinue attribute="String" context="#stay" />
+        <HlCStringChar attribute="String Escape" context="#stay" />
+        <DetectChar attribute="String" context="#pop" char="&quot;" />
+      </context>
+    </contexts>
+
+    <itemDatas>
+      <itemData name="Normal Text"    defStyleNum="dsNormal" />
+      <itemData name="Keyword"        defStyleNum="dsKeyword" fontStyle="bold" />
+      <itemData name="Data Type"      defStyleNum="dsDataType" fontStyle="bold" />
+      <itemData name="Magic Variable" defStyleNum="dsVariable" color="#808000" />
+      <itemData name="Comment"        defStyleNum="dsComment" />
+      <itemData name="String"         defStyleNum="dsString" />
+      <itemData name="String Escape"  defStyleNum="dsSpecialChar" />
+      <itemData name="Decimal"        defStyleNum="dsDecVal" />
+      <itemData name="Float"          defStyleNum="dsFloat" />
+      <itemData name="Symbol"         defStyleNum="dsOperator" />
+    </itemDatas>
+  </highlighting>
+
+  <general>
+    <comments>
+      <comment type="single" start="//" />
+      <comment type="multi" start="/*" end="*/" />
+    </comments>
+    <keywords casesensitive="true" />
+  </general>
+</language>
