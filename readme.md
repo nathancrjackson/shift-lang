@@ -56,6 +56,8 @@ The runtime exposes context-aware variables prefixed with $ to simplify logic wi
 - `$pipe_value`: The current value in a pipeline.
 - `$thrown_message`: The specific error details inside a catch block.
 - `$line_num`: The current source line number (useful for debugging).
+- `$pi`: The mathematical constant Pi (approx. 3.14159).
+- `$e`: The mathematical constant e (Euler's number, approx. 2.71828).
 
 ## Architecture: How It Works
 
