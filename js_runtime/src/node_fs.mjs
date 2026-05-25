@@ -159,13 +159,13 @@ export const NodeFSIntrinsics = {
  */
 export class NodeShift extends Shift {
     constructor(stdLibCode = null, stdLibIntrinsics = null, options = {}) {
-        let maxInstructions = 1000000;
+        let maxInstructions = 0;
         let importResolver = defaultImportResolver;
 
         if (typeof options === 'number') {
             maxInstructions = options;
         } else {
-            maxInstructions = options.maxInstructions !== undefined ? options.maxInstructions : 1000000;
+            maxInstructions = options.maxInstructions !== undefined ? options.maxInstructions : 0;
             importResolver = options.importResolver !== undefined ? options.importResolver : defaultImportResolver;
         }
 

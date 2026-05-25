@@ -14,7 +14,7 @@ export class Shift {
             this.maxInstructions = options;
             this.importResolver = null;
         } else {
-            this.maxInstructions = options.maxInstructions !== undefined ? options.maxInstructions : 1000000;
+            this.maxInstructions = options.maxInstructions !== undefined ? options.maxInstructions : 0;
             this.importResolver = options.importResolver || null;
         }
 
