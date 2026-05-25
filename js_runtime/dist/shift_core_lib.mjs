@@ -1,6 +1,6 @@
 /**
  * Shift Script Library (Core Mode)
- * Bundled at: 2026-05-22T13:56:22.193Z
+ * Bundled at: 2026-05-25T00:29:20.746Z
  */
 
 // --- Source: token_enums.mjs ---
@@ -4361,7 +4361,7 @@ export class Shift {
             this.maxInstructions = options;
             this.importResolver = null;
         } else {
-            this.maxInstructions = options.maxInstructions !== undefined ? options.maxInstructions : 1000000;
+            this.maxInstructions = options.maxInstructions !== undefined ? options.maxInstructions : 0;
             this.importResolver = options.importResolver || null;
         }
 
