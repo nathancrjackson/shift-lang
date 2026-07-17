@@ -1,5 +1,6 @@
 {
 	"$schema": "http://json-schema.org/draft-07/schema#",
+	"version": "1.0.0",
 	"title": "Shift Script AST",
 	"description": "Abstract Syntax Tree specification for the Shift Script language.",
 	"type": "object",

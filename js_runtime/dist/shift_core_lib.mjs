@@ -1,6 +1,6 @@
 /**
  * Shift Script Library (Core Mode)
- * Bundled at: 2026-05-25T00:29:20.746Z
+ * Bundled at: 2026-07-17T13:08:12.312Z
  */
 
 // --- Source: token_enums.mjs ---
@@ -185,10 +185,159 @@ export const KEYWORDS = {
     "nullable": TokenType.TYPE_NULLABLE
 };
 
+// --- Source: errors.mjs ---
+/**
+ * Base class for all Shift engine errors.
+ */
+export class ShiftEngineError extends Error {
+    /**
+     * @param {string} message - The error message.
+     */
+    constructor(message) {
+        super(message);
+        this.name = this.constructor.name;
+    }
+}
+
+/**
+ * Error thrown during lexical analysis.
+ */
+export class ShiftLexerError extends ShiftEngineError {
+    /**
+     * @param {string} message - The error message.
+     * @param {number} line - The line number where the error occurred.
+     */
+    constructor(message, line) {
+        super(message);
+        this.line = line;
+    }
+}
+
+/**
+ * Error thrown during parsing.
+ */
+export class ShiftParserError extends ShiftEngineError {
+    /**
+     * @param {string} message - The error message.
+     * @param {number} line - The line number where the error occurred.
+     * @param {string} [token] - The token value where the error occurred.
+     */
+    constructor(message, line, token) {
+        super(message);
+        this.line = line;
+        this.token = token;
+    }
+}
+
+/**
+ * Error thrown during AST schema validation.
+ */
+export class ShiftValidationError extends ShiftEngineError {
+    /**
+     * @param {string} message - The error message.
+     * @param {string} [path] - The JSON schema path where validation failed.
+     */
+    constructor(message, path) {
+        super(message);
+        this.path = path;
+    }
+}
+
+/**
+ * Error thrown during execution (Shift user-space / standard error).
+ */
+export class ShiftError extends ShiftEngineError {
+    /**
+     * @param {string} message - The error message.
+     */
+    constructor(message) {
+        super(message);
+    }
+}
+
+/**
+ * Error thrown during execution (Shift user-space / alert level).
+ */
+export class ShiftAlert extends ShiftEngineError {
+    /**
+     * @param {string} message - The error message.
+     */
+    constructor(message) {
+        super(message);
+    }
+}
+
+/**
+ * Error thrown during execution (Shift user-space / critical level).
+ */
+export class ShiftCritical extends ShiftEngineError {
+    /**
+     * @param {string} message - The error message.
+     */
+    constructor(message) {
+        super(message);
+    }
+}
+
+/**
+ * Error thrown during execution by the engine/intrinsics (runtime error).
+ */
+export class ShiftRuntimeError extends ShiftEngineError {
+    /**
+     * @param {string} message - The error message.
+     */
+    constructor(message) {
+        super(message);
+    }
+}
+
+
+// --- Source: logger.mjs ---
+/**
+ * Lightweight structured logger and tracer for the Shift engine.
+ */
+export class ShiftLogger {
+    /**
+     * @param {boolean} [enabled=true] - Whether logging is enabled.
+     */
+    constructor(enabled = true) {
+        /**
+         * @type {boolean}
+         */
+        this.enabled = enabled;
+    }
+
+    /**
+     * Log a structured checkpoint message.
+     * @param {string} phase - The phase name (e.g., "LEXER", "PARSER", "VALIDATOR", "RUNTIME").
+     * @param {string} message - A description of what is happening.
+     * @param {Object} [details={}] - Optional metadata/context to log (excluding any sensitive data).
+     */
+    trace(phase, message, details = {}) {
+        if (!this.enabled) return;
+        const timestamp = new Date().toISOString();
+        console.log(JSON.stringify({
+            timestamp,
+            phase,
+            message,
+            ...details
+        }));
+    }
+}
+
+// Global default logger instance
+export const logger = new ShiftLogger(typeof process !== 'undefined' && process.env && process.env.SHIFT_LOG_ENABLED === "true");
+
+
 // --- Source: lexer.mjs ---
 
 export class Lexer {
     constructor(source) {
+        // Guard clauses
+        if (typeof source !== 'string') {
+            throw new ShiftLexerError("Lexer source must be a string.", 0);
+        }
+
         this.source = source;
         this.tokens = [];
         this.errors = [];
@@ -199,6 +348,7 @@ export class Lexer {
     }
 
     tokenize() {
+        logger.trace("LEXER", "Starting tokenization phase", { sourceLength: this.source.length });
         while (!this.isAtEnd()) {
             this.startindex = this.currentindex;
             this.startline = this.currentline;
@@ -220,11 +370,10 @@ export class Lexer {
     }
 
     addError(message) {
-        this.errors.push({
-            startline: this.startline,
-            endline: this.currentline,
-            message: message
-        });
+        const err = new ShiftLexerError(message, this.startline);
+        err.startline = this.startline;
+        err.endline = this.currentline;
+        this.errors.push(err);
     }
 
     scanToken() {
@@ -538,9 +687,10 @@ export class ExpressionParser {
                     throw this.parser.addError(equalsToken, "Undefined variable.");
                 }
 
+                let updatedValue = value;
                 // USE CENTRALIZED VALIDATION
                 try {
-                    this.parser.validateAssignment(varType, value, equalsToken);
+                    updatedValue = this.parser.validateAssignment(varType, value, equalsToken);
                 } catch (e) {
                     // Errors already added by validator
                 }
@@ -548,10 +698,10 @@ export class ExpressionParser {
                 return {
                     type: "Assignment",
                     start: expr.start,
-                    end: value.end,
+                    end: updatedValue.end,
                     line: equalsToken.l,
                     name: varName,
-                    value: value
+                    value: updatedValue
                 };
             }
             else if (expr.type === "IndexExpression") {
@@ -564,6 +714,8 @@ export class ExpressionParser {
                     depth++;
                     root = root.object;
                 }
+
+                let updatedValue = value;
 
                 if (root.type === "Variable") {
                     const varName = root.name;
@@ -600,7 +752,7 @@ export class ExpressionParser {
                             // Note: Field type is the target, value is the expression
                             try {
                                 // Struct fields expect specific message if type check fails
-                                this.parser.validateAssignment(field.type, value, equalsToken, "Struct field type mismatch.");
+                                updatedValue = this.parser.validateAssignment(field.type, value, equalsToken, "Struct field type mismatch.");
                             } catch (e) {
                                 // Suppress internal throw
                             }
@@ -636,7 +788,7 @@ export class ExpressionParser {
                                 ? "Map value type mismatch."
                                 : "List variable assignment type mismatch.";
 
-                            this.parser.validateAssignment(currentGeneric, value, equalsToken, errorMsg);
+                            updatedValue = this.parser.validateAssignment(currentGeneric, value, equalsToken, errorMsg);
                         } catch (e) {
                             // Suppress internal throw, errors are in parser.errors
                         }
@@ -646,11 +798,11 @@ export class ExpressionParser {
                 return {
                     type: "IndexAssignment",
                     start: expr.start,
-                    end: value.end,
+                    end: updatedValue.end,
                     line: equalsToken.l,
                     object: expr.object,
                     index: expr.index,
-                    value: value
+                    value: updatedValue
                 };
             }
 
@@ -1408,7 +1560,7 @@ export class ExpressionParser {
                     const typeObj = { type: "Type", name: param.type, generic: param.generic };
 
                     try {
-                        this.parser.validateAssignment(typeObj, arg, calleeToken, `Argument '${param.name}' expects type '${param.type}' in call to '${calleeName}'.`);
+                        args[i] = this.parser.validateAssignment(typeObj, arg, calleeToken, `Argument '${param.name}' expects type '${param.type}' in call to '${calleeName}'.`);
                     } catch (e) {
                         // generic validation error added by validationAssignment
                     }
@@ -1450,6 +1602,14 @@ export class ExpressionParser {
 
 export class Parser {
     constructor(tokens, importResolver = null, importedFiles = new Set(), currentFilePath = null) {
+        // Guard clauses
+        if (!Array.isArray(tokens)) {
+            throw new ShiftParserError("Parser construction requires an array of tokens.", 0, "");
+        }
+        if (!(importedFiles instanceof Set)) {
+            throw new ShiftParserError("Parser construction requires importedFiles to be a Set.", 0, "");
+        }
+
         this.tokens = tokens;
         this.current = 0;
         this.errors = [];
@@ -1479,6 +1639,7 @@ export class Parser {
     }
 
     preScan() {
+        logger.trace("PARSER", "Starting pre-scan", { currentFile: this.currentFilePath });
         const startPos = this.current;
 
         // PASS 0: Import Resolution
@@ -1851,6 +2012,7 @@ export class Parser {
     }
 
     parse() {
+        logger.trace("PARSER", "Starting AST construction", { tokenCount: this.tokens.length });
         const program = {
             type: "Program",
             start: this.tokens[0] ? this.tokens[0].s : 0,
@@ -2503,6 +2665,7 @@ export class Parser {
         const inferredVal = this.inferType(valueExpr);
 
         let typeMatch = false;
+        let updatedExpr = valueExpr;
 
         if (inferredVal === "any" || targetType.name === "any") {
             typeMatch = true;
@@ -2513,7 +2676,7 @@ export class Parser {
         else if (targetType.type === "StructType" && inferredVal === "map") {
             typeMatch = true;
             if (valueExpr.type === "MapLiteral") {
-                this.validateStructLiteral(valueExpr, targetType.name, token);
+                updatedExpr = this.validateStructLiteral(valueExpr, targetType.name, token);
             }
         }
         else if (targetType.name === "nullable" && targetType.generic) {
@@ -2521,7 +2684,7 @@ export class Parser {
             if (inferredVal === targetType.generic.name || inferredVal === "null" || inferredVal === "nullable") {
                 typeMatch = true;
                 if (inferredVal === targetType.generic.name && valueExpr.type === "MapLiteral") {
-                    this.validateStructLiteral(valueExpr, targetType.generic.name, token);
+                    updatedExpr = this.validateStructLiteral(valueExpr, targetType.generic.name, token);
                 }
             }
         }
@@ -2545,24 +2708,35 @@ export class Parser {
             } else {
                 this.addError(token, customMismatchError || "Variable assignment type mismatch.");
             }
-            throw new Error("Assignment validation failed");
+            throw new ShiftParserError("Assignment validation failed", token.l, token.v);
         }
+
+        return updatedExpr;
     }
 
     validateStructLiteral(literal, structName, token) {
         const def = this.structDefinitions.get(structName);
-        if (!def) return;
+        if (!def) return literal;
+
+        // Clone map literal and its entries to maintain AST immutability
+        const clonedLiteral = {
+            type: "MapLiteral",
+            start: literal.start,
+            end: literal.end,
+            line: literal.line,
+            entries: [...literal.entries.map(e => ({ ...e }))]
+        };
 
         def.fields.forEach(field => {
-            const entry = literal.entries.find(e => e.key.value === field.name);
+            const entryIndex = clonedLiteral.entries.findIndex(e => e.key.value === field.name);
 
-            if (!entry) {
+            if (entryIndex === -1) {
                 if (field.name.startsWith('$')) {
                     this.addError(token, `Missing required struct field: '${field.name}'.`);
                 } else {
                     try {
                         const defaultVal = this.getDefaultValue(field.type, new Set([structName]));
-                        literal.entries.push({
+                        clonedLiteral.entries.push({
                             key: { type: "Literal", value: field.name, start: -1, end: -1, line: -1 },
                             value: defaultVal
                         });
@@ -2571,6 +2745,7 @@ export class Parser {
                     }
                 }
             } else {
+                const entry = clonedLiteral.entries[entryIndex];
                 const valType = this.inferType(entry.value);
                 let typeMatch = false;
 
@@ -2579,14 +2754,14 @@ export class Parser {
                 } else if (field.type.type === "StructType" && valType === "map") {
                     typeMatch = true;
                     if (entry.value.type === "MapLiteral") {
-                        this.validateStructLiteral(entry.value, field.type.name, token);
+                        entry.value = this.validateStructLiteral(entry.value, field.type.name, token);
                     }
                 }
                 else if (field.type.name === "nullable" && field.type.generic) {
                     if (valType === field.type.generic.name || valType === "null") {
                         typeMatch = true;
                         if (valType === field.type.generic.name && entry.value.type === "MapLiteral") {
-                            this.validateStructLiteral(entry.value, field.type.generic.name, token);
+                            entry.value = this.validateStructLiteral(entry.value, field.type.generic.name, token);
                         }
                     }
                 }
@@ -2597,11 +2772,13 @@ export class Parser {
             }
         });
 
-        literal.entries.forEach(entry => {
+        clonedLiteral.entries.forEach(entry => {
             if (!def.fields.find(f => f.name === entry.key.value)) {
                 this.addError(token, `Unknown field in struct initialization: '${entry.key.value}'.`);
             }
         });
+
+        return clonedLiteral;
     }
 
     variableDeclaration() {
@@ -2623,7 +2800,7 @@ export class Parser {
         if (this.match(TokenType.ASSIGN)) {
             initializer = this.parseExpression();
             try {
-                this.validateAssignment(typeInfo, initializer, nameToken);
+                initializer = this.validateAssignment(typeInfo, initializer, nameToken);
             } catch (e) {
             }
         } else {
@@ -2709,11 +2886,7 @@ export class Parser {
     }
 
     addError(token, message) {
-        const err = {
-            line: token.l,
-            token: token.v,
-            message: message
-        };
+        const err = new ShiftParserError(message, token.l, token.v);
         this.errors.push(err);
         return err;
     }
@@ -2760,10 +2933,6 @@ export class Parser {
 }
 
 // --- Source: runtime.mjs ---
-// Exceptions for User Logic (still useful for error reporting)
-class ShiftError extends Error { constructor(message) { super(message); } }
-class ShiftAlert extends Error { constructor(message) { super(message); } }
-class ShiftCritical extends Error { constructor(message) { super(message); } }
 
 // Control Flow Signals (Internal Only - Not thrown)
 const SIGNAL_NONE = 0;
@@ -2813,6 +2982,13 @@ class StackFrame {
 
 export class Runtime {
     constructor(ast, debugMode = false) {
+        // Guard clauses
+        if (!ast || typeof ast !== 'object') {
+            throw new ShiftRuntimeError("Runtime constructor requires a valid AST object.");
+        }
+
+        logger.trace("RUNTIME", "Initializing runtime environment");
+
         this.ast = ast;
         this.debugMode = debugMode;
         this.globalEnv = new Environment();
@@ -2843,6 +3019,12 @@ export class Runtime {
     }
 
     addIntrinsic(name, func) {
+        if (typeof name !== 'string') {
+            throw new ShiftRuntimeError("Intrinsic name must be a string.");
+        }
+        if (typeof func !== 'function') {
+            throw new ShiftRuntimeError("Intrinsic function must be a JS function.");
+        }
         this.intrinsics.set(name, func);
     }
 
@@ -2944,6 +3126,15 @@ export class Runtime {
     // --- The Stack Machine Core ---
 
     runFunction(name, args = []) {
+        if (typeof name !== 'string') {
+            throw new ShiftRuntimeError("Function callee name must be a string.");
+        }
+        if (!Array.isArray(args)) {
+            throw new ShiftRuntimeError("Function args must be an array.");
+        }
+
+        logger.trace("RUNTIME", `Executing function call: ${name}`, { argsCount: args.length });
+
         const previousStack = this.stack;
         this.stack = [];
 
@@ -4348,15 +4539,1305 @@ export const StandardLibrary = {
 	}
 };
 
+// --- Source: ast_schema.json ---
+const schema = {
+	"$schema": "http://json-schema.org/draft-07/schema#",
+	"version": "1.0.0",
+	"title": "Shift Script AST",
+	"description": "Abstract Syntax Tree specification for the Shift Script language.",
+	"type": "object",
+	"definitions": {
+		"Node": {
+			"type": "object",
+			"required": [
+				"type",
+				"start",
+				"end"
+			],
+			"properties": {
+				"type": {
+					"type": "string"
+				},
+				"start": {
+					"type": "integer",
+					"description": "Start index in source code"
+				},
+				"end": {
+					"type": "integer",
+					"description": "End index in source code"
+				},
+				"line": {
+					"type": "integer",
+					"description": "Line number in source code"
+				}
+			}
+		},
+		"TypeAnnotation": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"enum": [
+						"Type",
+						"StructType"
+					]
+				},
+				"name": {
+					"type": "string"
+				},
+				"generic": {
+					"$ref": "#/definitions/TypeAnnotation"
+				}
+			},
+			"required": [
+				"type",
+				"name"
+			]
+		},
+		"Program": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "Program"
+						},
+						"structs": {
+							"type": "array",
+							"items": {
+								"$ref": "#/definitions/StructDeclaration"
+							}
+						},
+						"functions": {
+							"type": "array",
+							"items": {
+								"$ref": "#/definitions/FunctionDeclaration"
+							}
+						}
+					}
+				}
+			]
+		},
+		"StructDeclaration": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "StructDeclaration"
+						},
+						"name": {
+							"type": "string"
+						},
+						"fields": {
+							"type": "array",
+							"items": {
+								"type": "object",
+								"properties": {
+									"name": {
+										"type": "string"
+									},
+									"type": {
+										"$ref": "#/definitions/TypeAnnotation"
+									}
+								},
+								"required": [
+									"name",
+									"type"
+								]
+							}
+						}
+					}
+				}
+			]
+		},
+		"FunctionDeclaration": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "FunctionDeclaration"
+						},
+						"name": {
+							"type": "string"
+						},
+						"params": {
+							"type": "array",
+							"items": {
+								"type": "object",
+								"properties": {
+									"type": {
+										"const": "Parameter"
+									},
+									"name": {
+										"type": "string"
+									},
+									"dataType": {
+										"$ref": "#/definitions/TypeAnnotation"
+									}
+								}
+							}
+						},
+						"returnType": {
+							"$ref": "#/definitions/TypeAnnotation"
+						},
+						"body": {
+							"$ref": "#/definitions/Block"
+						}
+					}
+				}
+			]
+		},
+		"Block": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "Block"
+						},
+						"statements": {
+							"type": "array",
+							"items": {
+								"$ref": "#/definitions/Statement"
+							}
+						}
+					}
+				}
+			]
+		},
+		"Statement": {
+			"oneOf": [
+				{
+					"$ref": "#/definitions/VariableDeclaration"
+				},
+				{
+					"$ref": "#/definitions/ReturnStatement"
+				},
+				{
+					"$ref": "#/definitions/IfStatement"
+				},
+				{
+					"$ref": "#/definitions/WhileStatement"
+				},
+				{
+					"$ref": "#/definitions/ForRangeStatement"
+				},
+				{
+					"$ref": "#/definitions/ForInStatement"
+				},
+				{
+					"$ref": "#/definitions/BreakStatement"
+				},
+				{
+					"$ref": "#/definitions/SkipStatement"
+				},
+				{
+					"$ref": "#/definitions/TryStatement"
+				},
+				{
+					"$ref": "#/definitions/ThrowStatement"
+				},
+				{
+					"$ref": "#/definitions/DeleteStatement"
+				},
+				{
+					"$ref": "#/definitions/ExpressionStatement"
+				}
+			]
+		},
+		"VariableDeclaration": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "VariableDeclaration"
+						},
+						"name": {
+							"type": "string"
+						},
+						"varType": {
+							"$ref": "#/definitions/TypeAnnotation"
+						},
+						"initializer": {
+							"oneOf": [
+								{
+									"$ref": "#/definitions/Expression"
+								},
+								{
+									"type": "null"
+								}
+							]
+						}
+					}
+				}
+			]
+		},
+		"ExpressionStatement": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "ExpressionStatement"
+						},
+						"expression": {
+							"$ref": "#/definitions/Expression"
+						}
+					}
+				}
+			]
+		},
+		"IfStatement": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "IfStatement"
+						},
+						"condition": {
+							"$ref": "#/definitions/Expression"
+						},
+						"thenBranch": {
+							"$ref": "#/definitions/Block"
+						},
+						"elseBranch": {
+							"oneOf": [
+								{
+									"$ref": "#/definitions/IfStatement"
+								},
+								{
+									"$ref": "#/definitions/Block"
+								},
+								{
+									"type": "null"
+								}
+							]
+						}
+					}
+				}
+			]
+		},
+		"WhileStatement": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "WhileStatement"
+						},
+						"condition": {
+							"$ref": "#/definitions/Expression"
+						},
+						"body": {
+							"$ref": "#/definitions/Block"
+						}
+					}
+				}
+			]
+		},
+		"ForRangeStatement": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "ForRangeStatement"
+						},
+						"iterator": {
+							"type": "string"
+						},
+						"startValue": {
+							"$ref": "#/definitions/Expression"
+						},
+						"endValue": {
+							"$ref": "#/definitions/Expression"
+						},
+						"body": {
+							"$ref": "#/definitions/Block"
+						}
+					}
+				}
+			]
+		},
+		"ForInStatement": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "ForInStatement"
+						},
+						"iterator": {
+							"type": "string"
+						},
+						"valueIterator": {
+							"type": [
+								"string",
+								"null"
+							]
+						},
+						"collection": {
+							"$ref": "#/definitions/Expression"
+						},
+						"body": {
+							"$ref": "#/definitions/Block"
+						}
+					}
+				}
+			]
+		},
+		"ReturnStatement": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "ReturnStatement"
+						},
+						"value": {
+							"oneOf": [
+								{
+									"$ref": "#/definitions/Expression"
+								},
+								{
+									"type": "null"
+								}
+							]
+						}
+					}
+				}
+			]
+		},
+		"ThrowStatement": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "ThrowStatement"
+						},
+						"severity": {
+							"enum": [
+								"alert",
+								"error",
+								"critical"
+							]
+						},
+						"argument": {
+							"$ref": "#/definitions/Expression"
+						}
+					}
+				}
+			]
+		},
+		"TryStatement": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "TryStatement"
+						},
+						"tryBlock": {
+							"$ref": "#/definitions/Block"
+						},
+						"catchIdentifier": {
+							"type": "string"
+						},
+						"catchBlock": {
+							"$ref": "#/definitions/Block"
+						},
+						"reviewBlock": {
+							"oneOf": [
+								{
+									"$ref": "#/definitions/Block"
+								},
+								{
+									"type": "null"
+								}
+							]
+						}
+					}
+				}
+			]
+		},
+		"BreakStatement": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "BreakStatement"
+						}
+					}
+				}
+			]
+		},
+		"SkipStatement": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "SkipStatement"
+						}
+					}
+				}
+			]
+		},
+		"DeleteStatement": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "DeleteStatement"
+						},
+						"target": {
+							"$ref": "#/definitions/IndexExpression"
+						}
+					}
+				}
+			]
+		},
+		"Expression": {
+			"oneOf": [
+				{
+					"$ref": "#/definitions/Assignment"
+				},
+				{
+					"$ref": "#/definitions/IndexAssignment"
+				},
+				{
+					"$ref": "#/definitions/PipelineExpression"
+				},
+				{
+					"$ref": "#/definitions/BinaryExpression"
+				},
+				{
+					"$ref": "#/definitions/UnaryExpression"
+				},
+				{
+					"$ref": "#/definitions/CallExpression"
+				},
+				{
+					"$ref": "#/definitions/IndexExpression"
+				},
+				{
+					"$ref": "#/definitions/CastExpression"
+				},
+				{
+					"$ref": "#/definitions/InspectExpression"
+				},
+				{
+					"$ref": "#/definitions/PackExpression"
+				},
+				{
+					"$ref": "#/definitions/UnpackExpression"
+				},
+				{
+					"$ref": "#/definitions/SizeOfExpression"
+				},
+				{
+					"$ref": "#/definitions/TypeOfExpression"
+				},
+				{
+					"$ref": "#/definitions/IsExpression"
+				},
+				{
+					"$ref": "#/definitions/ReplaceExpression"
+				},
+				{
+					"$ref": "#/definitions/SplitExpression"
+				},
+				{
+					"$ref": "#/definitions/JoinExpression"
+				},
+				{
+					"$ref": "#/definitions/Literal"
+				},
+				{
+					"$ref": "#/definitions/Variable"
+				},
+				{
+					"$ref": "#/definitions/MagicVariable"
+				},
+				{
+					"$ref": "#/definitions/ListLiteral"
+				},
+				{
+					"$ref": "#/definitions/MapLiteral"
+				},
+				{
+					"$ref": "#/definitions/Grouping"
+				}
+			]
+		},
+		"Literal": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "Literal"
+						},
+						"value": {
+							"type": [
+								"number",
+								"string",
+								"boolean",
+								"null"
+							]
+						}
+					}
+				}
+			]
+		},
+		"Variable": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "Variable"
+						},
+						"name": {
+							"type": "string"
+						}
+					}
+				}
+			]
+		},
+		"MagicVariable": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "MagicVariable"
+						},
+						"name": {
+							"type": "string"
+						}
+					}
+				}
+			]
+		},
+		"Assignment": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "Assignment"
+						},
+						"name": {
+							"type": "string"
+						},
+						"value": {
+							"$ref": "#/definitions/Expression"
+						}
+					}
+				}
+			]
+		},
+		"IndexAssignment": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "IndexAssignment"
+						},
+						"object": {
+							"$ref": "#/definitions/Expression"
+						},
+						"index": {
+							"oneOf": [
+								{
+									"$ref": "#/definitions/Expression"
+								},
+								{
+									"type": "null"
+								}
+							]
+						},
+						"value": {
+							"$ref": "#/definitions/Expression"
+						}
+					}
+				}
+			]
+		},
+		"BinaryExpression": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "BinaryExpression"
+						},
+						"operator": {
+							"type": "string"
+						},
+						"left": {
+							"$ref": "#/definitions/Expression"
+						},
+						"right": {
+							"$ref": "#/definitions/Expression"
+						}
+					}
+				}
+			]
+		},
+		"UnaryExpression": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "UnaryExpression"
+						},
+						"operator": {
+							"type": "string"
+						},
+						"argument": {
+							"$ref": "#/definitions/Expression"
+						}
+					}
+				}
+			]
+		},
+		"PipelineExpression": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "PipelineExpression"
+						},
+						"left": {
+							"$ref": "#/definitions/Expression"
+						},
+						"right": {
+							"$ref": "#/definitions/Expression"
+						}
+					}
+				}
+			]
+		},
+		"CallExpression": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "CallExpression"
+						},
+						"callee": {
+							"type": "string"
+						},
+						"arguments": {
+							"type": "array",
+							"items": {
+								"$ref": "#/definitions/Expression"
+							}
+						}
+					}
+				}
+			]
+		},
+		"IndexExpression": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "IndexExpression"
+						},
+						"object": {
+							"$ref": "#/definitions/Expression"
+						},
+						"index": {
+							"$ref": "#/definitions/Expression"
+						}
+					}
+				}
+			]
+		},
+		"ListLiteral": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "ListLiteral"
+						},
+						"elements": {
+							"type": "array",
+							"items": {
+								"$ref": "#/definitions/Expression"
+							}
+						}
+					}
+				}
+			]
+		},
+		"MapLiteral": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "MapLiteral"
+						},
+						"entries": {
+							"type": "array",
+							"items": {
+								"type": "object",
+								"properties": {
+									"key": {
+										"$ref": "#/definitions/Expression"
+									},
+									"value": {
+										"$ref": "#/definitions/Expression"
+									}
+								}
+							}
+						}
+					}
+				}
+			]
+		},
+		"Grouping": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "Grouping"
+						},
+						"expression": {
+							"$ref": "#/definitions/Expression"
+						}
+					}
+				}
+			]
+		},
+		"CastExpression": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "CastExpression"
+						},
+						"value": {
+							"$ref": "#/definitions/Expression"
+						},
+						"targetType": {
+							"$ref": "#/definitions/TypeAnnotation"
+						}
+					}
+				}
+			]
+		},
+		"InspectExpression": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "InspectExpression"
+						},
+						"argument": {
+							"$ref": "#/definitions/Expression"
+						}
+					}
+				}
+			]
+		},
+		"PackExpression": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "PackExpression"
+						},
+						"argument": {
+							"$ref": "#/definitions/Expression"
+						}
+					}
+				}
+			]
+		},
+		"UnpackExpression": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "UnpackExpression"
+						},
+						"argument": {
+							"$ref": "#/definitions/Expression"
+						}
+					}
+				}
+			]
+		},
+		"SizeOfExpression": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "SizeOfExpression"
+						},
+						"argument": {
+							"$ref": "#/definitions/Expression"
+						}
+					}
+				}
+			]
+		},
+		"TypeOfExpression": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "TypeOfExpression"
+						},
+						"argument": {
+							"$ref": "#/definitions/Expression"
+						}
+					}
+				}
+			]
+		},
+		"IsExpression": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "IsExpression"
+						},
+						"left": {
+							"$ref": "#/definitions/Expression"
+						},
+						"check": {
+							"type": "string"
+						},
+						"isNot": {
+							"type": "boolean"
+						}
+					}
+				}
+			]
+		},
+		"ReplaceExpression": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "ReplaceExpression"
+						},
+						"source": {
+							"$ref": "#/definitions/Expression"
+						},
+						"pattern": {
+							"$ref": "#/definitions/Expression"
+						},
+						"replacement": {
+							"$ref": "#/definitions/Expression"
+						}
+					}
+				}
+			]
+		},
+		"SplitExpression": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "SplitExpression"
+						},
+						"source": {
+							"$ref": "#/definitions/Expression"
+						},
+						"delimiter": {
+							"$ref": "#/definitions/Expression"
+						}
+					}
+				}
+			]
+		},
+		"JoinExpression": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "JoinExpression"
+						},
+						"source": {
+							"$ref": "#/definitions/Expression"
+						},
+						"delimiter": {
+							"$ref": "#/definitions/Expression"
+						}
+					}
+				}
+			]
+		}
+	},
+	"$ref": "#/definitions/Program"
+};
+
+// --- Source: ast_validator.mjs ---
+
+/**
+ * Validates a Shift AST Node against the formal JSON schema.
+ * @param {Object} node - The AST node to validate.
+ * @throws {ShiftValidationError} If validation fails or schema version is unsupported.
+ */
+export function validateAST(node) {
+    // 1. Guard clauses
+    if (node === null || node === undefined) {
+        throw new ShiftValidationError("AST root cannot be null or undefined.");
+    }
+    if (typeof node !== 'object') {
+        throw new ShiftValidationError(`AST root must be an object, got: ${typeof node}`);
+    }
+
+    // 2. Defensive Schema Version check
+    if (!schema.version) {
+        throw new ShiftValidationError("Schema Error: AST schema is missing version metadata.");
+    }
+    if (schema.version !== "1.0.0") {
+        throw new ShiftValidationError(`Schema Error: Unsupported AST schema version: '${schema.version}'. Expected '1.0.0'.`);
+    }
+
+    // 3. Structured Logging Checkpoint
+    logger.trace("VALIDATOR", "Starting AST validation", { schemaVersion: schema.version });
+
+    // Start validation against the root definition (usually Program)
+    // The schema itself uses a $ref to Program at the root level
+    validate(node, schema, schema.definitions, 'root');
+}
+
+/**
+ * Recursive validation function.
+ * @param {*} data - The data to check.
+ * @param {Object} schemaNode - The current part of the JSON schema.
+ * @param {Object} definitions - The global definitions object for resolving $refs.
+ * @param {string} currentPath - Debug path for error reporting.
+ * @throws {ShiftValidationError} If validation fails.
+ */
+function validate(data, schemaNode, definitions, currentPath) {
+    // 1. Handle $ref (Pointer to another definition)
+    if (schemaNode.$ref) {
+        const refName = schemaNode.$ref.replace('#/definitions/', '');
+        const refSchema = definitions[refName];
+        if (!refSchema) throw new ShiftValidationError(`Schema Error: Missing definition '${refName}'`);
+        validate(data, refSchema, definitions, currentPath);
+        return;
+    }
+
+    // 2. Handle allOf (Composition/Inheritance)
+    // Used in our schema to combine "Node" (start/end) with specific node props.
+    if (schemaNode.allOf) {
+        for (const subSchema of schemaNode.allOf) {
+            validate(data, subSchema, definitions, currentPath);
+        }
+        return;
+    }
+
+    // 3. Handle oneOf (Polymorphism)
+    // Used for Statement, Expression, etc.
+    if (schemaNode.oneOf) {
+        // Optimization: In an AST, we can discriminate based on the 'type' field.
+        if (data && typeof data === 'object' && typeof data.type === 'string') {
+            const targetType = data.type;
+            
+            // Check if the target type is allowed in this oneOf list
+            // We do this by resolving refs and checking if they enforce this 'type' const
+            const match = schemaNode.oneOf.find(sub => {
+                const subDef = resolveRef(sub, definitions);
+                return schemaEnforcesType(subDef, targetType, definitions);
+            });
+
+            if (match) {
+                // Found the specific schema for this node type, validate against it strictly
+                validate(data, match, definitions, currentPath);
+                return;
+            }
+        }
+        
+        // If we couldn't match by 'type', or data is null, fail.
+        // (Shift ASTs are strict, we don't need fuzzy matching for Nodes)
+        // However, oneOf might be used for nullable fields: [ { $ref: ... }, { type: "null" } ]
+        const validNull = schemaNode.oneOf.some(sub => sub.type === 'null');
+        if (data === null && validNull) return;
+
+        throw new ShiftValidationError(`Invalid AST: Unknown or unexpected node type '${data?.type}' at ${currentPath}. Expected one of the allowed types in schema.`);
+    }
+
+    // 4. Validate Types
+    
+    // 4a. Const (Exact match, used for 'type' discriminators)
+    if (schemaNode.const !== undefined) {
+        if (data !== schemaNode.const) {
+            throw new ShiftValidationError(`Invalid AST: Field at ${currentPath} expected constant '${schemaNode.const}', got '${data}'`);
+        }
+    }
+
+    // 4b. Enum
+    if (schemaNode.enum) {
+        if (!schemaNode.enum.includes(data)) {
+            throw new ShiftValidationError(`Invalid AST: Field at ${currentPath} has invalid value '${data}'. Expected one of: ${schemaNode.enum.join(', ')}`);
+        }
+    }
+
+    // 4c. Primitive Types
+    if (schemaNode.type) {
+        const expectedTypes = Array.isArray(schemaNode.type) ? schemaNode.type : [schemaNode.type];
+        
+        // Handle explicit null
+        if (data === null) {
+            if (expectedTypes.includes('null')) return;
+            throw new ShiftValidationError(`Invalid AST: Field at ${currentPath} cannot be null.`);
+        }
+
+        const dataType = typeof data;
+        
+        if (expectedTypes.includes('integer')) {
+            if (dataType !== 'number' || !Number.isInteger(data)) {
+                throw new ShiftValidationError(`Invalid AST: Field at ${currentPath} expected integer, got ${data}`);
+            }
+            return;
+        }
+
+        if (expectedTypes.includes('number') && dataType === 'number') return;
+        if (expectedTypes.includes('string') && dataType === 'string') return;
+        if (expectedTypes.includes('boolean') && dataType === 'boolean') return;
+        
+        if (expectedTypes.includes('object')) {
+             if (dataType !== 'object' || Array.isArray(data)) {
+                 throw new ShiftValidationError(`Invalid AST: Field at ${currentPath} expected object, got ${Array.isArray(data) ? 'array' : dataType}`);
+             }
+             validateObject(data, schemaNode, definitions, currentPath);
+             return;
+        }
+
+        if (expectedTypes.includes('array')) {
+            if (!Array.isArray(data)) {
+                throw new ShiftValidationError(`Invalid AST: Field at ${currentPath} expected array, got ${dataType}`);
+            }
+            validateArray(data, schemaNode, definitions, currentPath);
+            return;
+        }
+    }
+}
+
+/**
+ * Validate object properties and required fields.
+ * @param {Object} data - The object to validate.
+ * @param {Object} schema - The schema describing the object.
+ * @param {Object} definitions - Global definitions dictionary.
+ * @param {string} path - The validation path.
+ * @throws {ShiftValidationError} If validation fails.
+ */
+function validateObject(data, schema, definitions, path) {
+    // Check Required Fields
+    if (schema.required) {
+        for (const field of schema.required) {
+            if (!(field in data)) {
+                const nodeType = data.type ? `Node type '${data.type}'` : 'Object';
+                // Try to infer index from path for better error message
+                throw new ShiftValidationError(`Invalid AST: ${nodeType} at ${path} is missing required field '${field}'.`);
+            }
+        }
+    }
+
+    // Check Properties
+    if (schema.properties) {
+        for (const [key, propSchema] of Object.entries(schema.properties)) {
+            if (key in data) {
+                validate(data[key], propSchema, definitions, `${path}.${key}`);
+            }
+        }
+    }
+}
+
+/**
+ * Validate array items.
+ * @param {Array} data - The array to validate.
+ * @param {Object} schema - The schema describing the array items.
+ * @param {Object} definitions - Global definitions dictionary.
+ * @param {string} path - The validation path.
+ * @throws {ShiftValidationError} If validation fails.
+ */
+function validateArray(data, schema, definitions, path) {
+    if (schema.items) {
+        data.forEach((item, index) => {
+            validate(item, schema.items, definitions, `${path}[${index}]`);
+        });
+    }
+}
+
+/**
+ * Resolve a schema $ref pointer.
+ * @param {Object} schemaNode - The current schema node.
+ * @param {Object} definitions - Global definitions dictionary.
+ * @returns {Object} The resolved schema node.
+ */
+function resolveRef(schemaNode, definitions) {
+    if (schemaNode.$ref) {
+        const refName = schemaNode.$ref.replace('#/definitions/', '');
+        return definitions[refName];
+    }
+    return schemaNode;
+}
+
+/**
+ * Checks if a schema definition enforces a specific 'type' const property.
+ * This handles the hierarchy: Definition -> allOf -> properties -> type -> const
+ * @param {Object} schemaDef - The schema definition.
+ * @param {string} targetType - The target type const value.
+ * @param {Object} definitions - Global definitions dictionary.
+ * @returns {boolean} True if the schema enforces the target type, otherwise false.
+ */
+function schemaEnforcesType(schemaDef, targetType, definitions) {
+    if (!schemaDef) return false;
+
+    // Direct property check
+    if (schemaDef.properties?.type?.const === targetType) return true;
+
+    // Check inside allOf (commonly used in our schema to mix in "type")
+    if (schemaDef.allOf) {
+        return schemaDef.allOf.some(sub => {
+            const resolved = resolveRef(sub, definitions);
+            return schemaEnforcesType(resolved, targetType, definitions);
+        });
+    }
+
+    return false;
+}
+
 // --- Source: shift.mjs ---
 
+const validateASTFunc = validateAST;
+
+/**
+ * Main Orchestration Interface for the Shift Language.
+ * Manages Standard Library loading, compilation, tree shaking, and runtime execution.
+ */
 export class Shift {
     /**
-     * @param {string|null} stdLibCode - Custom standard library code (Shift). Pass null to use default.
-     * @param {Object|null} stdLibIntrinsics - Custom intrinsics map. Pass null to use default StandardLibrary.intrinsics.
-     * @param {Object|number} options - Options object (e.g., importResolver) or maxInstructions integer for backward compatibility.
+     * @param {string|null} [stdLibCode=null] - Custom standard library code (Shift). Pass null to use default.
+     * @param {Object|null} [stdLibIntrinsics=null] - Custom intrinsics map. Pass null to use default.
+     * @param {Object|number} [options={}] - Options object (e.g., importResolver) or maxInstructions integer.
+     * @throws {ShiftEngineError} If input arguments are invalid.
      */
     constructor(stdLibCode = null, stdLibIntrinsics = null, options = {}) {
+        // Guard clauses
+        if (stdLibCode !== null && typeof stdLibCode !== 'string') {
+            throw new ShiftEngineError("stdLibCode must be null or a string.");
+        }
+        if (stdLibIntrinsics !== null && typeof stdLibIntrinsics !== 'object') {
+            throw new ShiftEngineError("stdLibIntrinsics must be null or an object.");
+        }
+        if (typeof options !== 'number' && (options === null || typeof options !== 'object')) {
+            throw new ShiftEngineError("options must be a number or an object.");
+        }
+
         if (typeof options === 'number') {
             this.maxInstructions = options;
             this.importResolver = null;
@@ -4381,9 +5862,20 @@ export class Shift {
      * @param {Object} definition - { returnType: string, generic?: string, func: Function }
      */
     registerIntrinsic(name, definition) {
+        if (typeof name !== 'string') {
+            throw new ShiftEngineError("Intrinsic name must be a string.");
+        }
+        if (!definition || typeof definition !== 'object') {
+            throw new ShiftEngineError("Intrinsic definition must be an object.");
+        }
         this.intrinsics.set(name, definition);
     }
 
+    /**
+     * Compiles standard library Shift source code.
+     * @param {string|null} stdLibCode - Standard library Shift code.
+     * @private
+     */
     _initStandardLibrary(stdLibCode) {
         // Use provided code or default to StandardLibrary.source
         const source = stdLibCode !== null ? stdLibCode : StandardLibrary.source;
@@ -4410,6 +5902,11 @@ export class Shift {
         }
     }
 
+    /**
+     * Load standard library structs definitions into a Parser instance.
+     * @param {Parser} parser - Target parser instance.
+     * @private
+     */
     _loadStructs(parser) {
         StandardLibrary.structs.forEach(s => {
             parser.knownTypes.add(s.name);
@@ -4433,6 +5930,11 @@ export class Shift {
         });
     }
 
+    /**
+     * Load standard library intrinsics definitions into a Parser instance.
+     * @param {Parser} parser - Target parser instance.
+     * @private
+     */
     _loadIntrinsics(parser) {
         for (const [name, def] of this.intrinsics) {
             let typeObj = { type: "Type", name: def.returnType, generic: null, initialized: true };
@@ -4443,6 +5945,11 @@ export class Shift {
         }
     }
 
+    /**
+     * Load active intrinsics functions into a Runtime instance.
+     * @param {Runtime} runtime - Target runtime instance.
+     * @private
+     */
     _loadIntrinsicsIntoRuntime(runtime) {
         for (const [name, def] of this.intrinsics) {
             runtime.addIntrinsic(name, def.func);
@@ -4452,14 +5959,30 @@ export class Shift {
     /**
      * Executes a Shift script.
      * @param {string} sourceCode - The Shift source code.
-     * @param {string} entryPoint - The name of the function to call (default: "main").
-     * @param {Array} args - Arguments to pass to the entry point function.
+     * @param {string} [entryPoint="main"] - The name of the function to call.
+     * @param {Array} [args=[]] - Arguments to pass to the entry point function.
      * @returns {*} The return value of the executed function.
+     * @throws {ShiftEngineError} If input arguments are invalid.
+     * @throws {ShiftLexerError} If lexing fails.
+     * @throws {ShiftParserError} If parsing fails.
      */
     run(sourceCode, entryPoint = "main", args = []) {
-        if (this.stdLibErrors.length > 0) {
-            throw new Error("Cannot run script due to internal Standard Library errors.");
+        // Guard clauses
+        if (typeof sourceCode !== 'string') {
+            throw new ShiftEngineError("sourceCode must be a string.");
         }
+        if (typeof entryPoint !== 'string') {
+            throw new ShiftEngineError("entryPoint must be a string.");
+        }
+        if (!Array.isArray(args)) {
+            throw new ShiftEngineError("args must be an array.");
+        }
+
+        if (this.stdLibErrors.length > 0) {
+            throw new ShiftEngineError("Cannot run script due to internal Standard Library errors.");
+        }
+
+        logger.trace("SHIFT", "Starting compilation and execution", { entryPoint });
 
         // 1. Lexer
         const lexer = new Lexer(sourceCode);
@@ -4468,7 +5991,7 @@ export class Shift {
         if (lexResult.errors.length > 0) {
             const firstError = lexResult.errors[0];
             const line = firstError.line || firstError.endline || firstError.startline;
-            throw new Error(`Lexer Error: ${firstError.message} (Line ${line})`);
+            throw new ShiftLexerError(`Lexer Error: ${firstError.message}`, line);
         }
 
         // 2. Parser
@@ -4495,7 +6018,7 @@ export class Shift {
 
         if (parseResult.errors.length > 0) {
             const firstError = parseResult.errors[0];
-            throw new Error(`Parser Error: ${firstError.message} (Line ${firstError.line})`);
+            throw new ShiftParserError(`Parser Error: ${firstError.message}`, firstError.line, firstError.token);
         }
 
         // 3. Tree Shaking / Linking
@@ -4521,7 +6044,66 @@ export class Shift {
 
         // 5. Execution
         try {
-            return runtime.runFunction(entryPoint, args);
+            const result = runtime.runFunction(entryPoint, args);
+            logger.trace("SHIFT", "Execution completed successfully");
+            return result;
+        } catch (e) {
+            // Ensure runtime errors are propagated cleanly
+            throw e;
+        }
+    }
+
+    /**
+     * Executes a precompiled Shift AST.
+     * @param {Object} ast - The precompiled Shift AST object.
+     * @param {string} [entryPoint="main"] - The name of the function to call.
+     * @param {Array} [args=[]] - Arguments to pass to the entry point function.
+     * @param {boolean} [validateAST=true] - Whether to validate the AST structure against the schema.
+     * @returns {*} The return value of the executed function.
+     * @throws {ShiftEngineError} If input arguments are invalid or AST validation fails.
+     */
+    executeAST(ast, entryPoint = "main", args = [], validateAST = true) {
+        // Guard clauses
+        if (!ast || typeof ast !== 'object') {
+            throw new ShiftEngineError("ast must be an object.");
+        }
+        if (typeof entryPoint !== 'string') {
+            throw new ShiftEngineError("entryPoint must be a string.");
+        }
+        if (!Array.isArray(args)) {
+            throw new ShiftEngineError("args must be an array.");
+        }
+        if (typeof validateAST !== 'boolean') {
+            throw new ShiftEngineError("validateAST must be a boolean.");
+        }
+
+        if (this.stdLibErrors.length > 0) {
+            throw new ShiftEngineError("Cannot run AST due to internal Standard Library errors.");
+        }
+
+        logger.trace("SHIFT", "Starting executeAST execution", { entryPoint, validateAST });
+
+        // 1. Optional AST validation
+        if (validateAST) {
+            try {
+                validateASTFunc(ast);
+            } catch (e) {
+                throw new ShiftEngineError(`AST Validation Error: ${e.message}`);
+            }
+        }
+
+        // 2. Runtime Initialization
+        const runtime = new Runtime(ast);
+        runtime.maxInstructions = this.maxInstructions;
+
+        // Load Intrinsic Implementations
+        this._loadIntrinsicsIntoRuntime(runtime);
+
+        // 3. Execution
+        try {
+            const result = runtime.runFunction(entryPoint, args);
+            logger.trace("SHIFT", "executeAST completed successfully");
+            return result;
         } catch (e) {
             // Ensure runtime errors are propagated cleanly
             throw e;

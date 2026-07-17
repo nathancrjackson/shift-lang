@@ -1,7 +1,5 @@
-// Exceptions for User Logic (still useful for error reporting)
-class ShiftError extends Error { constructor(message) { super(message); } }
-class ShiftAlert extends Error { constructor(message) { super(message); } }
-class ShiftCritical extends Error { constructor(message) { super(message); } }
+import { ShiftError, ShiftAlert, ShiftCritical, ShiftRuntimeError } from './errors.mjs';
+import { logger } from './logger.mjs';
 
 // Control Flow Signals (Internal Only - Not thrown)
 const SIGNAL_NONE = 0;
@@ -51,6 +49,13 @@ class StackFrame {
 
 export class Runtime {
     constructor(ast, debugMode = false) {
+        // Guard clauses
+        if (!ast || typeof ast !== 'object') {
+            throw new ShiftRuntimeError("Runtime constructor requires a valid AST object.");
+        }
+
+        logger.trace("RUNTIME", "Initializing runtime environment");
+
         this.ast = ast;
         this.debugMode = debugMode;
         this.globalEnv = new Environment();
@@ -81,6 +86,12 @@ export class Runtime {
     }
 
     addIntrinsic(name, func) {
+        if (typeof name !== 'string') {
+            throw new ShiftRuntimeError("Intrinsic name must be a string.");
+        }
+        if (typeof func !== 'function') {
+            throw new ShiftRuntimeError("Intrinsic function must be a JS function.");
+        }
         this.intrinsics.set(name, func);
     }
 
@@ -182,6 +193,15 @@ export class Runtime {
     // --- The Stack Machine Core ---
 
     runFunction(name, args = []) {
+        if (typeof name !== 'string') {
+            throw new ShiftRuntimeError("Function callee name must be a string.");
+        }
+        if (!Array.isArray(args)) {
+            throw new ShiftRuntimeError("Function args must be an array.");
+        }
+
+        logger.trace("RUNTIME", `Executing function call: ${name}`, { argsCount: args.length });
+
         const previousStack = this.stack;
         this.stack = [];
 

@@ -2,14 +2,35 @@ import { Lexer } from './lexer.mjs';
 import { Parser } from './parser.mjs';
 import { Runtime } from './runtime.mjs';
 import { StandardLibrary } from './standard_library.mjs';
+import { ShiftEngineError, ShiftLexerError, ShiftParserError } from './errors.mjs';
+import { logger } from './logger.mjs';
+import { validateAST as validateASTFunc } from './ast_validator.mjs';
 
+export { validateASTFunc as validateAST };
+
+/**
+ * Main Orchestration Interface for the Shift Language.
+ * Manages Standard Library loading, compilation, tree shaking, and runtime execution.
+ */
 export class Shift {
     /**
-     * @param {string|null} stdLibCode - Custom standard library code (Shift). Pass null to use default.
-     * @param {Object|null} stdLibIntrinsics - Custom intrinsics map. Pass null to use default StandardLibrary.intrinsics.
-     * @param {Object|number} options - Options object (e.g., importResolver) or maxInstructions integer for backward compatibility.
+     * @param {string|null} [stdLibCode=null] - Custom standard library code (Shift). Pass null to use default.
+     * @param {Object|null} [stdLibIntrinsics=null] - Custom intrinsics map. Pass null to use default.
+     * @param {Object|number} [options={}] - Options object (e.g., importResolver) or maxInstructions integer.
+     * @throws {ShiftEngineError} If input arguments are invalid.
      */
     constructor(stdLibCode = null, stdLibIntrinsics = null, options = {}) {
+        // Guard clauses
+        if (stdLibCode !== null && typeof stdLibCode !== 'string') {
+            throw new ShiftEngineError("stdLibCode must be null or a string.");
+        }
+        if (stdLibIntrinsics !== null && typeof stdLibIntrinsics !== 'object') {
+            throw new ShiftEngineError("stdLibIntrinsics must be null or an object.");
+        }
+        if (typeof options !== 'number' && (options === null || typeof options !== 'object')) {
+            throw new ShiftEngineError("options must be a number or an object.");
+        }
+
         if (typeof options === 'number') {
             this.maxInstructions = options;
             this.importResolver = null;
@@ -34,9 +55,20 @@ export class Shift {
      * @param {Object} definition - { returnType: string, generic?: string, func: Function }
      */
     registerIntrinsic(name, definition) {
+        if (typeof name !== 'string') {
+            throw new ShiftEngineError("Intrinsic name must be a string.");
+        }
+        if (!definition || typeof definition !== 'object') {
+            throw new ShiftEngineError("Intrinsic definition must be an object.");
+        }
         this.intrinsics.set(name, definition);
     }
 
+    /**
+     * Compiles standard library Shift source code.
+     * @param {string|null} stdLibCode - Standard library Shift code.
+     * @private
+     */
     _initStandardLibrary(stdLibCode) {
         // Use provided code or default to StandardLibrary.source
         const source = stdLibCode !== null ? stdLibCode : StandardLibrary.source;
@@ -63,6 +95,11 @@ export class Shift {
         }
     }
 
+    /**
+     * Load standard library structs definitions into a Parser instance.
+     * @param {Parser} parser - Target parser instance.
+     * @private
+     */
     _loadStructs(parser) {
         StandardLibrary.structs.forEach(s => {
             parser.knownTypes.add(s.name);
@@ -86,6 +123,11 @@ export class Shift {
         });
     }
 
+    /**
+     * Load standard library intrinsics definitions into a Parser instance.
+     * @param {Parser} parser - Target parser instance.
+     * @private
+     */
     _loadIntrinsics(parser) {
         for (const [name, def] of this.intrinsics) {
             let typeObj = { type: "Type", name: def.returnType, generic: null, initialized: true };
@@ -96,6 +138,11 @@ export class Shift {
         }
     }
 
+    /**
+     * Load active intrinsics functions into a Runtime instance.
+     * @param {Runtime} runtime - Target runtime instance.
+     * @private
+     */
     _loadIntrinsicsIntoRuntime(runtime) {
         for (const [name, def] of this.intrinsics) {
             runtime.addIntrinsic(name, def.func);
@@ -105,14 +152,30 @@ export class Shift {
     /**
      * Executes a Shift script.
      * @param {string} sourceCode - The Shift source code.
-     * @param {string} entryPoint - The name of the function to call (default: "main").
-     * @param {Array} args - Arguments to pass to the entry point function.
+     * @param {string} [entryPoint="main"] - The name of the function to call.
+     * @param {Array} [args=[]] - Arguments to pass to the entry point function.
      * @returns {*} The return value of the executed function.
+     * @throws {ShiftEngineError} If input arguments are invalid.
+     * @throws {ShiftLexerError} If lexing fails.
+     * @throws {ShiftParserError} If parsing fails.
      */
     run(sourceCode, entryPoint = "main", args = []) {
-        if (this.stdLibErrors.length > 0) {
-            throw new Error("Cannot run script due to internal Standard Library errors.");
+        // Guard clauses
+        if (typeof sourceCode !== 'string') {
+            throw new ShiftEngineError("sourceCode must be a string.");
         }
+        if (typeof entryPoint !== 'string') {
+            throw new ShiftEngineError("entryPoint must be a string.");
+        }
+        if (!Array.isArray(args)) {
+            throw new ShiftEngineError("args must be an array.");
+        }
+
+        if (this.stdLibErrors.length > 0) {
+            throw new ShiftEngineError("Cannot run script due to internal Standard Library errors.");
+        }
+
+        logger.trace("SHIFT", "Starting compilation and execution", { entryPoint });
 
         // 1. Lexer
         const lexer = new Lexer(sourceCode);
@@ -121,7 +184,7 @@ export class Shift {
         if (lexResult.errors.length > 0) {
             const firstError = lexResult.errors[0];
             const line = firstError.line || firstError.endline || firstError.startline;
-            throw new Error(`Lexer Error: ${firstError.message} (Line ${line})`);
+            throw new ShiftLexerError(`Lexer Error: ${firstError.message}`, line);
         }
 
         // 2. Parser
@@ -148,7 +211,7 @@ export class Shift {
 
         if (parseResult.errors.length > 0) {
             const firstError = parseResult.errors[0];
-            throw new Error(`Parser Error: ${firstError.message} (Line ${firstError.line})`);
+            throw new ShiftParserError(`Parser Error: ${firstError.message}`, firstError.line, firstError.token);
         }
 
         // 3. Tree Shaking / Linking
@@ -174,7 +237,66 @@ export class Shift {
 
         // 5. Execution
         try {
-            return runtime.runFunction(entryPoint, args);
+            const result = runtime.runFunction(entryPoint, args);
+            logger.trace("SHIFT", "Execution completed successfully");
+            return result;
+        } catch (e) {
+            // Ensure runtime errors are propagated cleanly
+            throw e;
+        }
+    }
+
+    /**
+     * Executes a precompiled Shift AST.
+     * @param {Object} ast - The precompiled Shift AST object.
+     * @param {string} [entryPoint="main"] - The name of the function to call.
+     * @param {Array} [args=[]] - Arguments to pass to the entry point function.
+     * @param {boolean} [validateAST=true] - Whether to validate the AST structure against the schema.
+     * @returns {*} The return value of the executed function.
+     * @throws {ShiftEngineError} If input arguments are invalid or AST validation fails.
+     */
+    executeAST(ast, entryPoint = "main", args = [], validateAST = true) {
+        // Guard clauses
+        if (!ast || typeof ast !== 'object') {
+            throw new ShiftEngineError("ast must be an object.");
+        }
+        if (typeof entryPoint !== 'string') {
+            throw new ShiftEngineError("entryPoint must be a string.");
+        }
+        if (!Array.isArray(args)) {
+            throw new ShiftEngineError("args must be an array.");
+        }
+        if (typeof validateAST !== 'boolean') {
+            throw new ShiftEngineError("validateAST must be a boolean.");
+        }
+
+        if (this.stdLibErrors.length > 0) {
+            throw new ShiftEngineError("Cannot run AST due to internal Standard Library errors.");
+        }
+
+        logger.trace("SHIFT", "Starting executeAST execution", { entryPoint, validateAST });
+
+        // 1. Optional AST validation
+        if (validateAST) {
+            try {
+                validateASTFunc(ast);
+            } catch (e) {
+                throw new ShiftEngineError(`AST Validation Error: ${e.message}`);
+            }
+        }
+
+        // 2. Runtime Initialization
+        const runtime = new Runtime(ast);
+        runtime.maxInstructions = this.maxInstructions;
+
+        // Load Intrinsic Implementations
+        this._loadIntrinsicsIntoRuntime(runtime);
+
+        // 3. Execution
+        try {
+            const result = runtime.runFunction(entryPoint, args);
+            logger.trace("SHIFT", "executeAST completed successfully");
+            return result;
         } catch (e) {
             // Ensure runtime errors are propagated cleanly
             throw e;

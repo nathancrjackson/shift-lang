@@ -1,7 +1,14 @@
-import {TokenType, KEYWORDS} from './token_enums.mjs';
+import { TokenType, KEYWORDS } from './token_enums.mjs';
+import { ShiftLexerError } from './errors.mjs';
+import { logger } from './logger.mjs';
 
 export class Lexer {
     constructor(source) {
+        // Guard clauses
+        if (typeof source !== 'string') {
+            throw new ShiftLexerError("Lexer source must be a string.", 0);
+        }
+
         this.source = source;
         this.tokens = [];
         this.errors = [];
@@ -12,6 +19,7 @@ export class Lexer {
     }
 
     tokenize() {
+        logger.trace("LEXER", "Starting tokenization phase", { sourceLength: this.source.length });
         while (!this.isAtEnd()) {
             this.startindex = this.currentindex;
             this.startline = this.currentline;
@@ -33,11 +41,10 @@ export class Lexer {
     }
 
     addError(message) {
-        this.errors.push({
-            startline: this.startline,
-            endline: this.currentline,
-            message: message
-        });
+        const err = new ShiftLexerError(message, this.startline);
+        err.startline = this.startline;
+        err.endline = this.currentline;
+        this.errors.push(err);
     }
 
     scanToken() {

@@ -25,9 +25,10 @@ export class ExpressionParser {
                     throw this.parser.addError(equalsToken, "Undefined variable.");
                 }
 
+                let updatedValue = value;
                 // USE CENTRALIZED VALIDATION
                 try {
-                    this.parser.validateAssignment(varType, value, equalsToken);
+                    updatedValue = this.parser.validateAssignment(varType, value, equalsToken);
                 } catch (e) {
                     // Errors already added by validator
                 }
@@ -35,10 +36,10 @@ export class ExpressionParser {
                 return {
                     type: "Assignment",
                     start: expr.start,
-                    end: value.end,
+                    end: updatedValue.end,
                     line: equalsToken.l,
                     name: varName,
-                    value: value
+                    value: updatedValue
                 };
             }
             else if (expr.type === "IndexExpression") {
@@ -51,6 +52,8 @@ export class ExpressionParser {
                     depth++;
                     root = root.object;
                 }
+
+                let updatedValue = value;
 
                 if (root.type === "Variable") {
                     const varName = root.name;
@@ -87,7 +90,7 @@ export class ExpressionParser {
                             // Note: Field type is the target, value is the expression
                             try {
                                 // Struct fields expect specific message if type check fails
-                                this.parser.validateAssignment(field.type, value, equalsToken, "Struct field type mismatch.");
+                                updatedValue = this.parser.validateAssignment(field.type, value, equalsToken, "Struct field type mismatch.");
                             } catch (e) {
                                 // Suppress internal throw
                             }
@@ -123,7 +126,7 @@ export class ExpressionParser {
                                 ? "Map value type mismatch."
                                 : "List variable assignment type mismatch.";
 
-                            this.parser.validateAssignment(currentGeneric, value, equalsToken, errorMsg);
+                            updatedValue = this.parser.validateAssignment(currentGeneric, value, equalsToken, errorMsg);
                         } catch (e) {
                             // Suppress internal throw, errors are in parser.errors
                         }
@@ -133,11 +136,11 @@ export class ExpressionParser {
                 return {
                     type: "IndexAssignment",
                     start: expr.start,
-                    end: value.end,
+                    end: updatedValue.end,
                     line: equalsToken.l,
                     object: expr.object,
                     index: expr.index,
-                    value: value
+                    value: updatedValue
                 };
             }
 
@@ -895,7 +898,7 @@ export class ExpressionParser {
                     const typeObj = { type: "Type", name: param.type, generic: param.generic };
 
                     try {
-                        this.parser.validateAssignment(typeObj, arg, calleeToken, `Argument '${param.name}' expects type '${param.type}' in call to '${calleeName}'.`);
+                        args[i] = this.parser.validateAssignment(typeObj, arg, calleeToken, `Argument '${param.name}' expects type '${param.type}' in call to '${calleeName}'.`);
                     } catch (e) {
                         // generic validation error added by validationAssignment
                     }

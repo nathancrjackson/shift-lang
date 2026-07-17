@@ -1,9 +1,19 @@
 import { TokenType } from './token_enums.mjs';
 import { ExpressionParser } from './expression_parser.mjs';
 import { Lexer } from './lexer.mjs';
+import { ShiftParserError } from './errors.mjs';
+import { logger } from './logger.mjs';
 
 export class Parser {
     constructor(tokens, importResolver = null, importedFiles = new Set(), currentFilePath = null) {
+        // Guard clauses
+        if (!Array.isArray(tokens)) {
+            throw new ShiftParserError("Parser construction requires an array of tokens.", 0, "");
+        }
+        if (!(importedFiles instanceof Set)) {
+            throw new ShiftParserError("Parser construction requires importedFiles to be a Set.", 0, "");
+        }
+
         this.tokens = tokens;
         this.current = 0;
         this.errors = [];
@@ -33,6 +43,7 @@ export class Parser {
     }
 
     preScan() {
+        logger.trace("PARSER", "Starting pre-scan", { currentFile: this.currentFilePath });
         const startPos = this.current;
 
         // PASS 0: Import Resolution
@@ -405,6 +416,7 @@ export class Parser {
     }
 
     parse() {
+        logger.trace("PARSER", "Starting AST construction", { tokenCount: this.tokens.length });
         const program = {
             type: "Program",
             start: this.tokens[0] ? this.tokens[0].s : 0,
@@ -1057,6 +1069,7 @@ export class Parser {
         const inferredVal = this.inferType(valueExpr);
 
         let typeMatch = false;
+        let updatedExpr = valueExpr;
 
         if (inferredVal === "any" || targetType.name === "any") {
             typeMatch = true;
@@ -1067,7 +1080,7 @@ export class Parser {
         else if (targetType.type === "StructType" && inferredVal === "map") {
             typeMatch = true;
             if (valueExpr.type === "MapLiteral") {
-                this.validateStructLiteral(valueExpr, targetType.name, token);
+                updatedExpr = this.validateStructLiteral(valueExpr, targetType.name, token);
             }
         }
         else if (targetType.name === "nullable" && targetType.generic) {
@@ -1075,7 +1088,7 @@ export class Parser {
             if (inferredVal === targetType.generic.name || inferredVal === "null" || inferredVal === "nullable") {
                 typeMatch = true;
                 if (inferredVal === targetType.generic.name && valueExpr.type === "MapLiteral") {
-                    this.validateStructLiteral(valueExpr, targetType.generic.name, token);
+                    updatedExpr = this.validateStructLiteral(valueExpr, targetType.generic.name, token);
                 }
             }
         }
@@ -1099,24 +1112,35 @@ export class Parser {
             } else {
                 this.addError(token, customMismatchError || "Variable assignment type mismatch.");
             }
-            throw new Error("Assignment validation failed");
+            throw new ShiftParserError("Assignment validation failed", token.l, token.v);
         }
+
+        return updatedExpr;
     }
 
     validateStructLiteral(literal, structName, token) {
         const def = this.structDefinitions.get(structName);
-        if (!def) return;
+        if (!def) return literal;
+
+        // Clone map literal and its entries to maintain AST immutability
+        const clonedLiteral = {
+            type: "MapLiteral",
+            start: literal.start,
+            end: literal.end,
+            line: literal.line,
+            entries: [...literal.entries.map(e => ({ ...e }))]
+        };
 
         def.fields.forEach(field => {
-            const entry = literal.entries.find(e => e.key.value === field.name);
+            const entryIndex = clonedLiteral.entries.findIndex(e => e.key.value === field.name);
 
-            if (!entry) {
+            if (entryIndex === -1) {
                 if (field.name.startsWith('$')) {
                     this.addError(token, `Missing required struct field: '${field.name}'.`);
                 } else {
                     try {
                         const defaultVal = this.getDefaultValue(field.type, new Set([structName]));
-                        literal.entries.push({
+                        clonedLiteral.entries.push({
                             key: { type: "Literal", value: field.name, start: -1, end: -1, line: -1 },
                             value: defaultVal
                         });
@@ -1125,6 +1149,7 @@ export class Parser {
                     }
                 }
             } else {
+                const entry = clonedLiteral.entries[entryIndex];
                 const valType = this.inferType(entry.value);
                 let typeMatch = false;
 
@@ -1133,14 +1158,14 @@ export class Parser {
                 } else if (field.type.type === "StructType" && valType === "map") {
                     typeMatch = true;
                     if (entry.value.type === "MapLiteral") {
-                        this.validateStructLiteral(entry.value, field.type.name, token);
+                        entry.value = this.validateStructLiteral(entry.value, field.type.name, token);
                     }
                 }
                 else if (field.type.name === "nullable" && field.type.generic) {
                     if (valType === field.type.generic.name || valType === "null") {
                         typeMatch = true;
                         if (valType === field.type.generic.name && entry.value.type === "MapLiteral") {
-                            this.validateStructLiteral(entry.value, field.type.generic.name, token);
+                            entry.value = this.validateStructLiteral(entry.value, field.type.generic.name, token);
                         }
                     }
                 }
@@ -1151,11 +1176,13 @@ export class Parser {
             }
         });
 
-        literal.entries.forEach(entry => {
+        clonedLiteral.entries.forEach(entry => {
             if (!def.fields.find(f => f.name === entry.key.value)) {
                 this.addError(token, `Unknown field in struct initialization: '${entry.key.value}'.`);
             }
         });
+
+        return clonedLiteral;
     }
 
     variableDeclaration() {
@@ -1177,7 +1204,7 @@ export class Parser {
         if (this.match(TokenType.ASSIGN)) {
             initializer = this.parseExpression();
             try {
-                this.validateAssignment(typeInfo, initializer, nameToken);
+                initializer = this.validateAssignment(typeInfo, initializer, nameToken);
             } catch (e) {
             }
         } else {
@@ -1263,11 +1290,7 @@ export class Parser {
     }
 
     addError(token, message) {
-        const err = {
-            line: token.l,
-            token: token.v,
-            message: message
-        };
+        const err = new ShiftParserError(message, token.l, token.v);
         this.errors.push(err);
         return err;
     }
