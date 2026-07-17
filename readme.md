@@ -52,14 +52,15 @@ function main() number {
 Explore the Shift specifications, guides, and implementation details:
 
 ### 📖 User & Syntax Guides
-*   **[Introduction to Writing Shift](docs/intro_to_writing_shift.md)**: A beginner's guide to writing Shift Script. Covers basic syntax, variables, primitive types, collections, control flow, functions, the pipe operator, and error handling.
-*   **[Language & System Overview](docs/shift_overview.md)**: Details the design philosophy, core features, three-stage compilation pipeline (`.shift` source -> `.stree` AST JSON -> Shift Engine), and built-in sandboxing (Core Mode).
+*   **[Language & System Overview](docs/1_shift_overview.md)**: Details the design philosophy, core features, three-stage compilation pipeline (`.shift` source -> `.stree` AST JSON -> Shift Engine), and built-in sandboxing (Core Mode).
+*   **[Introduction to Writing Shift](docs/2_intro_to_writing_shift.md)**: A beginner's guide to writing Shift Script. Covers basic syntax, variables, primitive types, collections, control flow, functions, the pipe operator, and error handling.
 
 ### ⚙️ Deep Dives & Architecture
-*   **[JavaScript Developer Deep Dive](docs/deepdive_jsruntime.md)**: Instructions on running the JS interpreter in Node.js and browsers, executing pre-compiled ASTs, custom options (import resolvers, instruction limits), and packaging/bundling.
-*   **[Go Developer Deep Dive](docs/deepdive_goruntime.md)**: A developer guide to integrating the Go runtime interpreter into host applications, mapping types, registering custom intrinsics/magic variables, and compiling/testing.
-*   **[AST Specification](docs/ast_specification.md)**: The structural schema for the Shift Tree (`.stree`) AST, serving as the language-independent intermediate representation.
-*   **[Testing Architecture](docs/testing_architecture.md)**: Describes the cross-runtime testing suite where tests are written in JavaScript, converted to JSON vectors, and run on both interpreters to ensure 100% parity.
+*   **[Testing Architecture](docs/3_testing_architecture.md)**: Describes the cross-runtime testing suite where tests are written in JavaScript, converted to JSON vectors, and run on both interpreters to ensure 100% parity.
+*   **[JavaScript Developer Deep Dive](docs/4_deepdive_jsruntime.md)**: Instructions on running the JS interpreter in Node.js and browsers, executing pre-compiled ASTs, custom options (import resolvers, instruction limits), and packaging/bundling.
+*   **[Go Developer Deep Dive](docs/5_deepdive_goruntime.md)**: A developer guide to integrating the Go runtime interpreter into host applications, mapping types, registering custom intrinsics/magic variables, and compiling/testing.
+*   **[AST Specification](docs/6_ast_specification.md)**: The structural schema for the Shift Tree (`.stree`) AST, serving as the language-independent intermediate representation.
+*   **[Text Editor Support](docs/7_text_editor_support.md)**: Syntax highlighting configurations for common text editors (VSCode, Notepad++, and Kate).
 
 ---
 
