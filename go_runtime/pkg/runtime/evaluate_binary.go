@@ -206,122 +206,130 @@ func (r *Runtime) evaluateBinary(expr *ast.BinaryExpression, env *Environment) (
 		return nil, fmt.Errorf("Runtime Error: 'has' operator only works on maps.")
 
 	case "matches":
-		str := r.stringify(left)
-		regStr := r.stringify(right)
-		lastSlash := strings.LastIndex(regStr, "/")
-		if !strings.HasPrefix(regStr, "/") || lastSlash <= 0 {
-			return nil, fmt.Errorf("Runtime Error: Invalid regular expression in matches: %v", regStr)
-		}
-		pattern := regStr[1:lastSlash]
-		flags := regStr[lastSlash+1:]
-
-		isSafePattern := r.VerifySafeRegex(pattern)
-		if !isSafePattern {
-			if !r.AllowUnsafeRegexFallback {
-				return nil, fmt.Errorf("Runtime Error: Strict Regex Protection prevents processing this complex pattern.")
-			}
-			if len(str) > r.UnsafeRegexMaxStringCeiling {
-				return nil, fmt.Errorf("Runtime Error: Suspicious regex running on string size (%d) exceeding your fallback structural safety limit of %d characters.", len(str), r.UnsafeRegexMaxStringCeiling)
-			}
-		} else {
-			if len(str) > 50000 {
-				return nil, fmt.Errorf("Runtime Error: matches string too large (ReDoS protection).")
-			}
-		}
-
-		reStr := pattern
-		if strings.Contains(flags, "i") {
-			reStr = "(?i)" + pattern
-		}
-
-		re, err := regexp.Compile(reStr)
-		if err != nil {
-			return nil, fmt.Errorf("Runtime Error: Invalid regular expression in matches: %v", err)
-		}
-		return re.MatchString(str), nil
+		return r.evaluateRegexMatches(left, right)
 
 	case "search":
-		str := r.stringify(left)
-		regStr := r.stringify(right)
-		lastSlash := strings.LastIndex(regStr, "/")
-		if !strings.HasPrefix(regStr, "/") || lastSlash <= 0 {
-			return nil, fmt.Errorf("Runtime Error: Invalid regular expression in search: %v", regStr)
-		}
-		pattern := regStr[1:lastSlash]
-		flags := regStr[lastSlash+1:]
-
-		isSafePattern := r.VerifySafeRegex(pattern)
-		if !isSafePattern {
-			if !r.AllowUnsafeRegexFallback {
-				return nil, fmt.Errorf("Runtime Error: Strict Regex Protection prevents processing this complex pattern.")
-			}
-			if len(str) > r.UnsafeRegexMaxStringCeiling {
-				return nil, fmt.Errorf("Runtime Error: Suspicious regex running on string size (%d) exceeding your fallback structural safety limit of %d characters.", len(str), r.UnsafeRegexMaxStringCeiling)
-			}
-		} else {
-			if len(str) > 50000 {
-				return nil, fmt.Errorf("Runtime Error: search string too large (ReDoS protection).")
-			}
-		}
-
-		reStr := pattern
-		if strings.Contains(flags, "i") {
-			reStr = "(?i)" + pattern
-		}
-
-		re, err := regexp.Compile(reStr)
-		if err != nil {
-			return nil, fmt.Errorf("Runtime Error: Invalid regular expression in search: %v", err)
-		}
-
-		isGlobal := strings.Contains(flags, "g")
-		var results []any
-
-		if !isGlobal {
-			match := re.FindStringSubmatchIndex(str)
-			if match != nil {
-				resMap := NewShiftMap()
-				resMap.StructName = "RegexResult"
-				resMap.Data["match"] = str[match[0]:match[1]]
-				resMap.Data["start"] = float64(match[0])
-				resMap.Data["end"] = float64(match[1])
-
-				var groups []any
-				for i := 2; i < len(match); i += 2 {
-					if match[i] == -1 {
-						groups = append(groups, nil)
-					} else {
-						groups = append(groups, str[match[i]:match[i+1]])
-					}
-				}
-				resMap.Data["groups"] = groups
-				results = append(results, resMap)
-			}
-		} else {
-			matches := re.FindAllStringSubmatchIndex(str, -1)
-			for _, match := range matches {
-				resMap := NewShiftMap()
-				resMap.StructName = "RegexResult"
-				resMap.Data["match"] = str[match[0]:match[1]]
-				resMap.Data["start"] = float64(match[0])
-				resMap.Data["end"] = float64(match[1])
-
-				var groups []any
-				for i := 2; i < len(match); i += 2 {
-					if match[i] == -1 {
-						groups = append(groups, nil)
-					} else {
-						groups = append(groups, str[match[i]:match[i+1]])
-					}
-				}
-				resMap.Data["groups"] = groups
-				results = append(results, resMap)
-			}
-		}
-		return results, nil
+		return r.evaluateRegexSearch(left, right)
 	}
 
 	return nil, fmt.Errorf("Unknown op %s", expr.Operator)
+}
+
+func (r *Runtime) evaluateRegexMatches(left, right any) (any, error) {
+	str := r.stringify(left)
+	regStr := r.stringify(right)
+	lastSlash := strings.LastIndex(regStr, "/")
+	if !strings.HasPrefix(regStr, "/") || lastSlash <= 0 {
+		return nil, fmt.Errorf("Runtime Error: Invalid regular expression in matches: %v", regStr)
+	}
+	pattern := regStr[1:lastSlash]
+	flags := regStr[lastSlash+1:]
+
+	isSafePattern := r.VerifySafeRegex(pattern)
+	if !isSafePattern {
+		if !r.AllowUnsafeRegexFallback {
+			return nil, fmt.Errorf("Runtime Error: Strict Regex Protection prevents processing this complex pattern.")
+		}
+		if len(str) > r.UnsafeRegexMaxStringCeiling {
+			return nil, fmt.Errorf("Runtime Error: Suspicious regex running on string size (%d) exceeding your fallback structural safety limit of %d characters.", len(str), r.UnsafeRegexMaxStringCeiling)
+		}
+	} else {
+		if len(str) > 50000 {
+			return nil, fmt.Errorf("Runtime Error: matches string too large (ReDoS protection).")
+		}
+	}
+
+	reStr := pattern
+	if strings.Contains(flags, "i") {
+		reStr = "(?i)" + pattern
+	}
+
+	re, err := regexp.Compile(reStr)
+	if err != nil {
+		return nil, fmt.Errorf("Runtime Error: Invalid regular expression in matches: %v", err)
+	}
+	return re.MatchString(str), nil
+}
+
+func (r *Runtime) evaluateRegexSearch(left, right any) (any, error) {
+	str := r.stringify(left)
+	regStr := r.stringify(right)
+	lastSlash := strings.LastIndex(regStr, "/")
+	if !strings.HasPrefix(regStr, "/") || lastSlash <= 0 {
+		return nil, fmt.Errorf("Runtime Error: Invalid regular expression in search: %v", regStr)
+	}
+	pattern := regStr[1:lastSlash]
+	flags := regStr[lastSlash+1:]
+
+	isSafePattern := r.VerifySafeRegex(pattern)
+	if !isSafePattern {
+		if !r.AllowUnsafeRegexFallback {
+			return nil, fmt.Errorf("Runtime Error: Strict Regex Protection prevents processing this complex pattern.")
+		}
+		if len(str) > r.UnsafeRegexMaxStringCeiling {
+			return nil, fmt.Errorf("Runtime Error: Suspicious regex running on string size (%d) exceeding your fallback structural safety limit of %d characters.", len(str), r.UnsafeRegexMaxStringCeiling)
+		}
+	} else {
+		if len(str) > 50000 {
+			return nil, fmt.Errorf("Runtime Error: search string too large (ReDoS protection).")
+		}
+	}
+
+	reStr := pattern
+	if strings.Contains(flags, "i") {
+		reStr = "(?i)" + pattern
+	}
+
+	re, err := regexp.Compile(reStr)
+	if err != nil {
+		return nil, fmt.Errorf("Runtime Error: Invalid regular expression in search: %v", err)
+	}
+
+	isGlobal := strings.Contains(flags, "g")
+	var results []any
+
+	if !isGlobal {
+		match := re.FindStringSubmatchIndex(str)
+		if match != nil {
+			resMap := NewShiftMap()
+			resMap.StructName = "RegexResult"
+			resMap.Data["match"] = str[match[0]:match[1]]
+			resMap.Data["start"] = float64(match[0])
+			resMap.Data["end"] = float64(match[1])
+
+			var groups []any
+			for i := 2; i < len(match); i += 2 {
+				if match[i] == -1 {
+					groups = append(groups, nil)
+				} else {
+					groups = append(groups, str[match[i]:match[i+1]])
+				}
+			}
+			resMap.Data["groups"] = groups
+			results = append(results, resMap)
+		}
+	} else {
+		matches := re.FindAllStringSubmatchIndex(str, -1)
+		for _, match := range matches {
+			resMap := NewShiftMap()
+			resMap.StructName = "RegexResult"
+			resMap.Data["match"] = str[match[0]:match[1]]
+			resMap.Data["start"] = float64(match[0])
+			resMap.Data["end"] = float64(match[1])
+
+			var groups []any
+			for i := 2; i < len(match); i += 2 {
+				if match[i] == -1 {
+					groups = append(groups, nil)
+				} else {
+					groups = append(groups, str[match[i]:match[i+1]])
+				}
+			}
+			resMap.Data["groups"] = groups
+			results = append(results, resMap)
+		}
+	}
+	return results, nil
 }
 
 func (r *Runtime) evaluateUnary(expr *ast.UnaryExpression, env *Environment) (any, error) {

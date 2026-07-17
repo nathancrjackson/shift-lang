@@ -1,7 +1,9 @@
 package token
 
+// TokenType defines a string alias representing lexical token types.
 type TokenType string
 
+// Token type constants representing the Shift language keywords, operators, symbols, and literals.
 const (
 	// Keywords
 	FUNCTION TokenType = "FUNCTION"
@@ -106,6 +108,7 @@ const (
 	EOF TokenType = "EOF"
 )
 
+// Keywords maps source string literals to their corresponding TokenTypes.
 var Keywords = map[string]TokenType{
 	"function": FUNCTION, "return": RETURN, "struct": STRUCT, "import": IMPORT,
 	"if": IF, "else": ELSE, "for": FOR, "in": IN, "to": TO, "while": WHILE,
@@ -125,10 +128,12 @@ var Keywords = map[string]TokenType{
 	"none": TYPE_NONE, "any": TYPE_ANY, "nullable": TYPE_NULLABLE,
 }
 
+// GenericsArray lists the primitive types that can be generic parameter constraints.
 var GenericsArray = []TokenType{
 	TYPE_STRING, TYPE_NUMBER, TYPE_BOOL, TYPE_LIST, TYPE_MAP, TYPE_ANY,
 }
 
+// Token represents a scanned token containing type, lexeme, parsed literal value, line, and start position.
 type Token struct {
 	Type     TokenType
 	Lexeme   string
@@ -137,6 +142,7 @@ type Token struct {
 	Position int // Start index in the source, optional for exact positioning
 }
 
+// NewToken constructs a new Token with the specified type, lexeme, literal value, and line number.
 func NewToken(tokenType TokenType, lexeme string, literal any, line int) Token {
 	return Token{
 		Type:    tokenType,

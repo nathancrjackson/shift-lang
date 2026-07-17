@@ -11,6 +11,7 @@ import (
 	"github.com/nathancrjackson/shift-lang/go_runtime/pkg/runtime"
 )
 
+// copyFile copies a single file from src to dst.
 func copyFile(src, dst string) error {
 	in, err := os.Open(src)
 	if err != nil {
@@ -31,6 +32,7 @@ func copyFile(src, dst string) error {
 	return out.Sync()
 }
 
+// copyFolder recursively copies a directory and its contents from src to dst.
 func copyFolder(src, dst string) error {
 	info, err := os.Stat(src)
 	if err != nil {

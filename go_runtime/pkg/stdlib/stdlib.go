@@ -14,6 +14,7 @@ import (
 	"github.com/nathancrjackson/shift-lang/go_runtime/pkg/runtime"
 )
 
+// ToShift converts standard Go types (like slices and maps) to Shift-native types (like lists and ShiftMap).
 func ToShift(val any) any {
 	if val == nil {
 		return nil
@@ -40,6 +41,7 @@ func isFinite(f float64) bool {
 	return !math.IsNaN(f) && !math.IsInf(f, 0)
 }
 
+// ToJS converts Shift-native structures back to standard Go/JSON representations (map[string]any, []any).
 func ToJS(val any) any {
 	return toJSWithVisited(val, make(map[uintptr]any))
 }
@@ -84,6 +86,7 @@ func toJSWithVisited(val any, visited map[uintptr]any) any {
 	}
 }
 
+// CreateDTStruct mapping time.Time values into Shift DateTime structures.
 func CreateDTStruct(d time.Time) *runtime.ShiftMap {
 	m := runtime.NewShiftMap()
 	m.StructName = "DateTime"
@@ -101,6 +104,7 @@ func CreateDTStruct(d time.Time) *runtime.ShiftMap {
 	return m
 }
 
+// IntrinsicDef encapsulates metadata and the Go function pointer for a Shift stdlib intrinsic.
 type IntrinsicDef struct {
 	ReturnType string
 	Generic    string
@@ -108,6 +112,7 @@ type IntrinsicDef struct {
 	Func       func([]any, *runtime.Runtime) any
 }
 
+// Intrinsics maps intrinsic function names to their metadata and Go callbacks.
 var Intrinsics = map[string]IntrinsicDef{
 	"print_line": {
 		ReturnType: "none",
@@ -591,11 +596,13 @@ var Intrinsics = map[string]IntrinsicDef{
 	},
 }
 
+// StructDef defines the custom struct types declared by the Shift standard library.
 type StructDef struct {
 	Name   string
 	Fields []ast.StructField
 }
 
+// Structs lists all the standard library struct types (e.g. DateTime, RegexResult, InspectionResult).
 var Structs = []StructDef{
 	{
 		Name: "DateTime",
@@ -629,9 +636,11 @@ var Structs = []StructDef{
 	},
 }
 
+// Source holds the embedded source code of the Shift standard library written in Shift itself.
 //go:embed stdlib.shift
 var Source string
 
+// LoadDefinitions registers standard library structs and intrinsics in the parser context for type checking.
 func LoadDefinitions(p *parser.Parser) {
 	for _, s := range Structs {
 		p.AddKnownType(s.Name)
@@ -647,6 +656,7 @@ func LoadDefinitions(p *parser.Parser) {
 	}
 }
 
+// LoadIntrinsics binds standard library intrinsic functions to a Runtime context.
 func LoadIntrinsics(r *runtime.Runtime) {
 	for name, def := range Intrinsics {
 		paramCount := len(def.Params)

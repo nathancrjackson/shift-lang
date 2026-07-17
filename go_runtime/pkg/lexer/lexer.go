@@ -6,17 +6,20 @@ import (
 	"github.com/nathancrjackson/shift-lang/go_runtime/pkg/token"
 )
 
+// LexerError represents a lexical error encountered during tokenization.
 type LexerError struct {
 	StartLine int
 	EndLine   int
 	Message   string
 }
 
+// TokenizeResult holds the list of parsed tokens and any errors encountered.
 type TokenizeResult struct {
 	Tokens []token.Token
 	Errors []LexerError
 }
 
+// Lexer processes Shift source code and converts it into a slice of tokens.
 type Lexer struct {
 	source       []rune
 	tokens       []token.Token
@@ -27,6 +30,7 @@ type Lexer struct {
 	currentLine  int
 }
 
+// NewLexer instantiates a new Lexer for the given source code.
 func NewLexer(source string) *Lexer {
 	return &Lexer{
 		source:       []rune(source),
@@ -39,6 +43,7 @@ func NewLexer(source string) *Lexer {
 	}
 }
 
+// Tokenize runs the scanner loop and returns the parsed tokens and syntax errors.
 func (l *Lexer) Tokenize() TokenizeResult {
 	for !l.isAtEnd() {
 		l.startIndex = l.currentIndex

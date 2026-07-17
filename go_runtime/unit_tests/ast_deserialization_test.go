@@ -143,4 +143,30 @@ func TestASTDeserialization(t *testing.T) {
 	if !reflect.DeepEqual(originalAST, &deserializedAST) {
 		t.Errorf("AST structures are not DeepEqual.")
 	}
+
+	// Test case: AST missing version metadata should fail unmarshaling
+	missingVersionJSON := `{"type":"Program","structs":[],"functions":[]}`
+	var progMissing ast.Program
+	if err := json.Unmarshal([]byte(missingVersionJSON), &progMissing); err == nil {
+		t.Errorf("Expected error unmarshaling AST without version, but got nil")
+	}
+
+	// Test case: AST with incorrect version metadata should fail unmarshaling
+	incorrectVersionJSON := `{"type":"Program","version":"2.0.0","structs":[],"functions":[]}`
+	var progIncorrect ast.Program
+	if err := json.Unmarshal([]byte(incorrectVersionJSON), &progIncorrect); err == nil {
+		t.Errorf("Expected error unmarshaling AST with unsupported version '2.0.0', but got nil")
+	}
+
+	// Test case: Bypassing version validation using IgnoreVersionMismatch flag
+	ast.IgnoreVersionMismatch = true
+	defer func() { ast.IgnoreVersionMismatch = false }()
+
+	var progIgnored ast.Program
+	if err := json.Unmarshal([]byte(incorrectVersionJSON), &progIgnored); err != nil {
+		t.Errorf("Unexpected error unmarshaling incorrect version AST when IgnoreVersionMismatch is true: %v", err)
+	}
+	if progIgnored.Version != "2.0.0" {
+		t.Errorf("Expected version to be '2.0.0', got '%s'", progIgnored.Version)
+	}
 }

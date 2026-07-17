@@ -8,16 +8,19 @@ import (
 	"github.com/nathancrjackson/shift-lang/go_runtime/pkg/token"
 )
 
+// ParserError represents a syntax or semantic error found during parsing.
 type ParserError struct {
 	Line    int
 	Token   string
 	Message string
 }
 
+// Error formats the ParserError as a readable error string.
 func (e ParserError) Error() string {
 	return fmt.Sprintf("Line %d Error at '%s': %s", e.Line, e.Token, e.Message)
 }
 
+// TypeDef stores type checking information for variables, parameters, and return types.
 type TypeDef struct {
 	Type        string
 	Name        string
@@ -26,22 +29,27 @@ type TypeDef struct {
 	Initialized bool
 }
 
+// StructDef defines the layout and field specifications for structs.
 type StructDef struct {
 	Fields []ast.StructField
 }
 
+// ParseResult holds the parsed Abstract Syntax Tree (AST) and any syntax/type errors.
 type ParseResult struct {
 	AST    *ast.Program
 	Errors []ParserError
 }
 
+// ImportResolution represents the source content and resolved path of an imported module.
 type ImportResolution struct {
 	Code         string
 	ResolvedPath string
 }
 
+// ImportResolver is a callback type for resolving module imports to their physical path and source content.
 type ImportResolver func(requestedPath string, currentFilePath string) (ImportResolution, error)
 
+// Parser holds the scanner state, symbol table, definitions, and nesting trackers during parsing.
 type Parser struct {
 	tokens            []token.Token
 	current           int
@@ -64,6 +72,7 @@ type Parser struct {
 
 const MaxDepth = 500
 
+// NewParser initializes a new Parser instance.
 func NewParser(tokens []token.Token) *Parser {
 	p := &Parser{
 		tokens:            tokens,
@@ -86,21 +95,25 @@ func NewParser(tokens []token.Token) *Parser {
 	return p
 }
 
+// WithImportResolver sets a custom import resolver for resolving dependencies.
 func (p *Parser) WithImportResolver(resolver ImportResolver) *Parser {
 	p.importResolver = resolver
 	return p
 }
 
+// WithImportedFiles registers already loaded files to prevent duplicate imports or cyclic dependencies.
 func (p *Parser) WithImportedFiles(files map[string]bool) *Parser {
 	p.importedFiles = files
 	return p
 }
 
+// WithCurrentFilePath registers the source path of the code currently being parsed.
 func (p *Parser) WithCurrentFilePath(path string) *Parser {
 	p.currentFilePath = path
 	return p
 }
 
+// Parse starts the parsing loop and builds the root Program AST.
 func (p *Parser) Parse() ParseResult {
 	p.preScan()
 
@@ -111,6 +124,7 @@ func (p *Parser) Parse() ParseResult {
 			End:   0,
 			Line:  1,
 		},
+		Version:   "1.0.0",
 		Structs:   append([]ast.StructDeclaration{}, p.importedStructs...),
 		Functions: append([]ast.FunctionDeclaration{}, p.importedFunctions...),
 	}

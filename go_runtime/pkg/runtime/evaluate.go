@@ -10,6 +10,7 @@ import (
 	"github.com/nathancrjackson/shift-lang/go_runtime/pkg/ast"
 )
 
+// EvaluateTest parses and evaluates an AST expression using the global environment (primarily for testing purposes).
 func (r *Runtime) EvaluateTest(expr ast.Expression) (any, error) {
 	return r.evaluate(expr, r.GlobalEnv)
 }
@@ -18,8 +19,11 @@ func (r *Runtime) evaluate(expr ast.Expression, env *Environment) (any, error) {
 	if expr == nil {
 		return nil, nil
 	}
+	if env == nil {
+		return nil, fmt.Errorf("Runtime Error: Environment cannot be nil during evaluation")
+	}
 
-	r.logDebug(fmt.Sprintf("Eval: %s", expr.NodeType()))
+	r.trace("RUNTIME", "Eval", map[string]any{"nodeType": expr.NodeType(), "line": expr.GetLine()})
 
 	switch e := expr.(type) {
 	case *ast.Literal:
@@ -187,92 +191,112 @@ func (r *Runtime) evaluate(expr ast.Expression, env *Environment) (any, error) {
 	}
 }
 
+func (r *Runtime) evaluateInspect(e *ast.InspectExpression, env *Environment) (any, error) {
+	val, err := r.evaluate(e.Argument, env)
+	if err != nil {
+		return nil, err
+	}
+	m := NewShiftMap()
+	typ := "any"
+	var size any = nil
+
+	if val == nil {
+		typ = "null"
+	} else if arr, ok := val.([]any); ok {
+		typ = "list"
+		size = float64(len(arr))
+	} else if sm, ok := val.(*ShiftMap); ok {
+		if sm.StructName != "" {
+			typ = sm.StructName
+		} else {
+			typ = "map"
+		}
+		size = float64(len(sm.Data))
+	} else if _, ok := val.(float64); ok {
+		typ = "number"
+	} else if s, ok := val.(string); ok {
+		typ = "string"
+		size = float64(len(s))
+	} else if _, ok := val.(bool); ok {
+		typ = "bool"
+	}
+
+	m.Data["$type"] = typ
+	m.Data["$size"] = size
+	return m, nil
+}
+
+func (r *Runtime) evaluateSizeOf(e *ast.SizeOfExpression, env *Environment) (any, error) {
+	val, err := r.evaluate(e.Argument, env)
+	if err != nil {
+		return nil, err
+	}
+	if arr, ok := val.([]any); ok {
+		return float64(len(arr)), nil
+	}
+	if m, ok := val.(*ShiftMap); ok {
+		return float64(len(m.Data)), nil
+	}
+	if s, ok := val.(string); ok {
+		return float64(len(s)), nil
+	}
+	return nil, fmt.Errorf("Runtime Error: Cannot get size of primitive types")
+}
+
+func (r *Runtime) evaluatePack(e *ast.PackExpression, env *Environment) (any, error) {
+	val, err := r.evaluate(e.Argument, env)
+	if err != nil {
+		return nil, err
+	}
+	if arr, ok := val.([]any); ok {
+		var sb strings.Builder
+		for _, v := range arr {
+			if num, ok := v.(float64); ok {
+				sb.WriteRune(rune(num))
+			}
+		}
+		return sb.String(), nil
+	}
+	return nil, fmt.Errorf("Pack requires list of numbers")
+}
+
+func (r *Runtime) evaluateUnpack(e *ast.UnpackExpression, env *Environment) (any, error) {
+	val, err := r.evaluate(e.Argument, env)
+	if err != nil {
+		return nil, err
+	}
+	str := r.stringify(val)
+	res := make([]any, len(str))
+	for i, char := range str {
+		res[i] = float64(char)
+	}
+	return res, nil
+}
+
+func (r *Runtime) evaluateTypeOf(e *ast.TypeOfExpression, env *Environment) (any, error) {
+	val, err := r.evaluate(e.Argument, env)
+	if err != nil {
+		return nil, err
+	}
+	return r.getTypeName(val), nil
+}
+
 func (r *Runtime) evaluateRest(expr ast.Expression, env *Environment) (any, error) {
 	switch e := expr.(type) {
 	case *ast.InspectExpression:
-		val, err := r.evaluate(e.Argument, env)
-		if err != nil {
-			return nil, err
-		}
-		m := NewShiftMap()
-		typ := "any"
-		var size any = nil
-
-		if val == nil {
-			typ = "null"
-		} else if arr, ok := val.([]any); ok {
-			typ = "list"
-			size = float64(len(arr))
-		} else if sm, ok := val.(*ShiftMap); ok {
-			if sm.StructName != "" {
-				typ = sm.StructName
-			} else {
-				typ = "map"
-			}
-			size = float64(len(sm.Data))
-		} else if _, ok := val.(float64); ok {
-			typ = "number"
-		} else if s, ok := val.(string); ok {
-			typ = "string"
-			size = float64(len(s))
-		} else if _, ok := val.(bool); ok {
-			typ = "bool"
-		}
-
-		m.Data["$type"] = typ
-		m.Data["$size"] = size
-		return m, nil
+		return r.evaluateInspect(e, env)
 
 	case *ast.SizeOfExpression:
-		val, err := r.evaluate(e.Argument, env)
-		if err != nil {
-			return nil, err
-		}
-		if arr, ok := val.([]any); ok {
-			return float64(len(arr)), nil
-		}
-		if m, ok := val.(*ShiftMap); ok {
-			return float64(len(m.Data)), nil
-		}
-		if s, ok := val.(string); ok {
-			return float64(len(s)), nil
-		}
-		return nil, fmt.Errorf("Runtime Error: Cannot get size of primitive types")
+		return r.evaluateSizeOf(e, env)
 
 	case *ast.PackExpression:
-		val, err := r.evaluate(e.Argument, env)
-		if err != nil {
-			return nil, err
-		}
-		if arr, ok := val.([]any); ok {
-			var sb strings.Builder
-			for _, v := range arr {
-				if num, ok := v.(float64); ok {
-					sb.WriteRune(rune(num))
-				}
-			}
-			return sb.String(), nil
-		}
-		return nil, fmt.Errorf("Pack requires list of numbers")
+		return r.evaluatePack(e, env)
 
 	case *ast.UnpackExpression:
-		val, err := r.evaluate(e.Argument, env)
-		if err != nil {
-			return nil, err
-		}
-		str := r.stringify(val)
-		res := make([]any, len(str))
-		for i, char := range str {
-			res[i] = float64(char)
-		}
-		return res, nil
+		return r.evaluateUnpack(e, env)
 
 	case *ast.TypeOfExpression:
-		val, err := r.evaluate(e.Argument, env)
-		if err != nil {
-			return nil, err
-		}
-		return r.getTypeName(val), nil
+		return r.evaluateTypeOf(e, env)
 
 	case *ast.IsExpression:
 		return r.evaluateIs(e, env)

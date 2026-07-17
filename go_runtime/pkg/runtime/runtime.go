@@ -1,11 +1,15 @@
 package runtime
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"math"
+	"os"
 	"reflect"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/nathancrjackson/shift-lang/go_runtime/pkg/ast"
 )
@@ -14,11 +18,13 @@ var backreferenceRegex = regexp.MustCompile(`\\\d`)
 var nestedQuantifiersRegex = regexp.MustCompile(`\([^)]*[\*\+\?\}][^)]*\)[\*\+\?\}]`)
 var overlappingQuantifiersRegex = regexp.MustCompile(`\([^)]*[\*\+\?\}].*\|.*[\*\+\?\}][^)]*\)[\*\+\?\}]`)
 
+// FunctionMeta holds metadata about a running function, such as its return type and name.
 type FunctionMeta struct {
 	ReturnType   ast.TypeAnnotation
 	FunctionName string
 }
 
+// IterState maintains progress and collection info during loop executions.
 type IterState struct {
 	Type       string // "range", "while", "in"
 	Current    float64
@@ -35,6 +41,7 @@ type IterState struct {
 	IsMap      bool
 }
 
+// StackFrame represents an execution environment stack frame (e.g. for functions, loops, or blocks).
 type StackFrame struct {
 	Type           string // "Function", "Block", "Loop", "Protected"
 	Env            *Environment
@@ -46,9 +53,12 @@ type StackFrame struct {
 	Iter           *IterState
 }
 
+// Runtime is the execution engine that interprets the program AST.
 type Runtime struct {
 	AST                         *ast.Program
 	DebugMode                   bool
+	IgnoreASTVersionMismatch    bool
+	LogWriter                   io.Writer
 	GlobalEnv                   *Environment
 	Functions                   map[string]ast.FunctionDeclaration
 	Intrinsics                  map[string]func([]any, *Runtime) any
@@ -59,10 +69,20 @@ type Runtime struct {
 	UnsafeRegexMaxStringCeiling int
 }
 
+// NewRuntime constructs and initializes a new Runtime interpreter with standard intrinsics.
 func NewRuntime(prog *ast.Program, debugMode bool) *Runtime {
+	if prog == nil {
+		panic("Runtime Error: Program AST cannot be nil")
+	}
+
+	if !ast.IgnoreVersionMismatch && prog.Version != "1.0.0" {
+		panic(fmt.Sprintf("Schema Error: Unsupported AST schema version: '%s'. Expected '1.0.0'.", prog.Version))
+	}
+
 	r := &Runtime{
 		AST:                         prog,
 		DebugMode:                   debugMode,
+		LogWriter:                   os.Stdout,
 		GlobalEnv:                   NewEnvironment(nil),
 		Functions:                   make(map[string]ast.FunctionDeclaration),
 		Intrinsics:                  make(map[string]func([]any, *Runtime) any),
@@ -82,11 +102,22 @@ func NewRuntime(prog *ast.Program, debugMode bool) *Runtime {
 	return r
 }
 
+// AddIntrinsic registers a new Go-native function in the Shift execution context.
 func (r *Runtime) AddIntrinsic(name string, f func([]any, *Runtime) any) {
+	if name == "" {
+		panic("Runtime Error: Intrinsic name cannot be empty")
+	}
+	if f == nil {
+		panic("Runtime Error: Intrinsic function callback cannot be nil")
+	}
 	r.Intrinsics[name] = f
 }
 
+// SetMaxInstructions configures the instruction ceiling constraint to limit execution duration.
 func (r *Runtime) SetMaxInstructions(limit int) {
+	if limit < 0 {
+		panic("Runtime Error: Max instructions limit cannot be negative")
+	}
 	r.maxInstructions = limit
 }
 
@@ -99,9 +130,30 @@ func (r *Runtime) loadFunctions() {
 	}
 }
 
-func (r *Runtime) logDebug(msg string) {
-	if r.DebugMode {
-		fmt.Println("[DEBUG]", msg)
+type LogEntry struct {
+	Timestamp string         `json:"timestamp"`
+	Phase     string         `json:"phase"`
+	Message   string         `json:"message"`
+	Details   map[string]any `json:"details,omitempty"`
+}
+
+func (r *Runtime) trace(phase string, message string, details map[string]any) {
+	if !r.DebugMode {
+		return
+	}
+	writer := r.LogWriter
+	if writer == nil {
+		writer = os.Stdout
+	}
+	entry := LogEntry{
+		Timestamp: time.Now().UTC().Format("2006-01-02T15:04:05.000Z"),
+		Phase:     phase,
+		Message:   message,
+		Details:   details,
+	}
+	bytes, err := json.Marshal(entry)
+	if err == nil {
+		fmt.Fprintln(writer, string(bytes))
 	}
 }
 
@@ -184,6 +236,9 @@ func (r *Runtime) getDefaultValue(typeInfo ast.TypeAnnotation) any {
 }
 
 func (r *Runtime) checkType(value any, typeInfo ast.TypeAnnotation) error {
+	if typeInfo.Name == "" {
+		return fmt.Errorf("Type Error: Type annotation name cannot be empty")
+	}
 	if typeInfo.Name == "any" {
 		return nil
 	}
@@ -262,7 +317,12 @@ func (r *Runtime) checkType(value any, typeInfo ast.TypeAnnotation) error {
 
 // ---------------- Stack Machine Core ----------------
 
+// RunFunction executes a Shift function by name with the provided arguments and returns the result or an error.
 func (r *Runtime) RunFunction(name string, args []any) (any, error) {
+	if !ast.IgnoreVersionMismatch && !r.IgnoreASTVersionMismatch && r.AST.Version != "1.0.0" {
+		return nil, fmt.Errorf("Schema Error: Unsupported AST schema version: '%s'. Expected '1.0.0'.", r.AST.Version)
+	}
+
 	previousStack := r.Stack
 	r.Stack = []*StackFrame{}
 
@@ -271,7 +331,7 @@ func (r *Runtime) RunFunction(name string, args []any) (any, error) {
 	}()
 
 	if fn, ok := r.Intrinsics[name]; ok {
-		r.logDebug("Running Intrinsic: " + name)
+		r.trace("RUNTIME", "Running Intrinsic", map[string]any{"intrinsicName": name})
 		var res any
 		var err error
 		func() {
@@ -318,7 +378,7 @@ func (r *Runtime) RunFunction(name string, args []any) (any, error) {
 		Meta:       meta,
 	}
 	r.Stack = append(r.Stack, initialFrame)
-	r.logDebug(fmt.Sprintf("Pushed Function Frame: %s", name))
+	r.trace("RUNTIME", "Pushed Function Frame", map[string]any{"functionName": name})
 
 	var finalResult any = nil
 	currentSignal := SignalNone
@@ -336,7 +396,7 @@ func (r *Runtime) RunFunction(name string, args []any) (any, error) {
 			if frame.Type == "Function" {
 				finalResult = signalValue
 				r.Stack = r.Stack[:len(r.Stack)-1] // pop
-				r.logDebug(fmt.Sprintf("Popped Function Frame: %s (Return: %v)", frame.Meta.FunctionName, finalResult))
+				r.trace("RUNTIME", "Popped Function Frame", map[string]any{"functionName": frame.Meta.FunctionName, "return": finalResult})
 
 				if err := r.checkType(finalResult, frame.Meta.ReturnType); err != nil {
 					return nil, err
@@ -355,7 +415,7 @@ func (r *Runtime) RunFunction(name string, args []any) (any, error) {
 				continue
 			} else {
 				r.Stack = r.Stack[:len(r.Stack)-1]
-				r.logDebug(fmt.Sprintf("Popped Frame: %s (Propagating Return)", frame.Type))
+				r.trace("RUNTIME", "Popped Frame", map[string]any{"frameType": frame.Type, "signal": "Propagating Return"})
 				continue
 			}
 		}
@@ -364,10 +424,10 @@ func (r *Runtime) RunFunction(name string, args []any) (any, error) {
 			if frame.Type == "Loop" {
 				if currentSignal == SignalBreak {
 					r.Stack = r.Stack[:len(r.Stack)-1]
-					r.logDebug("Loop Terminated (Break)")
+					r.trace("RUNTIME", "Loop Terminated", map[string]any{"action": "break"})
 					currentSignal = SignalNone
 				} else {
-					r.logDebug("Loop Skipping")
+					r.trace("RUNTIME", "Loop Skipping", map[string]any{"action": "skip"})
 					currentSignal = SignalNone
 				}
 				continue
@@ -381,7 +441,7 @@ func (r *Runtime) RunFunction(name string, args []any) (any, error) {
 
 		if frame.PC >= len(frame.Statements) {
 			r.Stack = r.Stack[:len(r.Stack)-1]
-			r.logDebug(fmt.Sprintf("Popped Frame: %s (Finished)", frame.Type))
+			r.trace("RUNTIME", "Popped Frame", map[string]any{"frameType": frame.Type, "status": "Finished"})
 
 			if frame.Type == "Function" {
 				retType := frame.Meta.ReturnType.Name
@@ -423,6 +483,109 @@ func (r *Runtime) RunFunction(name string, args []any) (any, error) {
 	return finalResult, nil
 }
 
+func (r *Runtime) executeVariableDeclaration(s *ast.VariableDeclaration, env *Environment) error {
+	if strings.HasPrefix(s.Name, "$") {
+		return fmt.Errorf("Runtime Error: Cannot declare magic variable '%s'.", s.Name)
+	}
+	var val any
+	if s.Initializer != nil {
+		v, err := r.evaluate(s.Initializer, env)
+		if err != nil {
+			return err
+		}
+		val = r.deepCopy(v)
+	} else {
+		val = r.getDefaultValue(s.VarType)
+	}
+
+	if s.VarType.Type == "StructType" {
+		if m, ok := val.(*ShiftMap); ok {
+			m.StructName = s.VarType.Name
+		}
+	}
+	env.Define(s.Name, val)
+	return nil
+}
+
+func (r *Runtime) executeIfStatement(s *ast.IfStatement, frame *StackFrame, signalCallback func(int, any)) error {
+	condVal, err := r.evaluate(s.Condition, frame.Env)
+	if err != nil {
+		return err
+	}
+	if r.isTruthy(condVal) {
+		err = r.runProtectedBlock(s.ThenBranch, frame.Env, signalCallback)
+		if err != nil {
+			return err
+		}
+	} else if s.ElseBranch != nil {
+		if ifBranch, isIf := s.ElseBranch.(*ast.IfStatement); isIf {
+			var errOut error
+			r.executeStatement(ifBranch, frame, signalCallback, &errOut)
+			if errOut != nil {
+				return errOut
+			}
+		} else if b, isBlock := s.ElseBranch.(*ast.Block); isBlock {
+			err = r.runProtectedBlock(b, frame.Env, signalCallback)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (r *Runtime) executeThrowStatement(s *ast.ThrowStatement, env *Environment) error {
+	msgVal, err := r.evaluate(s.Argument, env)
+	if err != nil {
+		return err
+	}
+	msgStr := r.stringify(msgVal)
+	if s.Severity == "alert" {
+		return ShiftAlert{Message: msgStr}
+	} else if s.Severity == "critical" {
+		return ShiftCritical{Message: msgStr}
+	} else {
+		return ShiftError{Message: msgStr}
+	}
+}
+
+func (r *Runtime) executeTryStatement(s *ast.TryStatement, frame *StackFrame, signalCallback func(int, any)) error {
+	err := r.runProtectedBlock(s.TryBlock, frame.Env, signalCallback)
+	if err != nil {
+		if _, isCrit := err.(ShiftCritical); isCrit {
+			return err
+		} else if alert, isAlert := err.(ShiftAlert); isAlert {
+			if s.ReviewBlock != nil {
+				revEnv := NewEnvironment(frame.Env)
+				revEnv.Define(s.CatchIdentifier, alert.Message)
+				err2 := r.runProtectedBlock(s.ReviewBlock, revEnv, signalCallback)
+				if err2 != nil {
+					return err2
+				}
+			} else {
+				return err
+			}
+		} else {
+			// Normal error
+			if s.CatchBlock != nil {
+				catchEnv := NewEnvironment(frame.Env)
+				errMsg := err.Error()
+				if se, ok := err.(ShiftError); ok {
+					errMsg = se.Message
+				}
+				catchEnv.Define(s.CatchIdentifier, errMsg)
+				err2 := r.runProtectedBlock(s.CatchBlock, catchEnv, signalCallback)
+				if err2 != nil {
+					return err2
+				}
+			} else {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func (r *Runtime) executeStatement(stmt ast.Statement, frame *StackFrame, signalCallback func(int, any), errOut *error) {
 	r.instructionCount++
 	if r.maxInstructions > 0 && r.instructionCount > r.maxInstructions {
@@ -433,7 +596,7 @@ func (r *Runtime) executeStatement(stmt ast.Statement, frame *StackFrame, signal
 	if stmt.GetLine() != 0 {
 		r.GlobalEnv.Assign("$line_num", stmt.GetLine())
 	}
-	r.logDebug(fmt.Sprintf("Exec Stmt: %s (Line: %d)", stmt.NodeType(), stmt.GetLine()))
+	r.trace("RUNTIME", "Exec Stmt", map[string]any{"nodeType": stmt.NodeType(), "line": stmt.GetLine()})
 
 	// Use recovering mechanisms for protected blocks
 	defer func() {
@@ -448,28 +611,7 @@ func (r *Runtime) executeStatement(stmt ast.Statement, frame *StackFrame, signal
 
 	switch s := stmt.(type) {
 	case *ast.VariableDeclaration:
-		if strings.HasPrefix(s.Name, "$") {
-			*errOut = fmt.Errorf("Runtime Error: Cannot declare magic variable '%s'.", s.Name)
-			return
-		}
-		var val any
-		if s.Initializer != nil {
-			v, err := r.evaluate(s.Initializer, frame.Env)
-			if err != nil {
-				*errOut = err
-				return
-			}
-			val = r.deepCopy(v)
-		} else {
-			val = r.getDefaultValue(s.VarType)
-		}
-
-		if s.VarType.Type == "StructType" {
-			if m, ok := val.(*ShiftMap); ok {
-				m.StructName = s.VarType.Name
-			}
-		}
-		frame.Env.Define(s.Name, val)
+		*errOut = r.executeVariableDeclaration(s, frame.Env)
 
 	case *ast.ExpressionStatement:
 		_, err := r.evaluate(s.Expression, frame.Env)
@@ -496,110 +638,28 @@ func (r *Runtime) executeStatement(stmt ast.Statement, frame *StackFrame, signal
 		signalCallback(SignalSkip, nil)
 
 	case *ast.IfStatement:
-		condVal, err := r.evaluate(s.Condition, frame.Env)
-		if err != nil {
-			*errOut = err
-			return
-		}
-		if r.isTruthy(condVal) {
-			err = r.runProtectedBlock(s.ThenBranch, frame.Env, signalCallback)
-			if err != nil {
-				*errOut = err
-			}
-		} else if s.ElseBranch != nil {
-			if ifBranch, isIf := s.ElseBranch.(*ast.IfStatement); isIf {
-				r.executeStatement(ifBranch, frame, signalCallback, errOut)
-			} else if b, isBlock := s.ElseBranch.(*ast.Block); isBlock {
-				err = r.runProtectedBlock(b, frame.Env, signalCallback)
-				if err != nil {
-					*errOut = err
-				}
-			}
-		}
+		*errOut = r.executeIfStatement(s, frame, signalCallback)
 
 	case *ast.WhileStatement:
-		err := r.startLoop(s, frame.Env, "while", signalCallback)
-		if err != nil {
-			*errOut = err
-		}
+		*errOut = r.startLoop(s, frame.Env, "while", signalCallback)
 
 	case *ast.ForRangeStatement:
-		err := r.startLoop(s, frame.Env, "range", signalCallback)
-		if err != nil {
-			*errOut = err
-		}
+		*errOut = r.startLoop(s, frame.Env, "range", signalCallback)
 
 	case *ast.ForInStatement:
-		err := r.startLoop(s, frame.Env, "in", signalCallback)
-		if err != nil {
-			*errOut = err
-		}
+		*errOut = r.startLoop(s, frame.Env, "in", signalCallback)
 
 	case *ast.Block:
-		err := r.runProtectedBlock(s, frame.Env, signalCallback)
-		if err != nil {
-			*errOut = err
-		}
-
-	// In Go, loop steps are pushed onto stack manually as pseudo-statements. we skip for now
-	// unless implementing exact stack simulation (did it manually with an internal block wrapper type).
+		*errOut = r.runProtectedBlock(s, frame.Env, signalCallback)
 
 	case *ast.ThrowStatement:
-		msgVal, err := r.evaluate(s.Argument, frame.Env)
-		if err != nil {
-			*errOut = err
-			return
-		}
-		msgStr := r.stringify(msgVal)
-		if s.Severity == "alert" {
-			*errOut = ShiftAlert{Message: msgStr}
-		} else if s.Severity == "critical" {
-			*errOut = ShiftCritical{Message: msgStr}
-		} else {
-			*errOut = ShiftError{Message: msgStr}
-		}
+		*errOut = r.executeThrowStatement(s, frame.Env)
 
 	case *ast.TryStatement:
-		err := r.runProtectedBlock(s.TryBlock, frame.Env, signalCallback)
-		if err != nil {
-			if _, isCrit := err.(ShiftCritical); isCrit {
-				*errOut = err
-				return
-			} else if alert, isAlert := err.(ShiftAlert); isAlert {
-				if s.ReviewBlock != nil {
-					revEnv := NewEnvironment(frame.Env)
-					revEnv.Define(s.CatchIdentifier, alert.Message)
-					err2 := r.runProtectedBlock(s.ReviewBlock, revEnv, signalCallback)
-					if err2 != nil {
-						*errOut = err2
-					}
-				} else {
-					*errOut = err
-				}
-			} else {
-				// Normal error
-				if s.CatchBlock != nil {
-					catchEnv := NewEnvironment(frame.Env)
-					errMsg := err.Error()
-					if se, ok := err.(ShiftError); ok {
-						errMsg = se.Message
-					}
-					catchEnv.Define(s.CatchIdentifier, errMsg)
-					err2 := r.runProtectedBlock(s.CatchBlock, catchEnv, signalCallback)
-					if err2 != nil {
-						*errOut = err2
-					}
-				} else {
-					*errOut = err
-				}
-			}
-		}
+		*errOut = r.executeTryStatement(s, frame, signalCallback)
 
 	case *ast.DeleteStatement:
-		err := r.executeDelete(s, frame.Env)
-		if err != nil {
-			*errOut = err
-		}
+		*errOut = r.executeDelete(s, frame.Env)
 	}
 }
 
@@ -843,6 +903,7 @@ func (r *Runtime) startLoop(stmt ast.Statement, env *Environment, lType string, 
 	return nil
 }
 
+// VerifySafeRegex analyzes a regular expression pattern to detect potential ReDoS vulnerabilities.
 func (r *Runtime) VerifySafeRegex(pattern string) bool {
 	if backreferenceRegex.MatchString(pattern) {
 		return false
