@@ -9,158 +9,11 @@ let activeFileId = null;
 let fileIdToDelete = null;
 let fileIdToRename = null; // For rename modal
 let newFileMode = 'source'; // 'source' or 'data'
+let docs = [];
+let activeDocFilename = null;
 
 // Default CSV Settings
 let csvSettings = { delimiter: ',', hasHeader: true };
-
-// --- DEFAULT CONTENT ---
-
-const demoCode = `struct User [
-	number id,
-	string name,
-	string role,
-	bool has_loggedin
-]
-
-function main() number {
-	if (file_exists("logins.csv") == false) {
-		print_line("Could not find logins.csv please create data file with this name using the CSV Sample");
-		return 1;
-	}
-
-	if (file_exists("users.json") == false) {
-		print_line("Could not find users.json please create data file with this name using the JSON Sample");
-		return 1;
-	}
-
-	if (file_exists("auditlist.tsv") == false) {
-		print_line("Could not find auditlist.tsv please create data file with this name using the TSV Sample");
-		return 1;
-	}
-
-	string user_data = read_file("users.json");
-	string login_data = read_file("logins.csv");
-	string audit_list = read_file("auditlist.tsv");
-
-	try {
-		// Use inbuilt JSON support
-		list<any> users_as_rawlist = convert_jsonstring_to_list(user_data);
-		map<User> my_users = process_user_list(users_as_rawlist)
-			| update_user_logins($pipe_value, login_data);
-
-		map<User> my_users_to_audit = filter_user_to_audit(my_users, audit_list);
-		list<User> users_failed_audit = get_inactive_users_list(my_users_to_audit);
-
-		string audit_result = "User count: " & (size of my_users) as string & "\\n"
-				& "Users to audit: " & (size of my_users_to_audit) as string & "\\n"
-				& "Inactive audited user count: " & (size of users_failed_audit) as string;
-
-		print_line(audit_result);
-
-		if ((size of users_failed_audit) > 0)
-		{
-			write_file("audit_user_result.json", convert_list_to_jsonstring(users_failed_audit));
-			print_line("Please see audit_user_result.json for failed user list");
-		}
-
-	} catch {
-		print_line($thrown_message);
-		return 1;
-	}
-
-	return 0;
-}
-
-function process_user_list(list<any> users) map<User> {
-	map<User> result;
-
-	for (item in users) {
-		result[item["name"]] = [
-			"id": item["id"],
-			"name": item["name"],
-			"role": item["role"]
-		];
-	}
-
-	return result;
-}
-
-function update_user_logins(map<User> user_list, string login_csv) map<User> {
-	list<string> login_rows = login_csv split with "\\n";
-
-	number index = -1;
-	for (login_row in login_rows) {
-		index = index + 1;
-
-		if (index == 0) { skip; } // Header
-		list<string> login_details = login_row split with ",";
-		string username = login_details[1];
-
-		if (user_list has username)
-		{
-			User user = user_list[username];
-			user["has_loggedin"] = true;
-		}
-	}
-
-	return user_list;
-}
-
-function filter_user_to_audit(map<User> users, string audit_list) map<User> {
-	map<User> result;
-	list<string> user_rows = audit_list split with "\\n";
-
-	number index = -1;
-	for (user_row in user_rows) {
-		index = index + 1;
-
-		if (index == 0) { skip; } // Header
-		list<string> audit_details = user_row split with "\\t";
-		string username = audit_details[0];
-		string do_audit = audit_details[1] | transform_ansistring_to_uppercase($pipe_value);
-		if (do_audit == "YES")
-		{
-			result[username] = users[username];
-		}
-	}
-
-	return result;
-}
-
-function get_inactive_users_list(map<User> users) list<User> {
-	list<User> inactive_users;
-	
-	for (key in users) {
-		User current_user = users[key];
-		if (current_user["has_loggedin"] == false) {
-			inactive_users[] = current_user;
-		}
-	}
-
-	return inactive_users;
-}`;
-
-const demoCsv = `sessionid,username,server
-1,Daniel,RDSH1
-2,Alice,RDSH1
-3,Alice,DC1
-4,Charlie,RDSH2
-5,Daniel,RDSH1`;
-
-const demoJson = `[
-  { "id": 1, "name": "Alice", "role": "Admin" },
-  { "id": 2, "name": "Bob", "role": "Admin" },
-  { "id": 3, "name": "Charlie", "role": "User" },
-  { "id": 4, "name": "Daniel", "role": "User" },
-  { "id": 5, "name": "Emily", "role": "User" }
-]`;
-
-const demoTsv = `username\taudit
-Alice\tyes
-Bob\tyes
-Charlie\tno
-Daniel\tno
-Emily\tno`;
 
 // Retrieved from global StandardLibrary object as requested
 const DEFAULT_STD_LIB_SRC = (typeof StandardLibrary !== 'undefined') ? StandardLibrary.source : '';
@@ -168,9 +21,9 @@ const DEFAULT_STD_LIB_INT = (typeof StandardLibrary !== 'undefined') ? StandardL
 const DEFAULT_STD_LIB_STRUCTS = (typeof StandardLibrary !== 'undefined') ? StandardLibrary.structs : [];
 
 // Override print_line native function
-DEFAULT_STD_LIB_INT["print_line"] = { 
-    returnType: "none", 
-    func: (args, runtime) => { uiConsoleLog(args[0]); return null; } 
+DEFAULT_STD_LIB_INT["print_line"] = {
+    returnType: "none",
+    func: (args, runtime) => { uiConsoleLog(args[0]); return null; }
 };
 
 // --- Active Filesystem Intrinsics ---
@@ -213,8 +66,8 @@ DEFAULT_STD_LIB_INT["write_file"] = {
         saveFiles();
         renderFileList();
         if (activeFileId && existing && existing.id === activeFileId) {
-             elEditor.value = content;
-             updateLineNumbers();
+            elEditor.value = content;
+            updateLineNumbers();
         }
         return null;
     }
@@ -248,7 +101,7 @@ DEFAULT_STD_LIB_INT["delete_file"] = {
             files.splice(idx, 1);
             saveFiles();
             renderFileList();
-            
+
             if (activeFileId === deletedId) {
                 elEditor.value = "";
                 elEditor.disabled = true;
@@ -408,6 +261,12 @@ const elDataTemplateSelect = document.getElementById('data-template-select');
 // AST Download
 const btnDownloadAST = document.getElementById('btn-download-ast');
 
+// Documentation elements
+const elDocsList = document.getElementById('file-list-docs');
+const elDocViewer = document.getElementById('doc-viewer');
+const elDocViewerContent = document.getElementById('doc-viewer-content');
+const elBtnCloseDoc = document.getElementById('btn-close-doc');
+
 
 // --- 2. Virtual File System (LocalStorage) ---
 
@@ -416,17 +275,12 @@ function loadFiles() {
     if (stored) {
         files = JSON.parse(stored);
     } else {
-        files = [
-            { id: 'demo1', name: 'demo.shift', code: demoCode },
-            { id: 'demo2', name: 'logins.csv', code: demoCsv },
-            { id: 'demo3', name: 'users.json', code: demoJson },
-            { id: 'demo4', name: 'auditlist.tsv', code: demoTsv }
-        ];
+        // INJECT DEMO CODE INTO HERE
     }
     renderFileList();
     if (files.length > 0) {
-         const firstSource = files.find(f => f.name.endsWith('.shift'));
-         switchFile(firstSource ? firstSource.id : files[0].id);
+        const firstSource = files.find(f => f.name.endsWith('.shift'));
+        switchFile(firstSource ? firstSource.id : files[0].id);
     } else {
         elEditor.disabled = true;
         elEditor.value = "";
@@ -495,7 +349,7 @@ elEditor.addEventListener('keydown', (e) => {
         const end = elEditor.selectionEnd;
         const val = elEditor.value;
         const selection = val.substring(start, end);
-        
+
         if (e.shiftKey || selection.includes('\n')) {
             const lineStart = val.lastIndexOf('\n', start - 1) + 1;
             let effectiveEnd = end;
@@ -504,7 +358,7 @@ elEditor.addEventListener('keydown', (e) => {
             }
             let lineEnd = val.indexOf('\n', effectiveEnd);
             if (lineEnd === -1) lineEnd = val.length;
-            
+
             const textBlock = val.substring(lineStart, lineEnd);
             const lines = textBlock.split('\n');
             const newLines = lines.map(line => {
@@ -521,7 +375,7 @@ elEditor.addEventListener('keydown', (e) => {
         }
         elEditor.dispatchEvent(new Event('input'));
     }
-    
+
     if ((e.ctrlKey || e.metaKey) && e.key === 's') {
         e.preventDefault();
         saveFiles();
@@ -529,20 +383,20 @@ elEditor.addEventListener('keydown', (e) => {
             runInterpreter();
         }
     }
-    
+
     if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
         e.preventDefault();
         const start = elEditor.selectionStart;
         const end = elEditor.selectionEnd;
         const val = elEditor.value;
-        
+
         const lineStart = val.lastIndexOf('\n', start - 1) + 1;
         let lineEnd = val.indexOf('\n', end);
         if (lineEnd === -1) lineEnd = val.length;
-        
+
         const lineContent = val.substring(lineStart, lineEnd);
         const insertText = '\n' + lineContent;
-        
+
         elEditor.setRangeText(insertText, lineEnd, lineEnd, 'preserve');
         elEditor.dispatchEvent(new Event('input'));
         updateLineNumbers();
@@ -626,7 +480,7 @@ function confirmRename() {
     if (!fileIdToRename) return;
     let newName = elRenameFileInput.value.trim();
     if (!newName) return;
-    
+
     const file = files.find(f => f.id === fileIdToRename);
     if (file) {
         if (file.name.toLowerCase().endsWith('.shift')) {
@@ -652,7 +506,7 @@ function openNewSourceModal() {
     elNewFileNameInput.value = "untitled.shift";
     elNewFileSourceOptions.style.display = 'flex';
     elNewFileDataOptions.style.display = 'none';
-    elNewFileDemoCheck.checked = false; 
+    elNewFileDemoCheck.checked = false;
     elNewFileModal.classList.remove('hidden');
     elNewFileNameInput.focus();
     elNewFileNameInput.select();
@@ -676,7 +530,7 @@ function openNewDataModal() {
 function createNewFile() {
     let name = elNewFileNameInput.value.trim();
     let initialCode = '';
-    
+
     if (newFileMode === 'source') {
         const useDemo = elNewFileDemoCheck.checked;
         if (!name) name = "untitled.shift";
@@ -694,13 +548,13 @@ function createNewFile() {
             default: initialCode = '';
         }
     }
-    
+
     const newFile = {
         id: (Date.now() + Math.random()).toString(),
         name: name,
         code: initialCode
     };
-    
+
     files.push(newFile);
     saveFiles();
     renderFileList();
@@ -720,8 +574,8 @@ function openConfigModal() {
     elConfigStructsViewer.textContent = JSON.stringify(DEFAULT_STD_LIB_STRUCTS, null, 4);
     elCsvDelimiter.value = csvSettings.delimiter;
     elCsvHeader.checked = csvSettings.hasHeader;
-    updateConfigLineNumbers(); 
-    
+    updateConfigLineNumbers();
+
     document.querySelectorAll('[data-config-target]').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.config-tab-content').forEach(c => c.classList.remove('active'));
     document.querySelector('[data-config-target="csv"]').classList.add('active');
@@ -862,7 +716,7 @@ btnExport.addEventListener('click', () => {
 
     let filename = file.name;
     if (filename.toLowerCase().endsWith('.shift')) {
-         if (!filename.toLowerCase().endsWith('.shift')) filename += '.shift';
+        if (!filename.toLowerCase().endsWith('.shift')) filename += '.shift';
     }
 
     const blob = new Blob([file.code], { type: 'text/plain' });
@@ -937,7 +791,7 @@ function checkDebugContent() {
 btnDownloadAST.addEventListener('click', () => {
     const astContent = elDebug.innerText;
     if (!astContent.trim()) return;
-    
+
     const activeFile = files.find(f => f.id === activeFileId);
     const baseName = activeFile ? activeFile.name : 'output';
     const filename = baseName + '.debug.json';
@@ -992,7 +846,7 @@ function showStatusBanner(type, message) {
 
     const banner = document.createElement('div');
     banner.className = `status-banner ${type}`;
-    
+
     if (type === 'success') {
         banner.innerHTML = `<span>✔</span> <span>${message}</span>`;
     } else {
@@ -1009,7 +863,7 @@ function renderFileList() {
         const li = document.createElement('li');
         li.className = `file-item ${file.id === activeFileId ? 'active' : ''}`;
         li.onclick = () => switchFile(file.id);
-        
+
         li.innerHTML = `
             <span>${file.name}</span>
             <div class="file-actions">
@@ -1017,11 +871,11 @@ function renderFileList() {
                 <button class="action-icon-btn delete" title="Delete">×</button>
             </div>
         `;
-        
+
         const btns = li.querySelectorAll('button');
         btns[0].onclick = (e) => promptRename(file.id, file.name, e);
         btns[1].onclick = (e) => promptDelete(file.id, file.name, e);
-        
+
         if (file.name.toLowerCase().endsWith('.shift')) {
             elSourceList.appendChild(li);
         } else {
@@ -1031,6 +885,11 @@ function renderFileList() {
 }
 
 function switchFile(id) {
+    activeDocFilename = null;
+    elDocViewer.classList.add('hidden');
+    document.querySelector('.split-view').classList.remove('hidden');
+    renderDocsList();
+
     if (activeFileId) {
         const currentFile = files.find(f => f.id === activeFileId);
         if (currentFile) currentFile.code = elEditor.value;
@@ -1038,20 +897,20 @@ function switchFile(id) {
 
     activeFileId = id;
     const file = files.find(f => f.id === id);
-    
+
     if (file) {
         elEditor.disabled = false;
         elEditor.value = file.code;
         elFilename.innerText = file.name;
-        elBtnRun.disabled = false; 
+        elBtnRun.disabled = false;
         const isSource = file.name.toLowerCase().endsWith('.shift');
         elBtnRun.title = isSource ? "Run Script" : "Preview Data";
     }
-    
+
     renderFileList();
     saveFiles();
     updateLineNumbers();
-    
+
     if (window.innerWidth <= 768) {
         closeSidebar();
     }
@@ -1111,7 +970,26 @@ function uiDebugLog(message) {
     }
 }
 
+/**
+ * Parses CSV/TSV formatted string data and renders it as an HTML table in the console output.
+ * Ensures structural consistency across all rows.
+ * @param {string} content - The raw CSV/TSV source text.
+ * @param {string} delimiter - The field delimiter character (e.g. ',' or '\t').
+ * @param {boolean} hasHeader - Whether the first line is treated as a table header.
+ * @throws {TypeError} If parameters do not match required types.
+ */
 function uiRenderTable(content, delimiter, hasHeader) {
+    // Guard Clauses / Explicit Input Validation
+    if (typeof content !== 'string') {
+        throw new TypeError("content must be a string.");
+    }
+    if (typeof delimiter !== 'string' || delimiter.length !== 1) {
+        throw new TypeError("delimiter must be a single-character string.");
+    }
+    if (typeof hasHeader !== 'boolean') {
+        throw new TypeError("hasHeader must be a boolean.");
+    }
+
     const lines = content.trim().split(/\r?\n/);
     if (lines.length === 0) return;
 
@@ -1119,11 +997,11 @@ function uiRenderTable(content, delimiter, hasHeader) {
         const values = [];
         let currentValue = '';
         let insideQuotes = false;
-        
+
         for (let i = 0; i < text.length; i++) {
             const char = text[i];
             const nextChar = text[i + 1];
-            
+
             if (insideQuotes) {
                 if (char === '"') {
                     if (nextChar === '"') {
@@ -1170,7 +1048,7 @@ function uiRenderTable(content, delimiter, hasHeader) {
 
     const table = document.createElement('table');
     table.className = 'csv-table';
-    
+
     parsedRows.forEach((cols, index) => {
         const tr = document.createElement('tr');
         cols.forEach(col => {
@@ -1180,23 +1058,34 @@ function uiRenderTable(content, delimiter, hasHeader) {
         });
         table.appendChild(tr);
     });
-    
+
     elConsole.appendChild(table);
 }
 
+/**
+ * Orchestrates compiling and running the currently selected script or file.
+ * Automatically delegates to parser helper modes depending on file extensions.
+ * @returns {Promise<void>} Resolves when execution completes.
+ */
 async function runInterpreter() {
+    // Guard Clause
     if (!activeFileId) {
         alert("Please create or select a file first.");
         return;
     }
 
     const activeFile = files.find(f => f.id === activeFileId);
+    if (!activeFile) {
+        console.error("No active file matches the selection ID.");
+        return;
+    }
+
     const sourceCode = elEditor.value;
     const isShift = activeFile.name.toLowerCase().endsWith('.shift');
 
     elConsole.innerHTML = '';
     elDebug.innerHTML = '';
-    checkDebugContent(); 
+    checkDebugContent();
 
     if (isShift) {
         const stdLibCode = loadSettings();
@@ -1236,7 +1125,7 @@ async function runInterpreter() {
             if (std_lib_compiled) {
                 let result = shift_engine.run(sourceCode, "main", []);
                 uiDebugLog(shift_engine.finalAST);
-                
+
                 const now = new Date();
                 const timeStr = now.toTimeString().split(' ')[0];
                 uiConsoleLog(``);
@@ -1252,7 +1141,7 @@ async function runInterpreter() {
         }
     } else {
         let processed = false;
-        
+
         try {
             const json = JSON.parse(sourceCode);
             const pre = document.createElement('pre');
@@ -1260,17 +1149,17 @@ async function runInterpreter() {
             elConsole.appendChild(pre);
             uiConsoleInfo("Successfully parsed as JSON.");
             processed = true;
-        } catch (e) {}
+        } catch (e) { }
 
         if (!processed) {
-             const isTsvExt = activeFile.name.toLowerCase().endsWith('.tsv');
-             if (isTsvExt || (sourceCode.includes('\t') && sourceCode.includes('\n'))) {
-                 try {
-                     uiRenderTable(sourceCode, '\t', csvSettings.hasHeader);
-                     uiConsoleInfo(`Parsed as TSV (Tab separated).`);
-                     processed = true;
-                 } catch(e) {}
-             }
+            const isTsvExt = activeFile.name.toLowerCase().endsWith('.tsv');
+            if (isTsvExt || (sourceCode.includes('\t') && sourceCode.includes('\n'))) {
+                try {
+                    uiRenderTable(sourceCode, '\t', csvSettings.hasHeader);
+                    uiConsoleInfo(`Parsed as TSV (Tab separated).`);
+                    processed = true;
+                } catch (e) { }
+            }
         }
 
         if (!processed) {
@@ -1280,7 +1169,7 @@ async function runInterpreter() {
                     uiConsoleInfo(`Parsed as CSV (Delimiter: "${csvSettings.delimiter}", Header: ${csvSettings.hasHeader}). Check Config to change.`);
                     processed = true;
                 }
-            } catch(e) {}
+            } catch (e) { }
         }
 
         if (!processed) {
@@ -1294,9 +1183,131 @@ async function runInterpreter() {
     checkDebugContent();
 }
 
+// --- 9. Integrated Documentation Viewer Logic ---
+
+/**
+ * Loads the documentation metadata list (content.json) from the host environment.
+ * @returns {Promise<void>} Resolves when loading and rendering is complete.
+ */
+async function loadDocs() {
+    // Guard Clause
+    if (!elDocsList) {
+        console.error("elDocsList container is not initialized.");
+        return;
+    }
+
+    try {
+        const response = await fetch('content.json');
+        if (!response.ok) throw new Error('Could not load content.json');
+        docs = await response.json();
+        renderDocsList();
+    } catch (e) {
+        console.error('Error loading documentation list:', e);
+        const docHeader = elDocsList.parentElement;
+        if (docHeader) {
+            docHeader.style.display = 'none';
+        }
+    }
+}
+
+/**
+ * Redraws the sidebar elements containing discovered Markdown documentation pages.
+ * @throws {TypeError} If the document list element is missing.
+ */
+function renderDocsList() {
+    // Guard Clause
+    if (!elDocsList) {
+        throw new TypeError("elDocsList is not initialized.");
+    }
+
+    elDocsList.innerHTML = '';
+    docs.forEach(doc => {
+        const li = document.createElement('li');
+        li.className = `file-item ${doc.filename === activeDocFilename ? 'active' : ''}`;
+        li.onclick = () => selectDoc(doc.filename, doc.title);
+        li.innerHTML = `<span>${doc.title}</span>`;
+        elDocsList.appendChild(li);
+    });
+}
+
+/**
+ * Fetches, sanitizes, compiles, and renders a chosen documentation page.
+ * @param {string} filename - The relative path or filename of the document.
+ * @param {string} title - The display title.
+ * @returns {Promise<void>} Resolves when rendering completes.
+ * @throws {TypeError} If inputs are invalid.
+ */
+async function selectDoc(filename, title) {
+    // Guard Clauses / Explicit Input Validation
+    if (typeof filename !== 'string' || !filename) {
+        throw new TypeError("filename must be a non-empty string.");
+    }
+    if (typeof title !== 'string' || !title) {
+        throw new TypeError("title must be a non-empty string.");
+    }
+
+    try {
+        if (activeFileId) {
+            const currentFile = files.find(f => f.id === activeFileId);
+            if (currentFile) currentFile.code = elEditor.value;
+        }
+
+        const response = await fetch(filename);
+        if (!response.ok) throw new Error(`Could not fetch doc: ${filename}`);
+        const markdown = await response.text();
+
+        const html = DOMPurify.sanitize(marked.parse(markdown));
+        elDocViewerContent.innerHTML = html;
+        elDocViewerContent.scrollTop = 0;
+
+        activeDocFilename = filename;
+        activeFileId = null;
+
+        elDocViewer.classList.remove('hidden');
+        document.querySelector('.split-view').classList.add('hidden');
+
+        elFilename.innerText = title;
+        elBtnRun.disabled = true;
+
+        renderFileList();
+        renderDocsList();
+
+        if (window.innerWidth <= 768) {
+            closeSidebar();
+        }
+    } catch (e) {
+        console.error('Error rendering documentation:', e);
+        alert(`Failed to load documentation: ${e.message}`);
+    }
+}
+
+/**
+ * Closes the active documentation reader panel and restores the code editor views.
+ */
+function closeDoc() {
+    activeDocFilename = null;
+    elDocViewer.classList.add('hidden');
+    document.querySelector('.split-view').classList.remove('hidden');
+    elBtnRun.disabled = false;
+
+    if (files.length > 0) {
+        const lastFile = files.find(f => f.name.endsWith('.shift'));
+        switchFile(lastFile ? lastFile.id : files[0].id);
+    } else {
+        elEditor.disabled = true;
+        elEditor.value = "";
+        elFilename.innerText = "No File Selected";
+        updateLineNumbers();
+        renderFileList();
+        renderDocsList();
+    }
+}
+
 document.getElementById('btn-run').addEventListener('click', runInterpreter);
+elBtnCloseDoc.addEventListener('click', closeDoc);
 
 loadFiles();
+loadDocs();
 
 if (!localStorage.getItem(VISITED_KEY)) {
     openAboutModal();

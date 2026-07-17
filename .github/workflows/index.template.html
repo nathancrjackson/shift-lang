@@ -1,285 +1,321 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>The Shift Project's Test Track</title>
-    <style>/* STYLE_CSS_PLACEHOLDER */</style>
+    <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
 
-<div class="app-container">
-    <!-- Mobile Backdrop -->
-    <div id="mobile-backdrop" class="mobile-overlay-backdrop"></div>
+    <div class="app-container">
+        <!-- Mobile Backdrop -->
+        <div id="mobile-backdrop" class="mobile-overlay-backdrop"></div>
 
-    <!-- Sidebar -->
-    <aside id="sidebar" class="sidebar">
-        <div class="sidebar-header">
-            <div class="header-actions">
-                <button id="btn-export-file" class="btn-icon" title="Export Active File (Download)">⭳</button>
-                <button id="btn-config" class="btn-icon" title="Configuration">⚙</button>
-                <button id="btn-about" class="btn-icon" title="About">?</button>
-            </div>
-            <!-- Hidden file inputs -->
-            <input type="file" id="file-input-import-source" style="display: none;" accept=".shift,.txt">
-            <input type="file" id="file-input-import-data" style="display: none;" accept=".csv,.json,.txt,.xml,.log,.tsv">
-            <input type="file" id="file-input-stdlib" style="display: none;" accept=".shift,.txt">
-            <input type="file" id="file-input-restore" style="display: none;" accept=".json">
-        </div>
-        
-        <div id="explorer-content">
-            <div class="sidebar-section">
-                <div class="sidebar-section-header">
-                    <span>Source Files</span>
-                    <div class="section-actions">
-                        <button id="btn-import-source" class="btn-mini-action" title="Import Source File (Upload)">⭱</button>
-                        <button id="btn-new-source" class="btn-mini-action" title="Create new source file">+</button>
-                    </div>
+        <!-- Sidebar -->
+        <aside id="sidebar" class="sidebar">
+            <div class="sidebar-header">
+                <div class="header-actions">
+                    <button id="btn-export-file" class="btn-icon" title="Export Active File (Download)">⭳</button>
+                    <button id="btn-config" class="btn-icon" title="Configuration">⚙</button>
+                    <button id="btn-about" class="btn-icon" title="About">?</button>
                 </div>
-                <ul id="file-list-source" class="file-list">
-                    <!-- Source Files injected here -->
-                </ul>
-            </div>
-            <div class="sidebar-section">
-                <div class="sidebar-section-header">
-                    <span>Data Files</span>
-                    <div class="section-actions">
-                        <button id="btn-import-data" class="btn-mini-action" title="Import Data File (Upload)">⭱</button>
-                        <button id="btn-new-data" class="btn-mini-action" title="Create new data file">+</button>
-                    </div>
-                </div>
-                <ul id="file-list-data" class="file-list">
-                    <!-- Data Files injected here -->
-                </ul>
-            </div>
-        </div>
-    </aside>
-
-    <!-- Main Editor Area -->
-    <main class="editor-area">
-        <div class="toolbar">
-            <div class="toolbar-left">
-                <button id="btn-toggle-sidebar" class="btn-icon" title="Menu">☰</button>
-                <span id="current-filename">No File Selected</span>
-            </div>
-            <button id="btn-run" class="btn-primary">
-                <span>▶</span> <span style="display:none;" class="desktop-text">Run</span>
-            </button>
-        </div>
-
-        <div class="split-view">
-            <!-- Code Input -->
-            <div class="pane code-pane">
-                <div id="line-numbers" class="line-numbers">1</div>
-                <textarea id="code-editor" spellcheck="false" placeholder="// Select or create a file to start coding..." disabled></textarea>
+                <!-- Hidden file inputs -->
+                <input type="file" id="file-input-import-source" style="display: none;" accept=".shift,.txt">
+                <input type="file" id="file-input-import-data" style="display: none;"
+                    accept=".csv,.json,.txt,.xml,.log,.tsv">
+                <input type="file" id="file-input-stdlib" style="display: none;" accept=".shift,.txt">
+                <input type="file" id="file-input-restore" style="display: none;" accept=".json">
             </div>
 
-            <!-- Output Pane -->
-            <div class="pane output-pane">
-                <div class="tabs">
-                    <button class="tab-btn active" data-target="console">Output</button>
-                    <button class="tab-btn" data-target="debug">Debug</button>
-                    <button id="btn-clear" class="action-btn" title="Clear Output">Clear</button>
-                </div>
-                
-                <div id="view-console" class="tab-content active">
-                    <div id="console-output"></div>
-                </div>
-                <div id="view-debug" class="tab-content">
-                    <button id="btn-download-ast" class="ast-download-btn" style="display: none;">Download JSON</button>
-                    <pre id="debug-output"></pre>
-                </div>
-            </div>
-        </div>
-    </main>
-</div>
-
-<!-- Delete Modal -->
-<div id="delete-modal" class="modal-overlay hidden">
-    <div class="modal-content">
-        <h3>Delete File</h3>
-        <p>Are you sure you want to delete <span id="modal-filename" class="highlight-text"></span>?</p>
-        <p style="color: #888; font-size: 0.9em;">This action cannot be undone.</p>
-        <div class="modal-actions">
-            <button id="btn-cancel-delete" class="btn-secondary">Cancel</button>
-            <button id="btn-confirm-delete" class="btn-danger">Delete</button>
-        </div>
-    </div>
-</div>
-
-<!-- Rename Modal -->
-<div id="rename-modal" class="modal-overlay hidden">
-    <div class="modal-content">
-        <h3>Rename File</h3>
-        <div class="modal-input-group">
-            <label for="rename-file-input">New Filename</label>
-            <input type="text" id="rename-file-input" class="modal-input">
-        </div>
-        <div class="modal-actions">
-            <button id="btn-cancel-rename" class="btn-secondary">Cancel</button>
-            <button id="btn-confirm-rename" class="btn-primary">Rename</button>
-        </div>
-    </div>
-</div>
-
-<!-- New File Modal -->
-<div id="new-file-modal" class="modal-overlay hidden">
-    <div class="modal-content">
-        <h3>Create New File</h3>
-        <div class="modal-input-group">
-            <label for="new-file-name">Filename</label>
-            <input type="text" id="new-file-name" class="modal-input" placeholder="untitled.shift" value="untitled.shift">
-        </div>
-        
-        <!-- Source Options -->
-        <div id="new-file-source-options" class="checkbox-group">
-            <input type="checkbox" id="include-demo-code">
-            <label for="include-demo-code" id="label-include-demo">Include starter code</label>
-        </div>
-
-        <!-- Data Options -->
-        <div id="new-file-data-options" class="modal-input-group" style="display:none;">
-            <label for="data-template-select">Template</label>
-            <select id="data-template-select" class="modal-input">
-                <option value="none">Empty</option>
-                <option value="csv">CSV Sample</option>
-                <option value="json">JSON Sample</option>
-                <option value="tsv">TSV Sample</option>
-            </select>
-        </div>
-
-        <div class="modal-actions">
-            <button id="btn-cancel-new" class="btn-secondary">Cancel</button>
-            <button id="btn-confirm-new" class="btn-primary">Create File</button>
-        </div>
-    </div>
-</div>
-
-<!-- Config Modal (Standard Library) -->
-<div id="config-modal" class="modal-overlay hidden">
-    <div class="modal-content large">
-        <div class="tabs">
-            <button class="tab-btn active" data-config-target="csv">CSV Settings</button>
-            <button class="tab-btn" data-config-target="source">Shift Source</button>
-            <button class="tab-btn" data-config-target="native">Native Functions</button>
-            <button class="tab-btn" data-config-target="structs">Native Structs</button>
-            <button class="tab-btn" data-config-target="backup">Backup / Restore</button>
-        </div>
-
-        <div class="modal-content-inner">
-            <!-- CSV Settings Tab (Now First) -->
-            <div id="config-tab-csv" class="config-tab-content active">
-                <div class="backup-controls">
-                    <div class="backup-section">
-                        <h4>CSV Parser Settings</h4>
-                        <div class="modal-input-group">
-                            <label for="csv-delimiter">Delimiter</label>
-                            <select id="csv-delimiter" class="modal-input">
-                                <option value=",">Comma (,)</option>
-                                <option value=";">Semicolon (;)</option>
-                                <option value="|">Pipe (|)</option>
-                            </select>
+            <div id="explorer-content">
+                <div class="sidebar-section">
+                    <div class="sidebar-section-header">
+                        <span>Source Files</span>
+                        <div class="section-actions">
+                            <button id="btn-import-source" class="btn-mini-action"
+                                title="Import Source File (Upload)">⭱</button>
+                            <button id="btn-new-source" class="btn-mini-action"
+                                title="Create new source file">+</button>
                         </div>
-                        <div class="checkbox-group">
-                            <input type="checkbox" id="csv-header" checked>
-                            <label for="csv-header">File has Header Row</label>
+                    </div>
+                    <ul id="file-list-source" class="file-list">
+                        <!-- Source Files injected here -->
+                    </ul>
+                </div>
+                <div class="sidebar-section">
+                    <div class="sidebar-section-header">
+                        <span>Data Files</span>
+                        <div class="section-actions">
+                            <button id="btn-import-data" class="btn-mini-action"
+                                title="Import Data File (Upload)">⭱</button>
+                            <button id="btn-new-data" class="btn-mini-action" title="Create new data file">+</button>
                         </div>
-                        <p style="margin-top: 15px; font-size: 0.8rem; color: #aaa; font-style: italic;">
-                            Note: These settings affect the Data File preview only. The preview parser is lightweight and does not support newlines within fields or complex escape sequences.
-                        </p>
                     </div>
+                    <ul id="file-list-data" class="file-list">
+                        <!-- Data Files injected here -->
+                    </ul>
                 </div>
-                <div class="modal-actions">
-                    <button id="btn-dismiss-config-csv" class="btn-secondary">Close without saving</button>
-                    <button id="btn-save-config-csv" class="btn-primary">Save & Close</button>
+
+                <div class="sidebar-section">
+                    <div class="sidebar-section-header">
+                        <span>Documentation</span>
+                    </div>
+                    <ul id="file-list-docs" class="file-list">
+                        <!-- Documentation files injected here -->
+                    </ul>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Editor Area -->
+        <main class="editor-area">
+            <div class="toolbar">
+                <div class="toolbar-left">
+                    <button id="btn-toggle-sidebar" class="btn-icon" title="Menu">☰</button>
+                    <span id="current-filename">No File Selected</span>
+                </div>
+                <button id="btn-run" class="btn-primary">
+                    <span>▶</span> <span style="display:none;" class="desktop-text">Run</span>
+                </button>
+            </div>
+
+            <div class="split-view">
+                <!-- Code Input -->
+                <div class="pane code-pane">
+                    <div id="line-numbers" class="line-numbers">1</div>
+                    <textarea id="code-editor" spellcheck="false"
+                        placeholder="// Select or create a file to start coding..." disabled></textarea>
+                </div>
+
+                <!-- Output Pane -->
+                <div class="pane output-pane">
+                    <div class="tabs">
+                        <button class="tab-btn active" data-target="console">Output</button>
+                        <button class="tab-btn" data-target="debug">Debug</button>
+                        <button id="btn-clear" class="action-btn" title="Clear Output">Clear</button>
+                    </div>
+
+                    <div id="view-console" class="tab-content active">
+                        <div id="console-output"></div>
+                    </div>
+                    <div id="view-debug" class="tab-content">
+                        <button id="btn-download-ast" class="ast-download-btn" style="display: none;">Download
+                            JSON</button>
+                        <pre id="debug-output"></pre>
+                    </div>
                 </div>
             </div>
 
-            <!-- Source Tab -->
-            <div id="config-tab-source" class="config-tab-content">
-                <p>Edit the standard library code loaded with every script.</p>
-                <div class="config-pane">
-                    <div id="config-line-numbers" class="line-numbers">1</div>
-                    <textarea id="config-editor" spellcheck="false"></textarea>
+            <!-- Documentation Viewer Panel -->
+            <div id="doc-viewer" class="doc-viewer hidden">
+                <div class="doc-viewer-header">
+                    <button id="btn-close-doc" class="btn-secondary">Close Documentation</button>
                 </div>
-                <div class="modal-actions">
-                    <div class="modal-actions-left">
-                        <button id="btn-import-stdlib" class="btn-secondary" title="Import Library">Import</button>
-                        <button id="btn-export-stdlib" class="btn-secondary" title="Export Library">Export</button>
-                        <button id="btn-revert-stdlib" class="btn-secondary" title="Revert to Default">Revert</button>
-                    </div>
-                    <button id="btn-dismiss-config" class="btn-secondary">Close without saving</button>
-                    <button id="btn-save-config" class="btn-primary">Save & Close</button>
+                <div id="doc-viewer-content" class="doc-viewer-content markdown-body">
+                    <!-- Rendered Markdown goes here -->
                 </div>
             </div>
+        </main>
+    </div>
 
-            <!-- Native Functions Tab -->
-            <div id="config-tab-native" class="config-tab-content">
-                <p>Review the read-only native functions (intrinsics) available to the runtime.</p>
-                <div id="config-native-viewer" class="read-only-viewer"></div>
-                <div class="modal-actions">
-                    <button id="btn-close-config-native" class="btn-primary">Close</button>
-                </div>
+    <!-- Delete Modal -->
+    <div id="delete-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h3>Delete File</h3>
+            <p>Are you sure you want to delete <span id="modal-filename" class="highlight-text"></span>?</p>
+            <p style="color: #888; font-size: 0.9em;">This action cannot be undone.</p>
+            <div class="modal-actions">
+                <button id="btn-cancel-delete" class="btn-secondary">Cancel</button>
+                <button id="btn-confirm-delete" class="btn-danger">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Rename Modal -->
+    <div id="rename-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h3>Rename File</h3>
+            <div class="modal-input-group">
+                <label for="rename-file-input">New Filename</label>
+                <input type="text" id="rename-file-input" class="modal-input">
+            </div>
+            <div class="modal-actions">
+                <button id="btn-cancel-rename" class="btn-secondary">Cancel</button>
+                <button id="btn-confirm-rename" class="btn-primary">Rename</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- New File Modal -->
+    <div id="new-file-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h3>Create New File</h3>
+            <div class="modal-input-group">
+                <label for="new-file-name">Filename</label>
+                <input type="text" id="new-file-name" class="modal-input" placeholder="untitled.shift"
+                    value="untitled.shift">
             </div>
 
-            <!-- Native Structs Tab -->
-            <div id="config-tab-structs" class="config-tab-content">
-                <p>Review the read-only native structures available to the runtime.</p>
-                <div id="config-structs-viewer" class="read-only-viewer"></div>
-                <div class="modal-actions">
-                    <button id="btn-close-config-structs" class="btn-primary">Close</button>
-                </div>
+            <!-- Source Options -->
+            <div id="new-file-source-options" class="checkbox-group">
+                <input type="checkbox" id="include-demo-code">
+                <label for="include-demo-code" id="label-include-demo">Include starter code</label>
             </div>
 
-            <!-- Backup / Restore Tab -->
-            <div id="config-tab-backup" class="config-tab-content">
-                <div class="backup-controls">
-                    <div class="backup-section">
-                        <h4>Backup</h4>
-                        <p>Download a JSON file containing all your source code, data files, and standard library customization.</p>
-                        <button id="btn-backup-download" class="btn-secondary">Download Backup</button>
+            <!-- Data Options -->
+            <div id="new-file-data-options" class="modal-input-group" style="display:none;">
+                <label for="data-template-select">Template</label>
+                <select id="data-template-select" class="modal-input">
+                    <option value="none">Empty</option>
+                    <option value="csv">CSV Sample</option>
+                    <option value="json">JSON Sample</option>
+                    <option value="tsv">TSV Sample</option>
+                </select>
+            </div>
+
+            <div class="modal-actions">
+                <button id="btn-cancel-new" class="btn-secondary">Cancel</button>
+                <button id="btn-confirm-new" class="btn-primary">Create File</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Config Modal (Standard Library) -->
+    <div id="config-modal" class="modal-overlay hidden">
+        <div class="modal-content large">
+            <div class="tabs">
+                <button class="tab-btn active" data-config-target="csv">CSV Settings</button>
+                <button class="tab-btn" data-config-target="source">Shift Source</button>
+                <button class="tab-btn" data-config-target="native">Native Functions</button>
+                <button class="tab-btn" data-config-target="structs">Native Structs</button>
+                <button class="tab-btn" data-config-target="backup">Backup / Restore</button>
+            </div>
+
+            <div class="modal-content-inner">
+                <!-- CSV Settings Tab (Now First) -->
+                <div id="config-tab-csv" class="config-tab-content active">
+                    <div class="backup-controls">
+                        <div class="backup-section">
+                            <h4>CSV Parser Settings</h4>
+                            <div class="modal-input-group">
+                                <label for="csv-delimiter">Delimiter</label>
+                                <select id="csv-delimiter" class="modal-input">
+                                    <option value=",">Comma (,)</option>
+                                    <option value=";">Semicolon (;)</option>
+                                    <option value="|">Pipe (|)</option>
+                                </select>
+                            </div>
+                            <div class="checkbox-group">
+                                <input type="checkbox" id="csv-header" checked>
+                                <label for="csv-header">File has Header Row</label>
+                            </div>
+                            <p style="margin-top: 15px; font-size: 0.8rem; color: #aaa; font-style: italic;">
+                                Note: These settings affect the Data File preview only. The preview parser is
+                                lightweight and does not support newlines within fields or complex escape sequences.
+                            </p>
+                        </div>
                     </div>
-                    <div class="backup-section">
-                        <h4>Restore</h4>
-                        <p>Restore your environment from a backup file. <strong>Warning: This will overwrite your current files.</strong></p>
-                        <button id="btn-backup-restore" class="btn-secondary">Restore from File</button>
-                    </div>
-                    <div class="backup-section">
-                        <h4>Danger Zone</h4>
-                        <p>Reset the environment completely. All files and settings will be lost.</p>
-                        <button id="btn-wipe-all" class="btn-danger">Wipe Everything</button>
+                    <div class="modal-actions">
+                        <button id="btn-dismiss-config-csv" class="btn-secondary">Close without saving</button>
+                        <button id="btn-save-config-csv" class="btn-primary">Save & Close</button>
                     </div>
                 </div>
-                <div class="modal-actions">
-                    <button id="btn-close-config-backup" class="btn-primary">Close</button>
+
+                <!-- Source Tab -->
+                <div id="config-tab-source" class="config-tab-content">
+                    <p>Edit the standard library code loaded with every script.</p>
+                    <div class="config-pane">
+                        <div id="config-line-numbers" class="line-numbers">1</div>
+                        <textarea id="config-editor" spellcheck="false"></textarea>
+                    </div>
+                    <div class="modal-actions">
+                        <div class="modal-actions-left">
+                            <button id="btn-import-stdlib" class="btn-secondary" title="Import Library">Import</button>
+                            <button id="btn-export-stdlib" class="btn-secondary" title="Export Library">Export</button>
+                            <button id="btn-revert-stdlib" class="btn-secondary"
+                                title="Revert to Default">Revert</button>
+                        </div>
+                        <button id="btn-dismiss-config" class="btn-secondary">Close without saving</button>
+                        <button id="btn-save-config" class="btn-primary">Save & Close</button>
+                    </div>
+                </div>
+
+                <!-- Native Functions Tab -->
+                <div id="config-tab-native" class="config-tab-content">
+                    <p>Review the read-only native functions (intrinsics) available to the runtime.</p>
+                    <div id="config-native-viewer" class="read-only-viewer"></div>
+                    <div class="modal-actions">
+                        <button id="btn-close-config-native" class="btn-primary">Close</button>
+                    </div>
+                </div>
+
+                <!-- Native Structs Tab -->
+                <div id="config-tab-structs" class="config-tab-content">
+                    <p>Review the read-only native structures available to the runtime.</p>
+                    <div id="config-structs-viewer" class="read-only-viewer"></div>
+                    <div class="modal-actions">
+                        <button id="btn-close-config-structs" class="btn-primary">Close</button>
+                    </div>
+                </div>
+
+                <!-- Backup / Restore Tab -->
+                <div id="config-tab-backup" class="config-tab-content">
+                    <div class="backup-controls">
+                        <div class="backup-section">
+                            <h4>Backup</h4>
+                            <p>Download a JSON file containing all your source code, data files, and standard library
+                                customization.</p>
+                            <button id="btn-backup-download" class="btn-secondary">Download Backup</button>
+                        </div>
+                        <div class="backup-section">
+                            <h4>Restore</h4>
+                            <p>Restore your environment from a backup file. <strong>Warning: This will overwrite your
+                                    current files.</strong></p>
+                            <button id="btn-backup-restore" class="btn-secondary">Restore from File</button>
+                        </div>
+                        <div class="backup-section">
+                            <h4>Danger Zone</h4>
+                            <p>Reset the environment completely. All files and settings will be lost.</p>
+                            <button id="btn-wipe-all" class="btn-danger">Wipe Everything</button>
+                        </div>
+                    </div>
+                    <div class="modal-actions">
+                        <button id="btn-close-config-backup" class="btn-primary">Close</button>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
-</div>
 
-<!-- About Modal -->
-<div id="about-modal" class="modal-overlay hidden">
-    <div class="modal-content">
-        <h3>The Shift Project's Test Track</h3>
-        <div class="about-text">
-            <p>Welcome to the official environment for test driving the Shift language.</p>
-            <p>The Shift Project is currently hosted on Github.<br><a href="https://github.com/nathancrjackson/shift-lang">Please visit it here to learn more</a>.</p>
-            <p>This interactive tool lets you write, tweak, and run Shift scripts right in your browser, powered by a virtual file system designed for experimentation.</p>
-            <p>The Shift project is managed by <a href="https://njit.io">Nathan Jackson</a> and is sponsored by <a href="https://dtc.group">DTC Group</a></p>
-            <p><i><b>Please note:</b> The Shift Project is still in early development so the language, its runtime and this test environment may be subject to backwards compatibility breaking changes.</i></p>
-            <p style="margin-top: 15px; font-size: 0.85em; color: #888;">/* VERSION_PLACEHOLDER */</p>
-        </div>
-        <div class="modal-actions">
-            <button id="btn-close-about" class="btn-secondary">Close</button>
+    <!-- About Modal -->
+    <div id="about-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h3>The Shift Project's Test Track</h3>
+            <div class="about-text">
+                <p>Welcome to the official environment for test driving the Shift language.</p>
+                <p>The Shift Project is currently hosted on Github.<br><a
+                        href="https://github.com/nathancrjackson/shift-lang">Please visit it here to learn more</a>.</p>
+                <p>This interactive tool lets you write, tweak, and run Shift scripts right in your browser, powered by
+                    a virtual file system designed for experimentation.</p>
+                <p>The Shift project is managed by <a href="https://njit.io">Nathan Jackson</a>.</p>
+                <p><i><b>Please note:</b> The Shift Project is still in early development so the language, its runtime
+                        and this test environment may be subject to backwards compatibility breaking changes.</i></p>
+                <p style="margin-top: 15px; font-size: 0.85em; color: #888;">/* VERSION_PLACEHOLDER */</p>
+            </div>
+            <div class="modal-actions">
+                <button id="btn-close-about" class="btn-secondary">Close</button>
+            </div>
         </div>
     </div>
-</div>
 
-<script>
-/* SHIFT_LIB_PLACEHOLDER */
-/* APP_JS_PLACEHOLDER */
-</script>
+    <script src="marked.umd.js"></script>
+    <script src="purify.min.js"></script>
+    <script src="shift_core_lib.js"></script>
+    <script src="app.js"></script>
 
 </body>
+
 </html>
