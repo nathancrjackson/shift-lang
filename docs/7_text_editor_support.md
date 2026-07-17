@@ -1,6 +1,6 @@
 # Shift Language Editors Support
 
-This directory contains syntax highlighting and editor configurations for the Shift language.
+The `editors` directory within the repository contains syntax highlighting configurations for the Shift language in a few common text editors.
 
 ## 1. VSCode
 

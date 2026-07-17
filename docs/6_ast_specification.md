@@ -166,11 +166,13 @@ Error handling block: `try { ... } catch { ... } review { ... }`
 ```
 
 ### Other Statements
-- **ReturnStatement**: `{ "type": "ReturnStatement", "value": Expression }` (value is optional)
-- **ThrowStatement**: `{ "type": "ThrowStatement", "severity": "error"|"alert"|"critical", "argument": Expression }`
+- **ReturnStatement**: `{ "type": "ReturnStatement", `value: Expression` }`
 - **BreakStatement**: `{ "type": "BreakStatement" }`
 - **SkipStatement**: `{ "type": "SkipStatement" }`
-- **DeleteStatement**: `{ "type": "DeleteStatement", "target": IndexExpression }`
+- **ThrowStatement**: `{ "type": "ThrowStatement", `severity: any`, `argument: Expression` }`
+- **DeleteStatement**: `{ "type": "DeleteStatement", `target: *IndexExpression` }`
+- **ExpressionStatement**: `{ "type": "ExpressionStatement", `expression: Expression` }`
+- **Block**: `{ "type": "Block", `statements: []Statement` }`
 
 ---
 
@@ -178,31 +180,31 @@ Error handling block: `try { ... } catch { ... } review { ... }`
 
 Expressions represent computations that yield values.
 
-| Type | Fields | Syntax Example |
+| Type | Fields | Description / Examples |
 |---|---|---|
+| **Assignment** | `name: string`, `value: Expression` | `x = 5` |
+| **IndexAssignment** | `object: Expression`, `index: Expression`, `value: Expression` | `arr[0] = 5` |
+| **PipelineExpression** | `left: Expression`, `right: Expression` | `data \| process($pipe_value)` |
+| **BinaryExpression** | `operator: string`, `left: Expression`, `right: Expression` | `x + y`, `a and b` |
+| **UnaryExpression** | `operator: string`, `argument: Expression` | `not flag`, `-num` |
+| **CallExpression** | `callee: string`, `arguments: []Expression` | `print_line("hello")` |
+| **IndexExpression** | `object: Expression`, `index: Expression` | `map["key"]`, `arr[0]` |
+| **CastExpression** | `value: Expression`, `targetType: TypeAnnotation` | `5 as string` |
+| **InspectExpression** | `argument: Expression` | `inspect my_var` |
+| **PackExpression** | `argument: Expression` | `pack my_list` |
+| **UnpackExpression** | `argument: Expression` | `unpack my_string` |
+| **SizeOfExpression** | `argument: Expression` | `size of my_var` |
+| **TypeOfExpression** | `argument: Expression` | `type of my_var` |
+| **IsExpression** | `left: Expression`, `check: string`, `isNot: bool` | `str is numeric` |
+| **ReplaceExpression** | `source: Expression`, `pattern: Expression`, `replacement: Expression` | `str replace "/regex/" with ""` |
+| **SplitExpression** | `source: Expression`, `delimiter: Expression` | `str split with ","` |
+| **JoinExpression** | `source: Expression`, `delimiter: Expression` | `arr joined with ","` |
 | **Literal** | `value: any` | `42`, `"hello"`, `true`, `null` |
 | **Variable** | `name: string` | `my_var` |
 | **MagicVariable** | `name: string` | `$pipe_value`, `$thrown_message` |
-| **Assignment** | `name: string`, `value: Expr` | `x = 5` |
-| **IndexAssignment** | `object: Expr`, `index: Expr`, `value: Expr` | `arr[0] = 5` |
-| **BinaryExpression** | `operator: string`, `left: Expr`, `right: Expr` | `x + y`, `a and b` |
-| **UnaryExpression** | `operator: string`, `argument: Expr` | `not flag`, `-num` |
-| **PipelineExpression** | `left: Expr`, `right: Expr` | `data | process($pipe_value)` |
-| **CallExpression** | `callee: string`, `arguments: []Expr` | `print_line("hello")` |
-| **IndexExpression** | `object: Expr`, `index: Expr` | `map["key"]`, `arr[0]` |
-| **CastExpression** | `value: Expr`, `targetType: TypeAnnotation` | `5 as string` |
-| **InspectExpression** | `argument: Expr` | `inspect my_var` |
-| **SizeOfExpression** | `argument: Expr` | `size of my_var` |
-| **TypeOfExpression** | `argument: Expr` | `type of my_var` |
-| **PackExpression** | `argument: Expr` | `pack my_list` |
-| **UnpackExpression** | `argument: Expr` | `unpack my_string` |
-| **IsExpression** | `left: Expr`, `check: string`, `isNot: bool` | `str is numeric` |
-| **ReplaceExpression**| `source: Expr`, `pattern: Expr`, `replacement: Expr`| `str replace "/regex/" with ""` |
-| **SplitExpression** | `source: Expr`, `delimiter: Expr` | `str split with ","` |
-| **JoinExpression** | `source: Expr`, `delimiter: Expr` | `arr joined with ","` |
-| **ListLiteral** | `elements: []Expr` | `[1, 2, 3]` |
-| **MapLiteral** | `entries: []{key: Expr, value: Expr}` | `["key": "value"]` |
-| **Grouping** | `expression: Expr` | `(x + y)` |
+| **ListLiteral** | `elements: []Expression` | `[1, 2, 3]` |
+| **MapLiteral** | `entries: []MapEntry` | `["key": "value"]` |
+| **Grouping** | `expression: Expression` | `(x + y)` |
 
 ---
 

@@ -1,4 +1,6 @@
-# JavaScript Developer Deep Dive: Integrating & Building Shift
+# JavaScript Developer Deep Dive
+
+_Integrating & Building Shift_
 
 This document provides technical instructions for developers looking to integrate the Shift scripting engine into JavaScript host environments (Browsers or Node.js), customise the runtime, move data between the host and interpreter, and build/test the codebase.
 
@@ -65,6 +67,63 @@ const engine = new Shift(null, null, { maxInstructions: 50000 });
 
 // Disables instruction limits entirely (default behavior)
 const engineNoLimit = new Shift(null, null, { maxInstructions: 0 });
+```
+
+### d. Executing precompiled ASTs
+If you have pre-compiled Shift code in AST (Abstract Syntax Tree) format, you can execute it directly bypassing the compilation pipeline (Lexer/Parser). 
+
+To execute a precompiled AST, use the `executeAST` method. By default, this method recursively validates the structure and type safety of the AST against the schema. If you are executing internally trusted ASTs, you can disable validation for performance optimization:
+
+```javascript
+import { Shift } from './js_runtime/dist/shift_core_lib.mjs';
+
+const engine = new Shift();
+
+// A precompiled AST object (normally parsed/saved to JSON)
+const precompiledAST = {
+    type: "Program",
+    structs: [],
+    functions: [
+        {
+            type: "FunctionDeclaration",
+            name: "main",
+            params: [],
+            returnType: { type: "Type", name: "number" },
+            body: {
+                type: "Block",
+                statements: [
+                    {
+                        type: "ReturnStatement",
+                        value: { type: "Literal", value: 42 }
+                    }
+                ]
+            }
+        }
+    ]
+};
+
+// 1. Execute with strict AST Schema Validation (Default: true)
+const result = engine.executeAST(precompiledAST, "main", [], true);
+console.log("Result:", result); // Output: 42
+
+// 2. Execute without AST Schema Validation (for performance critical paths)
+const fastResult = engine.executeAST(precompiledAST, "main", [], false);
+console.log("Result:", fastResult); // Output: 42
+```
+
+### e. Manual AST Schema Validation
+Embedding developers can also run the AST Validator manually against the authoritative `ast_schema.json` rules:
+
+```javascript
+import { validateAST } from './js_runtime/dist/shift_core_lib.mjs';
+
+const malformedAST = { type: "Program" }; // Missing required fields
+
+try {
+    validateAST(malformedAST);
+} catch (err) {
+    console.error("AST validation failed:", err.message);
+}
 ```
 
 ---
@@ -326,7 +385,7 @@ try {
 ## 5. Shared Standard Library Orchestration
 
 To maintain exact behavioral parity and feature alignment between the Go and JavaScript runtime implementations, standard library routines written in Shift are housed centrally in a single source file:
-👉 **[go_runtime/pkg/stdlib/stdlib.shift](file:///home/nathan/Mounts/dev-home/js/shift-lang/go_runtime/pkg/stdlib/stdlib.shift)**
+👉 **go_runtime/pkg/stdlib/stdlib.shift*
 
 ### How JavaScript Integrates `stdlib.shift`
 In JavaScript, integration is split between development and production builds:
@@ -337,7 +396,25 @@ In JavaScript, integration is split between development and production builds:
 
 ---
 
-## 6. Testing & Building the Runtime
+## 6. Authoritative AST Code & Documentation Generation
+
+To establish `ast_schema.json` as the single authoritative source of truth for the Shift AST, the repository features an auto-generator script:
+👉 **js_runtime/utils/generate_ast_assets.mjs**
+
+This script parses the JSON schema at `js_runtime/src/ast_schema.json` and automatically generates/overwrites:
+1. `go_runtime/pkg/ast/ast.go` (Go structural definitions)
+2. `go_runtime/pkg/ast/unmarshal.go` (Go JSON deserializer routines)
+3. `ast_specification.md` (Language AST markdown specification)
+
+### Running the Generator
+If you add or update nodes in the schema, run the asset generator script to ensure Go runtime and markdown documentation consistency:
+```bash
+node js_runtime/utils/generate_ast_assets.mjs
+```
+
+---
+
+## 7. Testing & Building the Runtime
 
 ### Unified Cross-Runtime Testing (JS ➔ Go JSON Porting)
 To maintain absolute behavioral consistency and feature parity between the Go and JavaScript implementations:
@@ -372,3 +449,4 @@ To build a standalone web playground:
 node js_runtime/utils/build_docs.js
 ```
 This automatically runs standard and core builders, generates a `Version YY.MM.DD.HHMM` timestamp, bundles CSS/HTML assets, and compiles them into `docs/index.html`.
+

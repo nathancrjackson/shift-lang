@@ -1,4 +1,6 @@
-# Go Developer Deep Dive: Integrating & Building Shift
+# Go Developer Deep Dive
+
+_Integrating & Building Shift_
 
 This document provides technical instructions for developers looking to integrate the Shift scripting engine into Go host applications, customise the runtime, move data between the host and interpreter, and build/test the codebase.
 
@@ -521,7 +523,7 @@ func main() {
 ## 5. Shared Standard Library Orchestration
 
 To maintain exact behavioral parity and feature alignment between the Go and JavaScript runtime implementations, standard library routines written in Shift are housed centrally in a single source file:
-👉 **[go_runtime/pkg/stdlib/stdlib.shift](file:///home/nathan/Mounts/dev-home/js/shift-lang/go_runtime/pkg/stdlib/stdlib.shift)**
+👉 **go_runtime/pkg/stdlib/stdlib.shift**
 
 ### How Go Integrates `stdlib.shift`
 1. **Embedding**: Go utilizes the standard compiler `embed` package inside `go_runtime/pkg/stdlib/stdlib.go` to import `stdlib.shift` statically as `Source` string at build time.
@@ -529,7 +531,23 @@ To maintain exact behavioral parity and feature alignment between the Go and Jav
 
 ---
 
-## 6. Testing & Building the Runtime
+## 6. Authoritative AST Code Generation
+
+To ensure 1:1 parity between the Go AST package (`go_runtime/pkg/ast`) and the language's formal JSON schema, both `go_runtime/pkg/ast/ast.go` and `go_runtime/pkg/ast/unmarshal.go` are completely auto-generated from the authoritative JSON schema:
+👉 **js_runtime/src/ast_schema.json**
+
+### Running the Code Generator
+When schema changes are made, run the Node.js generator script to update the Go AST packages and the Markdown specification documentation:
+```bash
+node js_runtime/utils/generate_ast_assets.mjs
+```
+
+> [!WARNING]
+> Do not modify `go_runtime/pkg/ast/ast.go` or `go_runtime/pkg/ast/unmarshal.go` manually. Any manual edits will be overwritten the next time the asset generator script is executed.
+
+---
+
+## 7. Testing & Building the Runtime
 
 ### Running Go Tests
 To execute the Go runtime tests (including bounds correctness, parsing safety limits, and JS-serialized compatibility JSON test vectors):
@@ -551,3 +569,4 @@ To maintain consistent Go formatting across packages:
 cd go_runtime/
 go fmt ./...
 ```
+
