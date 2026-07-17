@@ -9,7 +9,7 @@ export const structs_tests = {
     {
         "tests": [{ call: "main()", type: "number", expect: 0 }],
         "code":
-`struct Address [
+            `struct Address [
     string street,
     number zip
 ]
@@ -18,13 +18,13 @@ function main() number {
     return 0;
 }`
     }
-,
+    ,
 
     "Immutable Field Definition":
     {
         "tests": [{ call: "main()", type: "number", expect: 0 }],
         "code":
-`struct Account [
+            `struct Account [
     string $uid,
     string username
 ]
@@ -33,26 +33,26 @@ function main() number {
     return 0;
 }`
     }
-,
+    ,
 
     "Nested Definition Error":
     {
         "tests": [{ type: "parser_error", expect: "Nested structs are not allowed. Define types at top level." }],
         "code":
-`struct User [
+            `struct User [
     string name,
     struct address [
         string street
     ]
 ]`
     }
-,
+    ,
 
     "Hoisting":
     {
         "tests": [{ call: "main()", type: "number", expect: 0 }],
         "code":
-`struct User [
+            `struct User [
     string name,
     Address home // Address is defined BELOW
 ]
@@ -66,13 +66,13 @@ function main() number {
     return 0;
 }`
     }
-,
+    ,
 
     "Flat Initialization (Zero Value)":
     {
         "tests": [{ call: "main()", type: "number", expect: 0 }],
         "code":
-`struct Point [
+            `struct Point [
     number x,
     number y
 ]
@@ -82,13 +82,13 @@ function main() number {
     return p["x"] + p["y"];
 }`
     }
-,
+    ,
 
     "Flat Initialization (Map Syntax)":
     {
         "tests": [{ call: "main(10,20)", type: "number", expect: 30 }],
         "code":
-`struct Point [
+            `struct Point [
     number x,
     number y
 ]
@@ -98,13 +98,13 @@ function main(number x, number y) number {
     return p["x"] + p["y"];
 }`
     }
-,
+    ,
 
     "Immutable Initialization (Map Syntax with some Zero Value)":
     {
-    "tests": [{ call: "main(\"testuid\")", type: "string", expect: "testuid" }],
-    "code":
-`struct Account [
+        "tests": [{ call: "main(\"testuid\")", type: "string", expect: "testuid" }],
+        "code":
+            `struct Account [
     string $uid,
     string username
 ]
@@ -114,13 +114,13 @@ function main(string x) string {
     return p["$uid"];
 }`
     }
-,
+    ,
 
     "Nested Initialization (Zero Value)":
     {
         "tests": [{ call: "main()", type: "string", expect: " lives in " }],
         "code":
-`struct Address [
+            `struct Address [
     string city
 ]
 
@@ -134,13 +134,13 @@ function main() string {
     return u["name"] & " lives in " & u["addr"]["city"];
 }`
     }
-,
+    ,
 
     "Nested Initialization (Map Syntax)":
     {
         "tests": [{ call: "main(\"John\", \"Melbourne\")", type: "string", expect: "John lives in Melbourne" }],
         "code":
-`struct Address [
+            `struct Address [
     string city
 ]
 
@@ -154,13 +154,13 @@ function main(string name, string city) string {
     return u["name"] & " lives in " & u["addr"]["city"];
 }`
     }
-,
+    ,
 
     "Schema error":
     {
         "tests": [{ type: "parser_error", expect: "Cannot set Struct element that is not in its defined schema" }],
         "code":
-`struct User [
+            `struct User [
     string name
 ]
 
@@ -170,13 +170,13 @@ function main() bool {
     return u["candrive"];
 }`
     }
-,
+    ,
 
     "Immutable Initialization error no value":
     {
-    "tests": [{ type: "parser_error", expect: "Cannot zero-initialize struct 'Account' because required field '$uid' is missing." }],
-    "code":
-`struct Account [
+        "tests": [{ type: "parser_error", expect: "Cannot zero-initialize struct 'Account' because required field '$uid' is missing." }],
+        "code":
+            `struct Account [
     string $uid,
     string username
 ]
@@ -186,13 +186,13 @@ function main(string x) string {
     return p["$uid"];
 }`
     }
-,
+    ,
 
     "Immutable Initialization error cannot change value":
     {
-    "tests": [{ type: "parser_error", expect: "Cannot assign to immutable field '$uid'." }],
-    "code":
-`struct Account [
+        "tests": [{ type: "parser_error", expect: "Cannot assign to immutable field '$uid'." }],
+        "code":
+            `struct Account [
     string $uid,
     string username
 ]
@@ -203,13 +203,13 @@ function main(string x) string {
     return p["$uid"];
 }`
     }
-,
+    ,
 
     "Delete error":
     {
         "tests": [{ type: "parser_error", expect: "Cannot delete Struct elements" }],
         "code":
-`struct User [
+            `struct User [
     string name,
     bool candrive
 ]
@@ -220,13 +220,13 @@ function main() bool {
     return u["candrive"];
 }`
     }
-,
+    ,
 
     "Usage in List":
     {
         "tests": [{ call: "main()", type: "string", expect: "User at index 0" }],
         "code":
-`struct User [
+            `struct User [
     string name
 ]
 
@@ -237,13 +237,13 @@ function main() string {
     return user_list[0]["name"];
 }`
     }
-,
+    ,
 
     "Inline usage in List":
     {
-        "tests":  [{ call: "main(\"User at index 1\")", type: "string", expect: "User at index 1" }],
+        "tests": [{ call: "main(\"User at index 1\")", type: "string", expect: "User at index 1" }],
         "code":
-`struct User [
+            `struct User [
     string name
 ]
 
@@ -255,13 +255,13 @@ function main(string some_name) string {
     return user_list[1]["name"];
 }`
     }
-,
+    ,
 
     "Type error":
     {
         "tests": [{ type: "parser_error", expect: "Struct value type mismatch." }],
         "code":
-`struct User [
+            `struct User [
     string name
 ]
 
@@ -270,13 +270,13 @@ function main() string {
     return u["name"];
 }`
     }
-,
+    ,
 
     "Return type error":
     {
         "tests": [{ type: "parser_error", expect: "Return type mismatch." }],
         "code":
-`struct User [
+            `struct User [
     string name
 ]
 
@@ -287,13 +287,13 @@ function main() number {
     return user_list[0]["name"];
 }`
     }
-,
+    ,
 
     "Nested return type error":
     {
         "tests": [{ type: "parser_error", expect: "Return type mismatch." }],
         "code":
-`struct User [
+            `struct User [
     string name
 ]
 
@@ -304,13 +304,13 @@ function main() number {
     return user_list[0]["name"];
 }`
     }
-,
+    ,
 
     "Direct recursion error":
     {
         "tests": [{ type: "parser_error", expect: "Recursive struct definition detected for 'Node'. Use 'nullable<Node>' or 'list<Node>' to break the cycle." }],
         "code":
-`struct Node [
+            `struct Node [
     string val,
     Node next
 ]
@@ -320,13 +320,13 @@ function main() string {
     return n["val"];
 }`
     }
-,
+    ,
 
     "Recursive wrapped as nullable":
     {
         "tests": [{ call: "main()", type: "string", expect: "null" }],
         "code":
-`struct Node [
+            `struct Node [
     string val,
     nullable<Node> next
 ]
@@ -336,13 +336,13 @@ function main() string {
     return type of n["next"];
 }`
     }
-,
+    ,
 
     "Circular zero-value error":
     {
         "tests": [{ type: "parser_error", expect: "Circular struct definition detected: NodeA -> NodeB -> NodeC -> NodeD -> NodeA. Use 'nullable' or 'list' generics to break the cycle." }],
         "code":
-`struct NodeA [
+            `struct NodeA [
     string val,
     NodeB next
 ]
@@ -367,13 +367,13 @@ function main() string {
     return n["val"];
 }`
     }
-,
+    ,
 
     "Circular struct wrapped as nullable":
     {
         "tests": [{ call: "main()", type: "bool", expect: true }],
         "code":
-`struct NodeA [
+            `struct NodeA [
     string val,
     NodeB next
 ]
@@ -396,6 +396,93 @@ struct NodeD [
 function main() bool {
     NodeA n;
     return (n["next"]["next"]["next"]["next"] == null);
+}`
+    },
+
+    "Zero Value initialisation of direct struct property":
+    {
+        "tests": [{ call: "main()", type: "bool", expect: false }],
+        "code":
+            `struct User [
+	number id,
+	string name,
+	bool has_loggedin
+]
+
+function main() bool {
+
+	User my_user = [
+		"id": 1,
+		"name": "Tom"
+	];
+
+	return my_user["has_loggedin"];
+}`
+    },
+
+    "Zero Value initialisation of struct property":
+    {
+        "tests": [{ call: "main()", type: "bool", expect: false }],
+        "code":
+            `struct User [
+	number id,
+	string name,
+	bool has_loggedin
+]
+
+function main() bool {
+	User my_user;
+
+	my_user = [
+		"id": 1,
+		"name": "Tom"
+	];
+
+	return my_user["has_loggedin"];
+}`
+    },
+
+    "Zero Value initialisation of struct property in list":
+    {
+        "tests": [{ call: "main()", type: "bool", expect: false }],
+        "code":
+            `struct User [
+	number id,
+	string name,
+	bool has_loggedin
+]
+
+function main() bool {
+	list<User> user_list;
+
+	user_list[] = [
+		"id": 1,
+		"name": "Tom"
+	];
+
+	return user_list[0]["has_loggedin"];
+}`
+    },
+
+    "Zero Value initialisation of struct property in map":
+    {
+        "tests": [{ call: "main()", type: "bool", expect: false }],
+        "code":
+            `struct User [
+	number id,
+	string name,
+	bool has_loggedin
+]
+
+function main() bool {
+	map<User> user_map;
+
+	user_map["tom"] = [
+		"id": 1,
+		"name": "Tom"
+	];
+
+	return user_map["tom"]["has_loggedin"];
 }`
     }
 };
