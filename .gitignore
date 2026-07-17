@@ -4,11 +4,15 @@ local/
 
 # Excluded generated content
 docs/*.html
+docs/*.json
+docs/*.css
+docs/*.js
 go_runtime/dist/*.shift
 go_runtime/dist/shift
 go_runtime/dist/shift.exe
 js_runtime/dist/*.mjs
+js_runtime/unit_tests/demo_ast_stree.json
 go_runtime/unit_tests/tests_json/
 
-# Randome outputs
+# Random outputs
 *.txt
