@@ -12,13 +12,13 @@ export const complex_tests = {
             { call: "get_city_value(\"SYDNEY\", \"temperature\")", type: "string", expect: "25" }
         ],
         "code":
-`function build_city_report(string name, list<string> data, map<any> meta) map<any> {
+            `function build_city_report(string name, list<string> data, map<any> meta) map<any> {
 
     number temp_c = 0;
     try {
         temp_c = data[1] as number;
     } catch {
-        print_line($throw_message);
+        print_line($thrown_message);
         throw error "Could not convert temp to number";
     }
 
@@ -90,7 +90,7 @@ function get_city_value(string target_city, string data_key) string {
             { call: "main()", type: "number", expect: 0 }
         ],
         "code":
-`
+            `
 struct User [
     string $name, // 1. The prefix $ indicates fields that are both required and immutable
     string role,
@@ -122,7 +122,7 @@ function main() number {
             throw error "Invalid login count";
         }
     } catch {
-        print_textline("Audit failed: " + $thrown_message);
+        print_textline("Audit failed: " & $thrown_message);
         return 1;
     }
 
@@ -141,7 +141,7 @@ function print_textline(string msg) none {
             { call: "do_rolls()", type: "number", expect: 0 }
         ],
         "code":
-`
+            `
 function do_rolls() number {
     number total_count = 0;
     number nat_count = 0;
@@ -166,6 +166,35 @@ function do_rolls() number {
     }
 
     return 2;
+}
+`
+    },
+    "Map Struct Property Assignment":
+    {
+        "tests": [
+            { call: "main()", type: "number", expect: 1 }
+        ],
+        "code":
+            `
+struct User [
+	number id,
+	string name,
+	bool has_loggedin
+]
+
+function main() number {
+
+	string username = "Terry";
+
+	map<User> user_list;
+	user_list[username] = [
+		"id": 1,
+		"name": username
+	];
+
+	user_list[username]["has_loggedin"] = true;
+
+	return user_list[username]["id"];
 }
 `
     }
