@@ -204,6 +204,7 @@ Expressions represent computations that yield values.
 | **MagicVariable** | `name: string` | `$pipe_value`, `$thrown_message` |
 | **ListLiteral** | `elements: []Expression` | `[1, 2, 3]` |
 | **MapLiteral** | `entries: []MapEntry` | `["key": "value"]` |
+| **StructLiteral** | `structName: string`, `entries: []MapEntry` | `User ["name": "Tom"]` |
 | **Grouping** | `expression: Expression` | `(x + y)` |
 
 ---

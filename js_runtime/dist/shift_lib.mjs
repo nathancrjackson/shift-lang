@@ -1,6 +1,6 @@
 /**
  * Shift Script Library (Standard Mode)
- * Bundled at: 2026-07-17T23:03:49.160Z
+ * Bundled at: 2026-07-18T12:02:08.434Z
  */
 
 // --- Source: token_enums.mjs ---
@@ -705,28 +705,17 @@ export class ExpressionParser {
                 };
             }
             else if (expr.type === "IndexExpression") {
-
-                let depth = 0;
-                let root = expr;
-
-                // 1. Drill down to find the root Variable
-                while (root.type === "IndexExpression") {
-                    depth++;
-                    root = root.object;
-                }
-
                 let updatedValue = value;
+                let containerType = this.parser.resolveTypeAnnotation(expr.object);
 
-                if (root.type === "Variable") {
-                    const varName = root.name;
-                    const varType = this.parser.getVariable(varName);
+                if (containerType) {
+                    while (containerType.name === "nullable" && containerType.generic) {
+                        containerType = containerType.generic;
+                    }
 
                     // --- STRUCT VALIDATION ---
-                    if (varType && varType.type === "StructType") {
-                        // Validate assignment to a struct field
-
-                        const containerTypeName = this.parser.inferType(expr.object);
-
+                    if (containerType.type === "StructType") {
+                        const containerTypeName = containerType.name;
                         if (this.parser.structDefinitions.has(containerTypeName)) {
                             const def = this.parser.structDefinitions.get(containerTypeName);
 
@@ -741,37 +730,24 @@ export class ExpressionParser {
                             // 2. Validate Schema Existence
                             if (!field) {
                                 throw this.parser.addError(expr.index, "Cannot set Struct element that is not in its defined schema");
-                            }
+                            } else {
+                                // 3. IMMUTABILITY CHECK
+                                if (field.name.startsWith('$')) {
+                                    throw this.parser.addError(equalsToken, `Cannot assign to immutable field '${field.name}'.`);
+                                }
 
-                            // 3. IMMUTABILITY CHECK
-                            if (field.name.startsWith('$')) {
-                                throw this.parser.addError(equalsToken, `Cannot assign to immutable field '${field.name}'.`);
-                            }
-
-                            // 4. Validate Value Type (USING CENTRALIZED LOGIC)
-                            // Note: Field type is the target, value is the expression
-                            try {
-                                // Struct fields expect specific message if type check fails
-                                updatedValue = this.parser.validateAssignment(field.type, value, equalsToken, "Struct field type mismatch.");
-                            } catch (e) {
-                                // Suppress internal throw
+                                // 4. Validate Value Type (USING CENTRALIZED LOGIC)
+                                try {
+                                    updatedValue = this.parser.validateAssignment(field.type, value, equalsToken, "Struct field type mismatch.");
+                                } catch (e) {
+                                    // Suppress internal throw
+                                }
                             }
                         }
                     }
-                    // --- END STRUCT VALIDATION ---
-
-                    else if (varType && varType.generic) {
-
-                        let currentGeneric = varType.generic;
-                        let currentDepth = depth;
-
-                        while (currentDepth > 1 && currentGeneric && currentGeneric.generic) {
-                            currentGeneric = currentGeneric.generic;
-                            currentDepth--;
-                        }
-
-                        // MAP CHECKS
-                        if (varType.name === "map" && depth === 1) {
+                    // --- MAP & LIST VALIDATION ---
+                    else if (containerType.name === "map" || containerType.name === "list") {
+                        if (containerType.name === "map") {
                             if (expr.index === null) {
                                 throw this.parser.addError(equalsToken, "Cannot push to Map without a key.");
                             }
@@ -781,16 +757,16 @@ export class ExpressionParser {
                             }
                         }
 
-                        // VALUE TYPE CHECK (USING CENTRALIZED LOGIC)
-                        // The target type is 'currentGeneric' (the type held inside the list/map)
-                        try {
-                            const errorMsg = varType.name === "map"
-                                ? "Map value type mismatch."
-                                : "List variable assignment type mismatch.";
+                        if (containerType.generic) {
+                            try {
+                                const errorMsg = containerType.name === "map"
+                                    ? "Map value type mismatch."
+                                    : "List variable assignment type mismatch.";
 
-                            updatedValue = this.parser.validateAssignment(currentGeneric, value, equalsToken, errorMsg);
-                        } catch (e) {
-                            // Suppress internal throw, errors are in parser.errors
+                                updatedValue = this.parser.validateAssignment(containerType.generic, value, equalsToken, errorMsg);
+                            } catch (e) {
+                                // Suppress internal throw
+                            }
                         }
                     }
                 }
@@ -1598,6 +1574,1084 @@ export class ExpressionParser {
     }
 }
 
+// --- Source: ast_schema.json ---
+const schema = {
+	"$schema": "http://json-schema.org/draft-07/schema#",
+	"version": "1.1.0",
+	"title": "Shift Script AST",
+	"description": "Abstract Syntax Tree specification for the Shift Script language.",
+	"type": "object",
+	"definitions": {
+		"Node": {
+			"type": "object",
+			"required": [
+				"type",
+				"start",
+				"end"
+			],
+			"properties": {
+				"type": {
+					"type": "string"
+				},
+				"start": {
+					"type": "integer",
+					"description": "Start index in source code"
+				},
+				"end": {
+					"type": "integer",
+					"description": "End index in source code"
+				},
+				"line": {
+					"type": "integer",
+					"description": "Line number in source code"
+				}
+			}
+		},
+		"TypeAnnotation": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"enum": [
+						"Type",
+						"StructType"
+					]
+				},
+				"name": {
+					"type": "string"
+				},
+				"generic": {
+					"$ref": "#/definitions/TypeAnnotation"
+				}
+			},
+			"required": [
+				"type",
+				"name"
+			]
+		},
+		"Program": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "Program"
+						},
+						"version": {
+							"type": "string"
+						},
+						"structs": {
+							"type": "array",
+							"items": {
+								"$ref": "#/definitions/StructDeclaration"
+							}
+						},
+						"functions": {
+							"type": "array",
+							"items": {
+								"$ref": "#/definitions/FunctionDeclaration"
+							}
+						}
+					}
+				}
+			]
+		},
+		"StructDeclaration": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "StructDeclaration"
+						},
+						"name": {
+							"type": "string"
+						},
+						"fields": {
+							"type": "array",
+							"items": {
+								"type": "object",
+								"properties": {
+									"name": {
+										"type": "string"
+									},
+									"type": {
+										"$ref": "#/definitions/TypeAnnotation"
+									}
+								},
+								"required": [
+									"name",
+									"type"
+								]
+							}
+						}
+					}
+				}
+			]
+		},
+		"FunctionDeclaration": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "FunctionDeclaration"
+						},
+						"name": {
+							"type": "string"
+						},
+						"params": {
+							"type": "array",
+							"items": {
+								"type": "object",
+								"properties": {
+									"type": {
+										"const": "Parameter"
+									},
+									"name": {
+										"type": "string"
+									},
+									"dataType": {
+										"$ref": "#/definitions/TypeAnnotation"
+									}
+								}
+							}
+						},
+						"returnType": {
+							"$ref": "#/definitions/TypeAnnotation"
+						},
+						"body": {
+							"$ref": "#/definitions/Block"
+						}
+					}
+				}
+			]
+		},
+		"Block": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "Block"
+						},
+						"statements": {
+							"type": "array",
+							"items": {
+								"$ref": "#/definitions/Statement"
+							}
+						}
+					}
+				}
+			]
+		},
+		"Statement": {
+			"oneOf": [
+				{
+					"$ref": "#/definitions/VariableDeclaration"
+				},
+				{
+					"$ref": "#/definitions/ReturnStatement"
+				},
+				{
+					"$ref": "#/definitions/IfStatement"
+				},
+				{
+					"$ref": "#/definitions/WhileStatement"
+				},
+				{
+					"$ref": "#/definitions/ForRangeStatement"
+				},
+				{
+					"$ref": "#/definitions/ForInStatement"
+				},
+				{
+					"$ref": "#/definitions/BreakStatement"
+				},
+				{
+					"$ref": "#/definitions/SkipStatement"
+				},
+				{
+					"$ref": "#/definitions/TryStatement"
+				},
+				{
+					"$ref": "#/definitions/ThrowStatement"
+				},
+				{
+					"$ref": "#/definitions/DeleteStatement"
+				},
+				{
+					"$ref": "#/definitions/ExpressionStatement"
+				}
+			]
+		},
+		"VariableDeclaration": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "VariableDeclaration"
+						},
+						"name": {
+							"type": "string"
+						},
+						"varType": {
+							"$ref": "#/definitions/TypeAnnotation"
+						},
+						"initializer": {
+							"oneOf": [
+								{
+									"$ref": "#/definitions/Expression"
+								},
+								{
+									"type": "null"
+								}
+							]
+						}
+					}
+				}
+			]
+		},
+		"ExpressionStatement": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "ExpressionStatement"
+						},
+						"expression": {
+							"$ref": "#/definitions/Expression"
+						}
+					}
+				}
+			]
+		},
+		"IfStatement": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "IfStatement"
+						},
+						"condition": {
+							"$ref": "#/definitions/Expression"
+						},
+						"thenBranch": {
+							"$ref": "#/definitions/Block"
+						},
+						"elseBranch": {
+							"oneOf": [
+								{
+									"$ref": "#/definitions/IfStatement"
+								},
+								{
+									"$ref": "#/definitions/Block"
+								},
+								{
+									"type": "null"
+								}
+							]
+						}
+					}
+				}
+			]
+		},
+		"WhileStatement": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "WhileStatement"
+						},
+						"condition": {
+							"$ref": "#/definitions/Expression"
+						},
+						"body": {
+							"$ref": "#/definitions/Block"
+						}
+					}
+				}
+			]
+		},
+		"ForRangeStatement": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "ForRangeStatement"
+						},
+						"iterator": {
+							"type": "string"
+						},
+						"startValue": {
+							"$ref": "#/definitions/Expression"
+						},
+						"endValue": {
+							"$ref": "#/definitions/Expression"
+						},
+						"body": {
+							"$ref": "#/definitions/Block"
+						}
+					}
+				}
+			]
+		},
+		"ForInStatement": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "ForInStatement"
+						},
+						"iterator": {
+							"type": "string"
+						},
+						"valueIterator": {
+							"type": [
+								"string",
+								"null"
+							]
+						},
+						"collection": {
+							"$ref": "#/definitions/Expression"
+						},
+						"body": {
+							"$ref": "#/definitions/Block"
+						}
+					}
+				}
+			]
+		},
+		"ReturnStatement": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "ReturnStatement"
+						},
+						"value": {
+							"oneOf": [
+								{
+									"$ref": "#/definitions/Expression"
+								},
+								{
+									"type": "null"
+								}
+							]
+						}
+					}
+				}
+			]
+		},
+		"ThrowStatement": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "ThrowStatement"
+						},
+						"severity": {
+							"enum": [
+								"alert",
+								"error",
+								"critical"
+							]
+						},
+						"argument": {
+							"$ref": "#/definitions/Expression"
+						}
+					}
+				}
+			]
+		},
+		"TryStatement": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "TryStatement"
+						},
+						"tryBlock": {
+							"$ref": "#/definitions/Block"
+						},
+						"catchIdentifier": {
+							"type": "string"
+						},
+						"catchBlock": {
+							"$ref": "#/definitions/Block"
+						},
+						"reviewBlock": {
+							"oneOf": [
+								{
+									"$ref": "#/definitions/Block"
+								},
+								{
+									"type": "null"
+								}
+							]
+						}
+					}
+				}
+			]
+		},
+		"BreakStatement": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "BreakStatement"
+						}
+					}
+				}
+			]
+		},
+		"SkipStatement": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "SkipStatement"
+						}
+					}
+				}
+			]
+		},
+		"DeleteStatement": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "DeleteStatement"
+						},
+						"target": {
+							"$ref": "#/definitions/IndexExpression"
+						}
+					}
+				}
+			]
+		},
+		"Expression": {
+			"oneOf": [
+				{
+					"$ref": "#/definitions/Assignment"
+				},
+				{
+					"$ref": "#/definitions/IndexAssignment"
+				},
+				{
+					"$ref": "#/definitions/PipelineExpression"
+				},
+				{
+					"$ref": "#/definitions/BinaryExpression"
+				},
+				{
+					"$ref": "#/definitions/UnaryExpression"
+				},
+				{
+					"$ref": "#/definitions/CallExpression"
+				},
+				{
+					"$ref": "#/definitions/IndexExpression"
+				},
+				{
+					"$ref": "#/definitions/CastExpression"
+				},
+				{
+					"$ref": "#/definitions/InspectExpression"
+				},
+				{
+					"$ref": "#/definitions/PackExpression"
+				},
+				{
+					"$ref": "#/definitions/UnpackExpression"
+				},
+				{
+					"$ref": "#/definitions/SizeOfExpression"
+				},
+				{
+					"$ref": "#/definitions/TypeOfExpression"
+				},
+				{
+					"$ref": "#/definitions/IsExpression"
+				},
+				{
+					"$ref": "#/definitions/ReplaceExpression"
+				},
+				{
+					"$ref": "#/definitions/SplitExpression"
+				},
+				{
+					"$ref": "#/definitions/JoinExpression"
+				},
+				{
+					"$ref": "#/definitions/Literal"
+				},
+				{
+					"$ref": "#/definitions/Variable"
+				},
+				{
+					"$ref": "#/definitions/MagicVariable"
+				},
+				{
+					"$ref": "#/definitions/ListLiteral"
+				},
+				{
+					"$ref": "#/definitions/MapLiteral"
+				},
+				{
+					"$ref": "#/definitions/StructLiteral"
+				},
+				{
+					"$ref": "#/definitions/Grouping"
+				}
+			]
+		},
+		"Literal": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "Literal"
+						},
+						"value": {
+							"type": [
+								"number",
+								"string",
+								"boolean",
+								"null"
+							]
+						}
+					}
+				}
+			]
+		},
+		"Variable": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "Variable"
+						},
+						"name": {
+							"type": "string"
+						}
+					}
+				}
+			]
+		},
+		"MagicVariable": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "MagicVariable"
+						},
+						"name": {
+							"type": "string"
+						}
+					}
+				}
+			]
+		},
+		"Assignment": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "Assignment"
+						},
+						"name": {
+							"type": "string"
+						},
+						"value": {
+							"$ref": "#/definitions/Expression"
+						}
+					}
+				}
+			]
+		},
+		"IndexAssignment": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "IndexAssignment"
+						},
+						"object": {
+							"$ref": "#/definitions/Expression"
+						},
+						"index": {
+							"oneOf": [
+								{
+									"$ref": "#/definitions/Expression"
+								},
+								{
+									"type": "null"
+								}
+							]
+						},
+						"value": {
+							"$ref": "#/definitions/Expression"
+						}
+					}
+				}
+			]
+		},
+		"BinaryExpression": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "BinaryExpression"
+						},
+						"operator": {
+							"type": "string"
+						},
+						"left": {
+							"$ref": "#/definitions/Expression"
+						},
+						"right": {
+							"$ref": "#/definitions/Expression"
+						}
+					}
+				}
+			]
+		},
+		"UnaryExpression": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "UnaryExpression"
+						},
+						"operator": {
+							"type": "string"
+						},
+						"argument": {
+							"$ref": "#/definitions/Expression"
+						}
+					}
+				}
+			]
+		},
+		"PipelineExpression": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "PipelineExpression"
+						},
+						"left": {
+							"$ref": "#/definitions/Expression"
+						},
+						"right": {
+							"$ref": "#/definitions/Expression"
+						}
+					}
+				}
+			]
+		},
+		"CallExpression": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "CallExpression"
+						},
+						"callee": {
+							"type": "string"
+						},
+						"arguments": {
+							"type": "array",
+							"items": {
+								"$ref": "#/definitions/Expression"
+							}
+						}
+					}
+				}
+			]
+		},
+		"IndexExpression": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "IndexExpression"
+						},
+						"object": {
+							"$ref": "#/definitions/Expression"
+						},
+						"index": {
+							"$ref": "#/definitions/Expression"
+						}
+					}
+				}
+			]
+		},
+		"ListLiteral": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "ListLiteral"
+						},
+						"elements": {
+							"type": "array",
+							"items": {
+								"$ref": "#/definitions/Expression"
+							}
+						}
+					}
+				}
+			]
+		},
+		"MapLiteral": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "MapLiteral"
+						},
+						"entries": {
+							"type": "array",
+							"items": {
+								"type": "object",
+								"properties": {
+									"key": {
+										"$ref": "#/definitions/Expression"
+									},
+									"value": {
+										"$ref": "#/definitions/Expression"
+									}
+								}
+							}
+						}
+					}
+				}
+			]
+		},
+		"StructLiteral": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "StructLiteral"
+						},
+						"structName": {
+							"type": "string"
+						},
+						"entries": {
+							"type": "array",
+							"items": {
+								"type": "object",
+								"properties": {
+									"key": {
+										"$ref": "#/definitions/Expression"
+									},
+									"value": {
+										"$ref": "#/definitions/Expression"
+									}
+								}
+							}
+						}
+					}
+				}
+			]
+		},
+		"Grouping": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "Grouping"
+						},
+						"expression": {
+							"$ref": "#/definitions/Expression"
+						}
+					}
+				}
+			]
+		},
+		"CastExpression": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "CastExpression"
+						},
+						"value": {
+							"$ref": "#/definitions/Expression"
+						},
+						"targetType": {
+							"$ref": "#/definitions/TypeAnnotation"
+						}
+					}
+				}
+			]
+		},
+		"InspectExpression": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "InspectExpression"
+						},
+						"argument": {
+							"$ref": "#/definitions/Expression"
+						}
+					}
+				}
+			]
+		},
+		"PackExpression": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "PackExpression"
+						},
+						"argument": {
+							"$ref": "#/definitions/Expression"
+						}
+					}
+				}
+			]
+		},
+		"UnpackExpression": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "UnpackExpression"
+						},
+						"argument": {
+							"$ref": "#/definitions/Expression"
+						}
+					}
+				}
+			]
+		},
+		"SizeOfExpression": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "SizeOfExpression"
+						},
+						"argument": {
+							"$ref": "#/definitions/Expression"
+						}
+					}
+				}
+			]
+		},
+		"TypeOfExpression": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "TypeOfExpression"
+						},
+						"argument": {
+							"$ref": "#/definitions/Expression"
+						}
+					}
+				}
+			]
+		},
+		"IsExpression": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "IsExpression"
+						},
+						"left": {
+							"$ref": "#/definitions/Expression"
+						},
+						"check": {
+							"type": "string"
+						},
+						"isNot": {
+							"type": "boolean"
+						}
+					}
+				}
+			]
+		},
+		"ReplaceExpression": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "ReplaceExpression"
+						},
+						"source": {
+							"$ref": "#/definitions/Expression"
+						},
+						"pattern": {
+							"$ref": "#/definitions/Expression"
+						},
+						"replacement": {
+							"$ref": "#/definitions/Expression"
+						}
+					}
+				}
+			]
+		},
+		"SplitExpression": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "SplitExpression"
+						},
+						"source": {
+							"$ref": "#/definitions/Expression"
+						},
+						"delimiter": {
+							"$ref": "#/definitions/Expression"
+						}
+					}
+				}
+			]
+		},
+		"JoinExpression": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "JoinExpression"
+						},
+						"source": {
+							"$ref": "#/definitions/Expression"
+						},
+						"delimiter": {
+							"$ref": "#/definitions/Expression"
+						}
+					}
+				}
+			]
+		}
+	},
+	"$ref": "#/definitions/Program"
+};
+
 // --- Source: parser.mjs ---
 
 export class Parser {
@@ -1864,6 +2918,7 @@ export class Parser {
         switch (expr.type) {
             case "ListLiteral": return "list";
             case "MapLiteral": return "map";
+            case "StructLiteral": return expr.structName;
             case "InspectExpression": return "InspectionResult"; // Hardcoded expectation of StdLib struct
             case "PackExpression": return "string";
             case "UnpackExpression": return "list";
@@ -1985,6 +3040,38 @@ export class Parser {
         }
     }
 
+    resolveTypeAnnotation(expr) {
+        if (!expr) return null;
+        if (expr.type === "Variable") {
+            const t = this.getVariable(expr.name);
+            return t ? { type: t.type, name: t.name, generic: t.generic } : null;
+        }
+        if (expr.type === "IndexExpression") {
+            let parentType = this.resolveTypeAnnotation(expr.object);
+            if (!parentType) return null;
+
+            // Unwrap nullable
+            let current = parentType;
+            while (current.name === "nullable" && current.generic) {
+                current = current.generic;
+            }
+
+            if (current.name === "map" || current.name === "list") {
+                return current.generic;
+            }
+            if (current.type === "StructType") {
+                const def = this.structDefinitions.get(current.name);
+                if (!def) return null;
+                if (expr.index.type === "Literal" && typeof expr.index.value === "string") {
+                    const field = def.fields.find(f => f.name === expr.index.value);
+                    return field ? field.type : null;
+                }
+            }
+        }
+        const typeName = this.inferType(expr);
+        return { type: "Type", name: typeName };
+    }
+
     enterScope() { this.scopes.push(new Map()); }
 
     exitScope() { this.scopes.pop(); }
@@ -2018,6 +3105,7 @@ export class Parser {
             start: this.tokens[0] ? this.tokens[0].s : 0,
             end: this.tokens[this.tokens.length - 1] ? this.tokens[this.tokens.length - 1].e : 0,
             line: 1,
+            version: schema.version,
             structs: [...this.importedStructs],
             functions: [...this.importedFunctions]
         };
@@ -2654,7 +3742,7 @@ export class Parser {
                             value: this.getDefaultValue(field.type, newVisited)
                         }));
 
-                        return { type: "MapLiteral", entries: entries, start: -1, end: -1, line: -1 };
+                        return { type: "StructLiteral", structName: typeInfo.name, entries: entries, start: -1, end: -1, line: -1 };
                     }
                 }
                 return { type: "Literal", value: null, start: -1, end: -1, line: -1 };
@@ -2720,7 +3808,8 @@ export class Parser {
 
         // Clone map literal and its entries to maintain AST immutability
         const clonedLiteral = {
-            type: "MapLiteral",
+            type: "StructLiteral",
+            structName: structName,
             start: literal.start,
             end: literal.end,
             line: literal.line,
@@ -3526,6 +4615,7 @@ export class Runtime {
                 return env.get(expr.name);
             case "Variable": return env.get(expr.name);
             case "ListLiteral": return expr.elements.map(e => this.evaluate(e, env));
+            case "StructLiteral":
             case "MapLiteral": {
                 const map = new Map();
                 for (const entry of expr.entries) map.set(this.evaluate(entry.key, env), this.evaluate(entry.value, env));
@@ -4539,1047 +5629,6 @@ export const StandardLibrary = {
 	}
 };
 
-// --- Source: ast_schema.json ---
-const schema = {
-	"$schema": "http://json-schema.org/draft-07/schema#",
-	"version": "1.0.0",
-	"title": "Shift Script AST",
-	"description": "Abstract Syntax Tree specification for the Shift Script language.",
-	"type": "object",
-	"definitions": {
-		"Node": {
-			"type": "object",
-			"required": [
-				"type",
-				"start",
-				"end"
-			],
-			"properties": {
-				"type": {
-					"type": "string"
-				},
-				"start": {
-					"type": "integer",
-					"description": "Start index in source code"
-				},
-				"end": {
-					"type": "integer",
-					"description": "End index in source code"
-				},
-				"line": {
-					"type": "integer",
-					"description": "Line number in source code"
-				}
-			}
-		},
-		"TypeAnnotation": {
-			"type": "object",
-			"properties": {
-				"type": {
-					"enum": [
-						"Type",
-						"StructType"
-					]
-				},
-				"name": {
-					"type": "string"
-				},
-				"generic": {
-					"$ref": "#/definitions/TypeAnnotation"
-				}
-			},
-			"required": [
-				"type",
-				"name"
-			]
-		},
-		"Program": {
-			"allOf": [
-				{
-					"$ref": "#/definitions/Node"
-				},
-				{
-					"properties": {
-						"type": {
-							"const": "Program"
-						},
-						"structs": {
-							"type": "array",
-							"items": {
-								"$ref": "#/definitions/StructDeclaration"
-							}
-						},
-						"functions": {
-							"type": "array",
-							"items": {
-								"$ref": "#/definitions/FunctionDeclaration"
-							}
-						}
-					}
-				}
-			]
-		},
-		"StructDeclaration": {
-			"allOf": [
-				{
-					"$ref": "#/definitions/Node"
-				},
-				{
-					"properties": {
-						"type": {
-							"const": "StructDeclaration"
-						},
-						"name": {
-							"type": "string"
-						},
-						"fields": {
-							"type": "array",
-							"items": {
-								"type": "object",
-								"properties": {
-									"name": {
-										"type": "string"
-									},
-									"type": {
-										"$ref": "#/definitions/TypeAnnotation"
-									}
-								},
-								"required": [
-									"name",
-									"type"
-								]
-							}
-						}
-					}
-				}
-			]
-		},
-		"FunctionDeclaration": {
-			"allOf": [
-				{
-					"$ref": "#/definitions/Node"
-				},
-				{
-					"properties": {
-						"type": {
-							"const": "FunctionDeclaration"
-						},
-						"name": {
-							"type": "string"
-						},
-						"params": {
-							"type": "array",
-							"items": {
-								"type": "object",
-								"properties": {
-									"type": {
-										"const": "Parameter"
-									},
-									"name": {
-										"type": "string"
-									},
-									"dataType": {
-										"$ref": "#/definitions/TypeAnnotation"
-									}
-								}
-							}
-						},
-						"returnType": {
-							"$ref": "#/definitions/TypeAnnotation"
-						},
-						"body": {
-							"$ref": "#/definitions/Block"
-						}
-					}
-				}
-			]
-		},
-		"Block": {
-			"allOf": [
-				{
-					"$ref": "#/definitions/Node"
-				},
-				{
-					"properties": {
-						"type": {
-							"const": "Block"
-						},
-						"statements": {
-							"type": "array",
-							"items": {
-								"$ref": "#/definitions/Statement"
-							}
-						}
-					}
-				}
-			]
-		},
-		"Statement": {
-			"oneOf": [
-				{
-					"$ref": "#/definitions/VariableDeclaration"
-				},
-				{
-					"$ref": "#/definitions/ReturnStatement"
-				},
-				{
-					"$ref": "#/definitions/IfStatement"
-				},
-				{
-					"$ref": "#/definitions/WhileStatement"
-				},
-				{
-					"$ref": "#/definitions/ForRangeStatement"
-				},
-				{
-					"$ref": "#/definitions/ForInStatement"
-				},
-				{
-					"$ref": "#/definitions/BreakStatement"
-				},
-				{
-					"$ref": "#/definitions/SkipStatement"
-				},
-				{
-					"$ref": "#/definitions/TryStatement"
-				},
-				{
-					"$ref": "#/definitions/ThrowStatement"
-				},
-				{
-					"$ref": "#/definitions/DeleteStatement"
-				},
-				{
-					"$ref": "#/definitions/ExpressionStatement"
-				}
-			]
-		},
-		"VariableDeclaration": {
-			"allOf": [
-				{
-					"$ref": "#/definitions/Node"
-				},
-				{
-					"properties": {
-						"type": {
-							"const": "VariableDeclaration"
-						},
-						"name": {
-							"type": "string"
-						},
-						"varType": {
-							"$ref": "#/definitions/TypeAnnotation"
-						},
-						"initializer": {
-							"oneOf": [
-								{
-									"$ref": "#/definitions/Expression"
-								},
-								{
-									"type": "null"
-								}
-							]
-						}
-					}
-				}
-			]
-		},
-		"ExpressionStatement": {
-			"allOf": [
-				{
-					"$ref": "#/definitions/Node"
-				},
-				{
-					"properties": {
-						"type": {
-							"const": "ExpressionStatement"
-						},
-						"expression": {
-							"$ref": "#/definitions/Expression"
-						}
-					}
-				}
-			]
-		},
-		"IfStatement": {
-			"allOf": [
-				{
-					"$ref": "#/definitions/Node"
-				},
-				{
-					"properties": {
-						"type": {
-							"const": "IfStatement"
-						},
-						"condition": {
-							"$ref": "#/definitions/Expression"
-						},
-						"thenBranch": {
-							"$ref": "#/definitions/Block"
-						},
-						"elseBranch": {
-							"oneOf": [
-								{
-									"$ref": "#/definitions/IfStatement"
-								},
-								{
-									"$ref": "#/definitions/Block"
-								},
-								{
-									"type": "null"
-								}
-							]
-						}
-					}
-				}
-			]
-		},
-		"WhileStatement": {
-			"allOf": [
-				{
-					"$ref": "#/definitions/Node"
-				},
-				{
-					"properties": {
-						"type": {
-							"const": "WhileStatement"
-						},
-						"condition": {
-							"$ref": "#/definitions/Expression"
-						},
-						"body": {
-							"$ref": "#/definitions/Block"
-						}
-					}
-				}
-			]
-		},
-		"ForRangeStatement": {
-			"allOf": [
-				{
-					"$ref": "#/definitions/Node"
-				},
-				{
-					"properties": {
-						"type": {
-							"const": "ForRangeStatement"
-						},
-						"iterator": {
-							"type": "string"
-						},
-						"startValue": {
-							"$ref": "#/definitions/Expression"
-						},
-						"endValue": {
-							"$ref": "#/definitions/Expression"
-						},
-						"body": {
-							"$ref": "#/definitions/Block"
-						}
-					}
-				}
-			]
-		},
-		"ForInStatement": {
-			"allOf": [
-				{
-					"$ref": "#/definitions/Node"
-				},
-				{
-					"properties": {
-						"type": {
-							"const": "ForInStatement"
-						},
-						"iterator": {
-							"type": "string"
-						},
-						"valueIterator": {
-							"type": [
-								"string",
-								"null"
-							]
-						},
-						"collection": {
-							"$ref": "#/definitions/Expression"
-						},
-						"body": {
-							"$ref": "#/definitions/Block"
-						}
-					}
-				}
-			]
-		},
-		"ReturnStatement": {
-			"allOf": [
-				{
-					"$ref": "#/definitions/Node"
-				},
-				{
-					"properties": {
-						"type": {
-							"const": "ReturnStatement"
-						},
-						"value": {
-							"oneOf": [
-								{
-									"$ref": "#/definitions/Expression"
-								},
-								{
-									"type": "null"
-								}
-							]
-						}
-					}
-				}
-			]
-		},
-		"ThrowStatement": {
-			"allOf": [
-				{
-					"$ref": "#/definitions/Node"
-				},
-				{
-					"properties": {
-						"type": {
-							"const": "ThrowStatement"
-						},
-						"severity": {
-							"enum": [
-								"alert",
-								"error",
-								"critical"
-							]
-						},
-						"argument": {
-							"$ref": "#/definitions/Expression"
-						}
-					}
-				}
-			]
-		},
-		"TryStatement": {
-			"allOf": [
-				{
-					"$ref": "#/definitions/Node"
-				},
-				{
-					"properties": {
-						"type": {
-							"const": "TryStatement"
-						},
-						"tryBlock": {
-							"$ref": "#/definitions/Block"
-						},
-						"catchIdentifier": {
-							"type": "string"
-						},
-						"catchBlock": {
-							"$ref": "#/definitions/Block"
-						},
-						"reviewBlock": {
-							"oneOf": [
-								{
-									"$ref": "#/definitions/Block"
-								},
-								{
-									"type": "null"
-								}
-							]
-						}
-					}
-				}
-			]
-		},
-		"BreakStatement": {
-			"allOf": [
-				{
-					"$ref": "#/definitions/Node"
-				},
-				{
-					"properties": {
-						"type": {
-							"const": "BreakStatement"
-						}
-					}
-				}
-			]
-		},
-		"SkipStatement": {
-			"allOf": [
-				{
-					"$ref": "#/definitions/Node"
-				},
-				{
-					"properties": {
-						"type": {
-							"const": "SkipStatement"
-						}
-					}
-				}
-			]
-		},
-		"DeleteStatement": {
-			"allOf": [
-				{
-					"$ref": "#/definitions/Node"
-				},
-				{
-					"properties": {
-						"type": {
-							"const": "DeleteStatement"
-						},
-						"target": {
-							"$ref": "#/definitions/IndexExpression"
-						}
-					}
-				}
-			]
-		},
-		"Expression": {
-			"oneOf": [
-				{
-					"$ref": "#/definitions/Assignment"
-				},
-				{
-					"$ref": "#/definitions/IndexAssignment"
-				},
-				{
-					"$ref": "#/definitions/PipelineExpression"
-				},
-				{
-					"$ref": "#/definitions/BinaryExpression"
-				},
-				{
-					"$ref": "#/definitions/UnaryExpression"
-				},
-				{
-					"$ref": "#/definitions/CallExpression"
-				},
-				{
-					"$ref": "#/definitions/IndexExpression"
-				},
-				{
-					"$ref": "#/definitions/CastExpression"
-				},
-				{
-					"$ref": "#/definitions/InspectExpression"
-				},
-				{
-					"$ref": "#/definitions/PackExpression"
-				},
-				{
-					"$ref": "#/definitions/UnpackExpression"
-				},
-				{
-					"$ref": "#/definitions/SizeOfExpression"
-				},
-				{
-					"$ref": "#/definitions/TypeOfExpression"
-				},
-				{
-					"$ref": "#/definitions/IsExpression"
-				},
-				{
-					"$ref": "#/definitions/ReplaceExpression"
-				},
-				{
-					"$ref": "#/definitions/SplitExpression"
-				},
-				{
-					"$ref": "#/definitions/JoinExpression"
-				},
-				{
-					"$ref": "#/definitions/Literal"
-				},
-				{
-					"$ref": "#/definitions/Variable"
-				},
-				{
-					"$ref": "#/definitions/MagicVariable"
-				},
-				{
-					"$ref": "#/definitions/ListLiteral"
-				},
-				{
-					"$ref": "#/definitions/MapLiteral"
-				},
-				{
-					"$ref": "#/definitions/Grouping"
-				}
-			]
-		},
-		"Literal": {
-			"allOf": [
-				{
-					"$ref": "#/definitions/Node"
-				},
-				{
-					"properties": {
-						"type": {
-							"const": "Literal"
-						},
-						"value": {
-							"type": [
-								"number",
-								"string",
-								"boolean",
-								"null"
-							]
-						}
-					}
-				}
-			]
-		},
-		"Variable": {
-			"allOf": [
-				{
-					"$ref": "#/definitions/Node"
-				},
-				{
-					"properties": {
-						"type": {
-							"const": "Variable"
-						},
-						"name": {
-							"type": "string"
-						}
-					}
-				}
-			]
-		},
-		"MagicVariable": {
-			"allOf": [
-				{
-					"$ref": "#/definitions/Node"
-				},
-				{
-					"properties": {
-						"type": {
-							"const": "MagicVariable"
-						},
-						"name": {
-							"type": "string"
-						}
-					}
-				}
-			]
-		},
-		"Assignment": {
-			"allOf": [
-				{
-					"$ref": "#/definitions/Node"
-				},
-				{
-					"properties": {
-						"type": {
-							"const": "Assignment"
-						},
-						"name": {
-							"type": "string"
-						},
-						"value": {
-							"$ref": "#/definitions/Expression"
-						}
-					}
-				}
-			]
-		},
-		"IndexAssignment": {
-			"allOf": [
-				{
-					"$ref": "#/definitions/Node"
-				},
-				{
-					"properties": {
-						"type": {
-							"const": "IndexAssignment"
-						},
-						"object": {
-							"$ref": "#/definitions/Expression"
-						},
-						"index": {
-							"oneOf": [
-								{
-									"$ref": "#/definitions/Expression"
-								},
-								{
-									"type": "null"
-								}
-							]
-						},
-						"value": {
-							"$ref": "#/definitions/Expression"
-						}
-					}
-				}
-			]
-		},
-		"BinaryExpression": {
-			"allOf": [
-				{
-					"$ref": "#/definitions/Node"
-				},
-				{
-					"properties": {
-						"type": {
-							"const": "BinaryExpression"
-						},
-						"operator": {
-							"type": "string"
-						},
-						"left": {
-							"$ref": "#/definitions/Expression"
-						},
-						"right": {
-							"$ref": "#/definitions/Expression"
-						}
-					}
-				}
-			]
-		},
-		"UnaryExpression": {
-			"allOf": [
-				{
-					"$ref": "#/definitions/Node"
-				},
-				{
-					"properties": {
-						"type": {
-							"const": "UnaryExpression"
-						},
-						"operator": {
-							"type": "string"
-						},
-						"argument": {
-							"$ref": "#/definitions/Expression"
-						}
-					}
-				}
-			]
-		},
-		"PipelineExpression": {
-			"allOf": [
-				{
-					"$ref": "#/definitions/Node"
-				},
-				{
-					"properties": {
-						"type": {
-							"const": "PipelineExpression"
-						},
-						"left": {
-							"$ref": "#/definitions/Expression"
-						},
-						"right": {
-							"$ref": "#/definitions/Expression"
-						}
-					}
-				}
-			]
-		},
-		"CallExpression": {
-			"allOf": [
-				{
-					"$ref": "#/definitions/Node"
-				},
-				{
-					"properties": {
-						"type": {
-							"const": "CallExpression"
-						},
-						"callee": {
-							"type": "string"
-						},
-						"arguments": {
-							"type": "array",
-							"items": {
-								"$ref": "#/definitions/Expression"
-							}
-						}
-					}
-				}
-			]
-		},
-		"IndexExpression": {
-			"allOf": [
-				{
-					"$ref": "#/definitions/Node"
-				},
-				{
-					"properties": {
-						"type": {
-							"const": "IndexExpression"
-						},
-						"object": {
-							"$ref": "#/definitions/Expression"
-						},
-						"index": {
-							"$ref": "#/definitions/Expression"
-						}
-					}
-				}
-			]
-		},
-		"ListLiteral": {
-			"allOf": [
-				{
-					"$ref": "#/definitions/Node"
-				},
-				{
-					"properties": {
-						"type": {
-							"const": "ListLiteral"
-						},
-						"elements": {
-							"type": "array",
-							"items": {
-								"$ref": "#/definitions/Expression"
-							}
-						}
-					}
-				}
-			]
-		},
-		"MapLiteral": {
-			"allOf": [
-				{
-					"$ref": "#/definitions/Node"
-				},
-				{
-					"properties": {
-						"type": {
-							"const": "MapLiteral"
-						},
-						"entries": {
-							"type": "array",
-							"items": {
-								"type": "object",
-								"properties": {
-									"key": {
-										"$ref": "#/definitions/Expression"
-									},
-									"value": {
-										"$ref": "#/definitions/Expression"
-									}
-								}
-							}
-						}
-					}
-				}
-			]
-		},
-		"Grouping": {
-			"allOf": [
-				{
-					"$ref": "#/definitions/Node"
-				},
-				{
-					"properties": {
-						"type": {
-							"const": "Grouping"
-						},
-						"expression": {
-							"$ref": "#/definitions/Expression"
-						}
-					}
-				}
-			]
-		},
-		"CastExpression": {
-			"allOf": [
-				{
-					"$ref": "#/definitions/Node"
-				},
-				{
-					"properties": {
-						"type": {
-							"const": "CastExpression"
-						},
-						"value": {
-							"$ref": "#/definitions/Expression"
-						},
-						"targetType": {
-							"$ref": "#/definitions/TypeAnnotation"
-						}
-					}
-				}
-			]
-		},
-		"InspectExpression": {
-			"allOf": [
-				{
-					"$ref": "#/definitions/Node"
-				},
-				{
-					"properties": {
-						"type": {
-							"const": "InspectExpression"
-						},
-						"argument": {
-							"$ref": "#/definitions/Expression"
-						}
-					}
-				}
-			]
-		},
-		"PackExpression": {
-			"allOf": [
-				{
-					"$ref": "#/definitions/Node"
-				},
-				{
-					"properties": {
-						"type": {
-							"const": "PackExpression"
-						},
-						"argument": {
-							"$ref": "#/definitions/Expression"
-						}
-					}
-				}
-			]
-		},
-		"UnpackExpression": {
-			"allOf": [
-				{
-					"$ref": "#/definitions/Node"
-				},
-				{
-					"properties": {
-						"type": {
-							"const": "UnpackExpression"
-						},
-						"argument": {
-							"$ref": "#/definitions/Expression"
-						}
-					}
-				}
-			]
-		},
-		"SizeOfExpression": {
-			"allOf": [
-				{
-					"$ref": "#/definitions/Node"
-				},
-				{
-					"properties": {
-						"type": {
-							"const": "SizeOfExpression"
-						},
-						"argument": {
-							"$ref": "#/definitions/Expression"
-						}
-					}
-				}
-			]
-		},
-		"TypeOfExpression": {
-			"allOf": [
-				{
-					"$ref": "#/definitions/Node"
-				},
-				{
-					"properties": {
-						"type": {
-							"const": "TypeOfExpression"
-						},
-						"argument": {
-							"$ref": "#/definitions/Expression"
-						}
-					}
-				}
-			]
-		},
-		"IsExpression": {
-			"allOf": [
-				{
-					"$ref": "#/definitions/Node"
-				},
-				{
-					"properties": {
-						"type": {
-							"const": "IsExpression"
-						},
-						"left": {
-							"$ref": "#/definitions/Expression"
-						},
-						"check": {
-							"type": "string"
-						},
-						"isNot": {
-							"type": "boolean"
-						}
-					}
-				}
-			]
-		},
-		"ReplaceExpression": {
-			"allOf": [
-				{
-					"$ref": "#/definitions/Node"
-				},
-				{
-					"properties": {
-						"type": {
-							"const": "ReplaceExpression"
-						},
-						"source": {
-							"$ref": "#/definitions/Expression"
-						},
-						"pattern": {
-							"$ref": "#/definitions/Expression"
-						},
-						"replacement": {
-							"$ref": "#/definitions/Expression"
-						}
-					}
-				}
-			]
-		},
-		"SplitExpression": {
-			"allOf": [
-				{
-					"$ref": "#/definitions/Node"
-				},
-				{
-					"properties": {
-						"type": {
-							"const": "SplitExpression"
-						},
-						"source": {
-							"$ref": "#/definitions/Expression"
-						},
-						"delimiter": {
-							"$ref": "#/definitions/Expression"
-						}
-					}
-				}
-			]
-		},
-		"JoinExpression": {
-			"allOf": [
-				{
-					"$ref": "#/definitions/Node"
-				},
-				{
-					"properties": {
-						"type": {
-							"const": "JoinExpression"
-						},
-						"source": {
-							"$ref": "#/definitions/Expression"
-						},
-						"delimiter": {
-							"$ref": "#/definitions/Expression"
-						}
-					}
-				}
-			]
-		}
-	},
-	"$ref": "#/definitions/Program"
-};
-
 // --- Source: ast_validator.mjs ---
 
 /**
@@ -5600,8 +5649,8 @@ export function validateAST(node) {
     if (!schema.version) {
         throw new ShiftValidationError("Schema Error: AST schema is missing version metadata.");
     }
-    if (schema.version !== "1.0.0") {
-        throw new ShiftValidationError(`Schema Error: Unsupported AST schema version: '${schema.version}'. Expected '1.0.0'.`);
+    if (schema.version !== "1.1.0") {
+        throw new ShiftValidationError(`Schema Error: Unsupported AST schema version: '${schema.version}'. Expected '1.1.0'.`);
     }
 
     // 3. Structured Logging Checkpoint

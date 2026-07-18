@@ -255,11 +255,11 @@ try {
 
 } catch {
     // Handles 'throw error' or runtime crashes
-    print_line("System Error: " & $throw_message);
+    print_line("System Error: " & $thrown_message);
 
 } review {
     // Handles 'throw alert'
-    print_line("Validation Failed: " & $throw_message);
+    print_line("Validation Failed: " & $thrown_message);
 }
 ```
 
