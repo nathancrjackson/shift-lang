@@ -81,8 +81,7 @@ function update_user_logins(map<User> user_list, string login_csv) map<User> {
 
 		if (user_list has username)
 		{
-			User user = user_list[username];
-			user["has_loggedin"] = true;
+			user_list[username]["has_loggedin"] = true;
 		}
 	}
 
