@@ -20,8 +20,8 @@ export function validateAST(node) {
     if (!schema.version) {
         throw new ShiftValidationError("Schema Error: AST schema is missing version metadata.");
     }
-    if (schema.version !== "1.0.0") {
-        throw new ShiftValidationError(`Schema Error: Unsupported AST schema version: '${schema.version}'. Expected '1.0.0'.`);
+    if (schema.version !== "1.1.0") {
+        throw new ShiftValidationError(`Schema Error: Unsupported AST schema version: '${schema.version}'. Expected '1.1.0'.`);
     }
 
     // 3. Structured Logging Checkpoint

@@ -43,28 +43,17 @@ export class ExpressionParser {
                 };
             }
             else if (expr.type === "IndexExpression") {
-
-                let depth = 0;
-                let root = expr;
-
-                // 1. Drill down to find the root Variable
-                while (root.type === "IndexExpression") {
-                    depth++;
-                    root = root.object;
-                }
-
                 let updatedValue = value;
+                let containerType = this.parser.resolveTypeAnnotation(expr.object);
 
-                if (root.type === "Variable") {
-                    const varName = root.name;
-                    const varType = this.parser.getVariable(varName);
+                if (containerType) {
+                    while (containerType.name === "nullable" && containerType.generic) {
+                        containerType = containerType.generic;
+                    }
 
                     // --- STRUCT VALIDATION ---
-                    if (varType && varType.type === "StructType") {
-                        // Validate assignment to a struct field
-
-                        const containerTypeName = this.parser.inferType(expr.object);
-
+                    if (containerType.type === "StructType") {
+                        const containerTypeName = containerType.name;
                         if (this.parser.structDefinitions.has(containerTypeName)) {
                             const def = this.parser.structDefinitions.get(containerTypeName);
 
@@ -79,37 +68,24 @@ export class ExpressionParser {
                             // 2. Validate Schema Existence
                             if (!field) {
                                 throw this.parser.addError(expr.index, "Cannot set Struct element that is not in its defined schema");
-                            }
+                            } else {
+                                // 3. IMMUTABILITY CHECK
+                                if (field.name.startsWith('$')) {
+                                    throw this.parser.addError(equalsToken, `Cannot assign to immutable field '${field.name}'.`);
+                                }
 
-                            // 3. IMMUTABILITY CHECK
-                            if (field.name.startsWith('$')) {
-                                throw this.parser.addError(equalsToken, `Cannot assign to immutable field '${field.name}'.`);
-                            }
-
-                            // 4. Validate Value Type (USING CENTRALIZED LOGIC)
-                            // Note: Field type is the target, value is the expression
-                            try {
-                                // Struct fields expect specific message if type check fails
-                                updatedValue = this.parser.validateAssignment(field.type, value, equalsToken, "Struct field type mismatch.");
-                            } catch (e) {
-                                // Suppress internal throw
+                                // 4. Validate Value Type (USING CENTRALIZED LOGIC)
+                                try {
+                                    updatedValue = this.parser.validateAssignment(field.type, value, equalsToken, "Struct field type mismatch.");
+                                } catch (e) {
+                                    // Suppress internal throw
+                                }
                             }
                         }
                     }
-                    // --- END STRUCT VALIDATION ---
-
-                    else if (varType && varType.generic) {
-
-                        let currentGeneric = varType.generic;
-                        let currentDepth = depth;
-
-                        while (currentDepth > 1 && currentGeneric && currentGeneric.generic) {
-                            currentGeneric = currentGeneric.generic;
-                            currentDepth--;
-                        }
-
-                        // MAP CHECKS
-                        if (varType.name === "map" && depth === 1) {
+                    // --- MAP & LIST VALIDATION ---
+                    else if (containerType.name === "map" || containerType.name === "list") {
+                        if (containerType.name === "map") {
                             if (expr.index === null) {
                                 throw this.parser.addError(equalsToken, "Cannot push to Map without a key.");
                             }
@@ -119,16 +95,16 @@ export class ExpressionParser {
                             }
                         }
 
-                        // VALUE TYPE CHECK (USING CENTRALIZED LOGIC)
-                        // The target type is 'currentGeneric' (the type held inside the list/map)
-                        try {
-                            const errorMsg = varType.name === "map"
-                                ? "Map value type mismatch."
-                                : "List variable assignment type mismatch.";
+                        if (containerType.generic) {
+                            try {
+                                const errorMsg = containerType.name === "map"
+                                    ? "Map value type mismatch."
+                                    : "List variable assignment type mismatch.";
 
-                            updatedValue = this.parser.validateAssignment(currentGeneric, value, equalsToken, errorMsg);
-                        } catch (e) {
-                            // Suppress internal throw, errors are in parser.errors
+                                updatedValue = this.parser.validateAssignment(containerType.generic, value, equalsToken, errorMsg);
+                            } catch (e) {
+                                // Suppress internal throw
+                            }
                         }
                     }
                 }

@@ -3,6 +3,7 @@ import { ExpressionParser } from './expression_parser.mjs';
 import { Lexer } from './lexer.mjs';
 import { ShiftParserError } from './errors.mjs';
 import { logger } from './logger.mjs';
+import schema from './ast_schema.json' with { type: 'json' };
 
 export class Parser {
     constructor(tokens, importResolver = null, importedFiles = new Set(), currentFilePath = null) {
@@ -268,6 +269,7 @@ export class Parser {
         switch (expr.type) {
             case "ListLiteral": return "list";
             case "MapLiteral": return "map";
+            case "StructLiteral": return expr.structName;
             case "InspectExpression": return "InspectionResult"; // Hardcoded expectation of StdLib struct
             case "PackExpression": return "string";
             case "UnpackExpression": return "list";
@@ -389,6 +391,38 @@ export class Parser {
         }
     }
 
+    resolveTypeAnnotation(expr) {
+        if (!expr) return null;
+        if (expr.type === "Variable") {
+            const t = this.getVariable(expr.name);
+            return t ? { type: t.type, name: t.name, generic: t.generic } : null;
+        }
+        if (expr.type === "IndexExpression") {
+            let parentType = this.resolveTypeAnnotation(expr.object);
+            if (!parentType) return null;
+
+            // Unwrap nullable
+            let current = parentType;
+            while (current.name === "nullable" && current.generic) {
+                current = current.generic;
+            }
+
+            if (current.name === "map" || current.name === "list") {
+                return current.generic;
+            }
+            if (current.type === "StructType") {
+                const def = this.structDefinitions.get(current.name);
+                if (!def) return null;
+                if (expr.index.type === "Literal" && typeof expr.index.value === "string") {
+                    const field = def.fields.find(f => f.name === expr.index.value);
+                    return field ? field.type : null;
+                }
+            }
+        }
+        const typeName = this.inferType(expr);
+        return { type: "Type", name: typeName };
+    }
+
     enterScope() { this.scopes.push(new Map()); }
 
     exitScope() { this.scopes.pop(); }
@@ -422,6 +456,7 @@ export class Parser {
             start: this.tokens[0] ? this.tokens[0].s : 0,
             end: this.tokens[this.tokens.length - 1] ? this.tokens[this.tokens.length - 1].e : 0,
             line: 1,
+            version: schema.version,
             structs: [...this.importedStructs],
             functions: [...this.importedFunctions]
         };
@@ -1058,7 +1093,7 @@ export class Parser {
                             value: this.getDefaultValue(field.type, newVisited)
                         }));
 
-                        return { type: "MapLiteral", entries: entries, start: -1, end: -1, line: -1 };
+                        return { type: "StructLiteral", structName: typeInfo.name, entries: entries, start: -1, end: -1, line: -1 };
                     }
                 }
                 return { type: "Literal", value: null, start: -1, end: -1, line: -1 };
@@ -1124,7 +1159,8 @@ export class Parser {
 
         // Clone map literal and its entries to maintain AST immutability
         const clonedLiteral = {
-            type: "MapLiteral",
+            type: "StructLiteral",
+            structName: structName,
             start: literal.start,
             end: literal.end,
             line: literal.line,

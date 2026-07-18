@@ -1,6 +1,6 @@
 {
 	"$schema": "http://json-schema.org/draft-07/schema#",
-	"version": "1.0.0",
+	"version": "1.1.0",
 	"title": "Shift Script AST",
 	"description": "Abstract Syntax Tree specification for the Shift Script language.",
 	"type": "object",
@@ -60,6 +60,9 @@
 					"properties": {
 						"type": {
 							"const": "Program"
+						},
+						"version": {
+							"type": "string"
 						},
 						"structs": {
 							"type": "array",
@@ -562,6 +565,9 @@
 					"$ref": "#/definitions/MapLiteral"
 				},
 				{
+					"$ref": "#/definitions/StructLiteral"
+				},
+				{
 					"$ref": "#/definitions/Grouping"
 				}
 			]
@@ -807,6 +813,37 @@
 					"properties": {
 						"type": {
 							"const": "MapLiteral"
+						},
+						"entries": {
+							"type": "array",
+							"items": {
+								"type": "object",
+								"properties": {
+									"key": {
+										"$ref": "#/definitions/Expression"
+									},
+									"value": {
+										"$ref": "#/definitions/Expression"
+									}
+								}
+							}
+						}
+					}
+				}
+			]
+		},
+		"StructLiteral": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "StructLiteral"
+						},
+						"structName": {
+							"type": "string"
 						},
 						"entries": {
 							"type": "array",

@@ -593,6 +593,7 @@ export class Runtime {
                 return env.get(expr.name);
             case "Variable": return env.get(expr.name);
             case "ListLiteral": return expr.elements.map(e => this.evaluate(e, env));
+            case "StructLiteral":
             case "MapLiteral": {
                 const map = new Map();
                 for (const entry of expr.entries) map.set(this.evaluate(entry.key, env), this.evaluate(entry.value, env));
