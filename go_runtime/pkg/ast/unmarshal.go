@@ -269,6 +269,12 @@ func (ew *ExpressionWrapper) UnmarshalJSON(data []byte) error {
 			return err
 		}
 		expr = &v
+	case "StructLiteral":
+		var v StructLiteral
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		expr = &v
 	case "Grouping":
 		var v Grouping
 		if err := json.Unmarshal(data, &v); err != nil {
@@ -752,7 +758,7 @@ func (n *MapEntry) UnmarshalJSON(data []byte) error {
 }
 
 // UnmarshalJSON implements json.Unmarshaler for Program.
-// It verifies that the JSON contains the required "version" field matching "1.0.0",
+// It verifies that the JSON contains the required "version" field matching "1.1.0",
 // unless IgnoreVersionMismatch is set to true.
 func (p *Program) UnmarshalJSON(data []byte) error {
 	type Alias Program
@@ -768,8 +774,8 @@ func (p *Program) UnmarshalJSON(data []byte) error {
 		if p.Version == "" {
 			return fmt.Errorf("Schema Error: AST is missing version metadata")
 		}
-		if p.Version != "1.0.0" {
-			return fmt.Errorf("Schema Error: Unsupported AST schema version: '%s'. Expected '1.0.0'.", p.Version)
+		if p.Version != "1.1.0" {
+			return fmt.Errorf("Schema Error: Unsupported AST schema version: '%s'. Expected '1.1.0'.", p.Version)
 		}
 	}
 	return nil

@@ -124,7 +124,7 @@ func (p *Parser) Parse() ParseResult {
 			End:   0,
 			Line:  1,
 		},
-		Version:   "1.0.0",
+		Version:   ast.SchemaVersion,
 		Structs:   append([]ast.StructDeclaration{}, p.importedStructs...),
 		Functions: append([]ast.FunctionDeclaration{}, p.importedFunctions...),
 	}

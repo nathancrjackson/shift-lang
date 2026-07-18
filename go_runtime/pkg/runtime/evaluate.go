@@ -69,6 +69,24 @@ func (r *Runtime) evaluate(expr ast.Expression, env *Environment) (any, error) {
 			m.Set(kStr, v)
 		}
 		return m, nil
+	case *ast.StructLiteral:
+		m := NewShiftMap()
+		for _, entry := range e.Entries {
+			k, err := r.evaluate(entry.Key, env)
+			if err != nil {
+				return nil, err
+			}
+			kStr, ok := k.(string)
+			if !ok {
+				return nil, fmt.Errorf("Struct literal keys must be string")
+			}
+			v, err := r.evaluate(entry.Value, env)
+			if err != nil {
+				return nil, err
+			}
+			m.Set(kStr, v)
+		}
+		return m, nil
 	case *ast.Assignment:
 		if strings.HasPrefix(e.Name, "$") {
 			return nil, fmt.Errorf("Runtime Error: Cannot assign to magic variable '%s'.", e.Name)

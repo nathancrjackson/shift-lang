@@ -41,7 +41,7 @@ func (p *Parser) assignment() ast.Expression {
 				}
 			}
 
-			p.validateAssignment(*varType, value, equalsToken)
+			value = p.validateAssignment(*varType, value, equalsToken)
 
 			return &ast.Assignment{
 				BaseNode: ast.BaseNode{Type: "Assignment", Start: expr.GetStart(), End: value.GetEnd(), Line: equalsToken.Line},
@@ -49,26 +49,15 @@ func (p *Parser) assignment() ast.Expression {
 				Value:    value,
 			}
 		} else if idxExpr, ok := expr.(*ast.IndexExpression); ok {
-			depth := 0
-			var root ast.Expression = idxExpr
-
-			for {
-				if idxRoot, isIdx := root.(*ast.IndexExpression); isIdx {
-					depth++
-					root = idxRoot.Object
-				} else {
-					break
+			containerType := p.resolveTypeAnnotation(idxExpr.Object)
+			if containerType != nil {
+				// Unwrap nullable
+				for containerType.Name == "nullable" && containerType.Generic != nil {
+					containerType = containerType.Generic
 				}
-			}
 
-			if rootVar, ok := root.(*ast.Variable); ok {
-				varName := rootVar.Name
-				varType := p.getVariable(varName)
-
-				if varType != nil && varType.Type == "StructType" {
-					containerTypeName := p.inferType(idxExpr.Object, false)
-
-					if def, exists := p.structDefinitions[containerTypeName]; exists {
+				if containerType.Type == "StructType" {
+					if def, exists := p.structDefinitions[containerType.Name]; exists {
 						if litIdx, ok := idxExpr.Index.(*ast.Literal); !ok || p.inferType(litIdx, false) != "string" {
 							p.addError(equalsToken, "Struct keys must be string literals.")
 						} else {
@@ -87,20 +76,12 @@ func (p *Parser) assignment() ast.Expression {
 								if len(fieldFound.Name) > 0 && fieldFound.Name[0] == '$' {
 									p.addError(equalsToken, "Cannot assign to immutable field '"+fieldFound.Name+"'.")
 								}
-								p.validateAssignment(TypeDef{Name: fieldFound.Type.Name, Type: fieldFound.Type.Type, Generic: fieldFound.Type.Generic}, value, equalsToken, "Struct field type mismatch.")
+								value = p.validateAssignment(TypeDef{Name: fieldFound.Type.Name, Type: fieldFound.Type.Type, Generic: fieldFound.Type.Generic}, value, equalsToken, "Struct field type mismatch.")
 							}
 						}
 					}
-				} else if varType != nil && varType.Generic != nil {
-					currentGeneric := varType.Generic
-					currentDepth := depth
-
-					for currentDepth > 1 && currentGeneric != nil && currentGeneric.Generic != nil {
-						currentGeneric = currentGeneric.Generic
-						currentDepth--
-					}
-
-					if varType.Name == "map" && depth == 1 {
+				} else if containerType.Name == "map" || containerType.Name == "list" {
+					if containerType.Name == "map" {
 						if idxExpr.Index == nil {
 							p.addError(equalsToken, "Cannot push to Map without a key.")
 						} else {
@@ -111,12 +92,12 @@ func (p *Parser) assignment() ast.Expression {
 						}
 					}
 
-					if currentGeneric != nil {
+					if containerType.Generic != nil {
 						errorMsg := "List variable assignment type mismatch."
-						if varType.Name == "map" {
+						if containerType.Name == "map" {
 							errorMsg = "Map value type mismatch."
 						}
-						p.validateAssignment(TypeDef{Name: currentGeneric.Name, Type: currentGeneric.Type, Generic: currentGeneric.Generic}, value, equalsToken, errorMsg)
+						value = p.validateAssignment(TypeDef{Name: containerType.Generic.Name, Type: containerType.Generic.Type, Generic: containerType.Generic.Generic}, value, equalsToken, errorMsg)
 					}
 				}
 			}
@@ -760,7 +741,7 @@ func (p *Parser) finishCall(calleeName string, calleeToken token.Token) ast.Expr
 			for i, arg := range args {
 				param := calleeVar.Params[i]
 				typeObj := TypeDef{Type: "Type", Name: param.DataType.Name, Generic: param.DataType.Generic}
-				p.validateAssignment(typeObj, arg, calleeToken, fmt.Sprintf("Argument '%s' expects type '%s' in call to '%s'.", param.Name, param.DataType.Name, calleeName))
+				args[i] = p.validateAssignment(typeObj, arg, calleeToken, fmt.Sprintf("Argument '%s' expects type '%s' in call to '%s'.", param.Name, param.DataType.Name, calleeName))
 			}
 		}
 	}

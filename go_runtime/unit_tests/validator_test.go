@@ -26,7 +26,7 @@ func TestValidateAST(t *testing.T) {
 	// 3. Structural validation - missing function body
 	missingBodyJSON := `{
 		"type": "Program",
-		"version": "1.0.0",
+		"version": "1.1.0",
 		"structs": [],
 		"functions": [
 			{
@@ -53,7 +53,7 @@ func TestValidateAST(t *testing.T) {
 	// 4. Missing IfStatement Condition
 	missingCondJSON := `{
 		"type": "Program",
-		"version": "1.0.0",
+		"version": "1.1.0",
 		"structs": [],
 		"functions": [
 			{
@@ -93,7 +93,7 @@ func TestValidateAST(t *testing.T) {
 	// 5. Block contains nil Statement
 	nilStmtJSON := `{
 		"type": "Program",
-		"version": "1.0.0",
+		"version": "1.1.0",
 		"structs": [],
 		"functions": [
 			{
@@ -125,7 +125,7 @@ func TestValidateAST(t *testing.T) {
 	// 6. BinaryExpression with nil operand
 	nilOperandJSON := `{
 		"type": "Program",
-		"version": "1.0.0",
+		"version": "1.1.0",
 		"structs": [],
 		"functions": [
 			{

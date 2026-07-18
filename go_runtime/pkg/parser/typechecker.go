@@ -18,6 +18,8 @@ func (p *Parser) inferType(expr ast.Expression, resolveNullable bool) string {
 		return "list"
 	case *ast.MapLiteral:
 		return "map"
+	case *ast.StructLiteral:
+		return e.StructName
 	case *ast.InspectExpression:
 		return "InspectionResult"
 	case *ast.PackExpression:
@@ -211,9 +213,54 @@ func (p *Parser) inferType(expr ast.Expression, resolveNullable bool) string {
 	return "any"
 }
 
-func (p *Parser) validateAssignment(targetType TypeDef, valueExpr ast.Expression, t token.Token, customMsg ...string) error {
+func (p *Parser) resolveTypeAnnotation(expr ast.Expression) *ast.TypeAnnotation {
+	if expr == nil {
+		return nil
+	}
+	switch e := expr.(type) {
+	case *ast.Variable:
+		t := p.getVariable(e.Name)
+		if t == nil {
+			return nil
+		}
+		return &ast.TypeAnnotation{Type: t.Type, Name: t.Name, Generic: t.Generic}
+	case *ast.IndexExpression:
+		parentType := p.resolveTypeAnnotation(e.Object)
+		if parentType == nil {
+			return nil
+		}
+		// Unwrap nullable
+		current := parentType
+		for current.Name == "nullable" && current.Generic != nil {
+			current = current.Generic
+		}
+		if current.Name == "map" || current.Name == "list" {
+			return current.Generic
+		}
+		if current.Type == "StructType" {
+			def, exists := p.structDefinitions[current.Name]
+			if !exists {
+				return nil
+			}
+			if litIdx, ok := e.Index.(*ast.Literal); ok {
+				if fieldName, ok := litIdx.Value.(string); ok {
+					for _, f := range def.Fields {
+						if f.Name == fieldName {
+							return &ast.TypeAnnotation{Type: f.Type.Type, Name: f.Type.Name, Generic: f.Type.Generic}
+						}
+					}
+				}
+			}
+		}
+	}
+	typeName := p.inferType(expr, false)
+	return &ast.TypeAnnotation{Type: "Type", Name: typeName}
+}
+
+func (p *Parser) validateAssignment(targetType TypeDef, valueExpr ast.Expression, t token.Token, customMsg ...string) ast.Expression {
 	inferredVal := p.inferType(valueExpr, false)
 	typeMatch := false
+	updatedExpr := valueExpr
 
 	if inferredVal == "any" || targetType.Name == "any" {
 		typeMatch = true
@@ -222,14 +269,14 @@ func (p *Parser) validateAssignment(targetType TypeDef, valueExpr ast.Expression
 	} else if targetType.Type == "StructType" && inferredVal == "map" {
 		typeMatch = true
 		if mapLit, isMap := valueExpr.(*ast.MapLiteral); isMap {
-			p.validateStructLiteral(mapLit, targetType.Name, t)
+			updatedExpr = p.validateStructLiteral(mapLit, targetType.Name, t)
 		}
 	} else if targetType.Name == "nullable" && targetType.Generic != nil {
 		if inferredVal == targetType.Generic.Name || inferredVal == "null" || inferredVal == "nullable" {
 			typeMatch = true
 			if inferredVal == targetType.Generic.Name {
 				if mapLit, isMap := valueExpr.(*ast.MapLiteral); isMap {
-					p.validateStructLiteral(mapLit, targetType.Generic.Name, t)
+					updatedExpr = p.validateStructLiteral(mapLit, targetType.Generic.Name, t)
 				}
 			}
 		}
@@ -254,16 +301,21 @@ func (p *Parser) validateAssignment(targetType TypeDef, valueExpr ast.Expression
 		} else {
 			p.addError(t, msg)
 		}
-		return fmt.Errorf("assignment validation failed")
 	}
-	return nil
+	return updatedExpr
 }
 
-func (p *Parser) validateStructLiteral(literal *ast.MapLiteral, structName string, t token.Token) {
+func (p *Parser) validateStructLiteral(literal *ast.MapLiteral, structName string, t token.Token) *ast.StructLiteral {
 	def, exists := p.structDefinitions[structName]
 	if !exists {
-		return
+		return &ast.StructLiteral{
+			StructName: structName,
+			Entries:    literal.Entries,
+			BaseNode:   ast.BaseNode{Type: "StructLiteral", Start: literal.GetStart(), End: literal.GetEnd(), Line: literal.Line},
+		}
 	}
+
+	entries := make([]ast.MapEntry, 0, len(def.Fields))
 
 	for _, field := range def.Fields {
 		var entry *ast.MapEntry
@@ -282,7 +334,7 @@ func (p *Parser) validateStructLiteral(literal *ast.MapLiteral, structName strin
 				if err != nil {
 					p.addError(t, err.Error())
 				} else {
-					literal.Entries = append(literal.Entries, ast.MapEntry{
+					entries = append(entries, ast.MapEntry{
 						Key: &ast.Literal{
 							Value:    field.Name,
 							BaseNode: ast.BaseNode{Type: "Literal", Start: -1, End: -1, Line: -1},
@@ -294,20 +346,21 @@ func (p *Parser) validateStructLiteral(literal *ast.MapLiteral, structName strin
 		} else {
 			valType := p.inferType(entry.Value, false)
 			typeMatch := false
+			updatedVal := entry.Value
 
 			if valType == "any" || field.Type.Name == "any" || valType == field.Type.Name {
 				typeMatch = true
 			} else if field.Type.Type == "StructType" && valType == "map" {
 				typeMatch = true
 				if mapLit, isMap := entry.Value.(*ast.MapLiteral); isMap {
-					p.validateStructLiteral(mapLit, field.Type.Name, t)
+					updatedVal = p.validateStructLiteral(mapLit, field.Type.Name, t)
 				}
 			} else if field.Type.Name == "nullable" && field.Type.Generic != nil {
 				if valType == field.Type.Generic.Name || valType == "null" {
 					typeMatch = true
 					if valType == field.Type.Generic.Name {
 						if mapLit, isMap := entry.Value.(*ast.MapLiteral); isMap {
-							p.validateStructLiteral(mapLit, field.Type.Generic.Name, t)
+							updatedVal = p.validateStructLiteral(mapLit, field.Type.Generic.Name, t)
 						}
 					}
 				}
@@ -316,6 +369,11 @@ func (p *Parser) validateStructLiteral(literal *ast.MapLiteral, structName strin
 			if !typeMatch {
 				p.addError(t, "Struct value type mismatch.")
 			}
+
+			entries = append(entries, ast.MapEntry{
+				Key:   entry.Key,
+				Value: updatedVal,
+			})
 		}
 	}
 
@@ -335,6 +393,12 @@ func (p *Parser) validateStructLiteral(literal *ast.MapLiteral, structName strin
 				}
 			}
 		}
+	}
+
+	return &ast.StructLiteral{
+		StructName: structName,
+		Entries:    entries,
+		BaseNode:   ast.BaseNode{Type: "StructLiteral", Start: literal.GetStart(), End: literal.GetEnd(), Line: literal.Line},
 	}
 }
 
@@ -391,7 +455,7 @@ func (p *Parser) getDefaultValue(typeInfo TypeDef, path []string) (ast.Expressio
 						Value: val,
 					})
 				}
-				return &ast.MapLiteral{Entries: entries, BaseNode: ast.BaseNode{Type: "MapLiteral", Start: -1, End: -1, Line: -1}}, nil
+				return &ast.StructLiteral{StructName: typeInfo.Name, Entries: entries, BaseNode: ast.BaseNode{Type: "StructLiteral", Start: -1, End: -1, Line: -1}}, nil
 			}
 		}
 		return &ast.Literal{Value: nil, BaseNode: ast.BaseNode{Type: "Literal", Start: -1, End: -1, Line: -1}}, nil

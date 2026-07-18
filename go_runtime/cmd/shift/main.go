@@ -15,10 +15,27 @@ import (
 )
 
 func main() {
+	// Check for help flag before processing other args
+	for _, arg := range os.Args {
+		if arg == "--help" || arg == "-h" || arg == "help" {
+			printHelp()
+			os.Exit(0)
+		}
+	}
+
+	includeStdlib := false
+	cleanArgs := make([]string, 0, len(os.Args))
+	for _, arg := range os.Args {
+		if arg == "--stdlib" {
+			includeStdlib = true
+		} else {
+			cleanArgs = append(cleanArgs, arg)
+		}
+	}
+	os.Args = cleanArgs
+
 	if len(os.Args) < 2 {
-		fmt.Println("Usage: shift <file.shift> [args...]")
-		fmt.Println("       shift run <file.shift> [args...]")
-		fmt.Println("       shift ast <file.shift>")
+		printHelp()
 		os.Exit(1)
 	}
 
@@ -120,6 +137,27 @@ func main() {
 		os.Exit(1)
 	}
 
+	if command == "ast" {
+		astToPrint := parseResult.AST
+		if includeStdlib {
+			astToPrint.Structs = append(stdParseResult.AST.Structs, astToPrint.Structs...)
+			astToPrint.Functions = append(stdParseResult.AST.Functions, astToPrint.Functions...)
+		}
+
+		if err := ast.ValidateAST(astToPrint); err != nil {
+			fmt.Println("AST Validation Error:", err.Error())
+			os.Exit(1)
+		}
+
+		b, err := json.MarshalIndent(astToPrint, "", "  ")
+		if err != nil {
+			fmt.Println("Error generating AST JSON:", err.Error())
+			os.Exit(1)
+		}
+		fmt.Println(string(b))
+		return
+	}
+
 	// Combine ASTs
 	program := parseResult.AST
 	program.Structs = append(stdParseResult.AST.Structs, program.Structs...)
@@ -128,16 +166,6 @@ func main() {
 	if err := ast.ValidateAST(program); err != nil {
 		fmt.Println("AST Validation Error:", err.Error())
 		os.Exit(1)
-	}
-
-	if command == "ast" {
-		b, err := json.MarshalIndent(program, "", "  ")
-		if err != nil {
-			fmt.Println("Error generating AST JSON:", err.Error())
-			os.Exit(1)
-		}
-		fmt.Println(string(b))
-		return
 	}
 
 	// Initialise Runtime engine
@@ -158,4 +186,17 @@ func main() {
 		fmt.Printf("Fatal Runtime Error -> %s\n", runErr.Error())
 		os.Exit(1)
 	}
+}
+
+func printHelp() {
+	fmt.Println("Shift Script CLI Runner")
+	fmt.Println()
+	fmt.Println("Usage:")
+	fmt.Println("  shift <file.shift> [args...]       Compile and run the specified Shift script.")
+	fmt.Println("  shift run <file.shift> [args...]   Compile and run the specified Shift script.")
+	fmt.Println("  shift ast <file.shift> [--stdlib]  Compile and output the JSON AST of the script.")
+	fmt.Println()
+	fmt.Println("Options:")
+	fmt.Println("  -h, --help                         Show this help message and exit.")
+	fmt.Println("  --stdlib                           Include standard library definitions when exporting the AST.")
 }

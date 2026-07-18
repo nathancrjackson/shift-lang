@@ -366,6 +366,25 @@ func validateNode(node Node) error {
 			}
 		}
 
+	case *StructLiteral:
+		if n.StructName == "" {
+			return fmt.Errorf("AST Validation Error at line %d: StructLiteral missing StructName", n.Line)
+		}
+		for _, entry := range n.Entries {
+			if entry.Key == nil {
+				return fmt.Errorf("AST Validation Error at line %d: StructLiteral entry has nil Key", n.Line)
+			}
+			if entry.Value == nil {
+				return fmt.Errorf("AST Validation Error at line %d: StructLiteral entry has nil Value", n.Line)
+			}
+			if err := validateNode(entry.Key); err != nil {
+				return err
+			}
+			if err := validateNode(entry.Value); err != nil {
+				return err
+			}
+		}
+
 	case *Grouping:
 		if n.Expression == nil {
 			return fmt.Errorf("AST Validation Error at line %d: Grouping has nil Expression", n.Line)

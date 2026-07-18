@@ -434,7 +434,7 @@ func (p *Parser) variableDeclaration() *ast.VariableDeclaration {
 
 	if p.match(token.ASSIGN) {
 		initializer = p.parseExpression()
-		p.validateAssignment(TypeDef{Name: typeInfo.Name, Type: typeInfo.Type, Generic: typeInfo.Generic}, initializer, nameToken)
+		initializer = p.validateAssignment(TypeDef{Name: typeInfo.Name, Type: typeInfo.Type, Generic: typeInfo.Generic}, initializer, nameToken)
 	} else {
 		initVal, err := p.getDefaultValue(TypeDef{Name: typeInfo.Name, Type: typeInfo.Type, Generic: typeInfo.Generic}, []string{})
 		if err != nil {

@@ -75,8 +75,8 @@ func NewRuntime(prog *ast.Program, debugMode bool) *Runtime {
 		panic("Runtime Error: Program AST cannot be nil")
 	}
 
-	if !ast.IgnoreVersionMismatch && prog.Version != "1.0.0" {
-		panic(fmt.Sprintf("Schema Error: Unsupported AST schema version: '%s'. Expected '1.0.0'.", prog.Version))
+	if !ast.IgnoreVersionMismatch && prog.Version != ast.SchemaVersion {
+		panic(fmt.Sprintf("Schema Error: Unsupported AST schema version: '%s'. Expected '%s'.", prog.Version, ast.SchemaVersion))
 	}
 
 	r := &Runtime{
@@ -319,8 +319,8 @@ func (r *Runtime) checkType(value any, typeInfo ast.TypeAnnotation) error {
 
 // RunFunction executes a Shift function by name with the provided arguments and returns the result or an error.
 func (r *Runtime) RunFunction(name string, args []any) (any, error) {
-	if !ast.IgnoreVersionMismatch && !r.IgnoreASTVersionMismatch && r.AST.Version != "1.0.0" {
-		return nil, fmt.Errorf("Schema Error: Unsupported AST schema version: '%s'. Expected '1.0.0'.", r.AST.Version)
+	if !ast.IgnoreVersionMismatch && !r.IgnoreASTVersionMismatch && r.AST.Version != ast.SchemaVersion {
+		return nil, fmt.Errorf("Schema Error: Unsupported AST schema version: '%s'. Expected '%s'.", r.AST.Version, ast.SchemaVersion)
 	}
 
 	previousStack := r.Stack

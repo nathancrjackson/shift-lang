@@ -7,6 +7,9 @@ package ast
 // If set to true, version checking is bypassed.
 var IgnoreVersionMismatch = false
 
+// SchemaVersion defines the authoritative version of the AST schema.
+const SchemaVersion = "1.1.0"
+
 // Node represents the base interface for all nodes in the Shift Abstract Syntax Tree (AST).
 type Node interface {
 	NodeType() string
@@ -51,7 +54,7 @@ func (b *BaseNode) GetLine() int     { return b.Line }
 type TypeAnnotation struct {
 	Type    string          `json:"type"`
 	Name    string          `json:"name"`
-	Generic *TypeAnnotation `json:"generic,omitempty"`
+	Generic *TypeAnnotation `json:"generic"`
 }
 
 // StructField represents a single field declaration within a Struct.
@@ -76,7 +79,7 @@ type MapEntry struct {
 // Program represents the AST node structure for Program.
 type Program struct {
 	BaseNode
-	Version string `json:"version,omitempty"`
+	Version string `json:"version"`
 	Structs []StructDeclaration `json:"structs"`
 	Functions []FunctionDeclaration `json:"functions"`
 }
@@ -269,6 +272,13 @@ type MapLiteral struct {
 	Entries []MapEntry `json:"entries"`
 }
 
+// StructLiteral represents the AST node structure for StructLiteral.
+type StructLiteral struct {
+	BaseNode
+	StructName string `json:"structName"`
+	Entries []MapEntry `json:"entries"`
+}
+
 // Grouping represents the AST node structure for Grouping.
 type Grouping struct {
 	BaseNode
@@ -380,4 +390,5 @@ func (*Variable) exprNode() {}
 func (*MagicVariable) exprNode() {}
 func (*ListLiteral) exprNode() {}
 func (*MapLiteral) exprNode() {}
+func (*StructLiteral) exprNode() {}
 func (*Grouping) exprNode() {}
