@@ -64,7 +64,7 @@ function getGoType(propSchema, parentName, propName) {
         if (parentName === 'FunctionDeclaration' && propName === 'params') {
             return '[]Parameter';
         }
-        if (parentName === 'MapLiteral' && propName === 'entries') {
+        if ((parentName === 'MapLiteral' || parentName === 'StructLiteral') && propName === 'entries') {
             return '[]MapEntry';
         }
         return '[]any';
@@ -103,6 +103,9 @@ package ast
 // IgnoreVersionMismatch controls whether AST unmarshaling validates the schema version.
 // If set to true, version checking is bypassed.
 var IgnoreVersionMismatch = false
+
+// SchemaVersion defines the authoritative version of the AST schema.
+const SchemaVersion = "${schema.version}"
 
 // Node represents the base interface for all nodes in the Shift Abstract Syntax Tree (AST).
 type Node interface {
@@ -151,7 +154,7 @@ func (b *BaseNode) GetLine() int     { return b.Line }
 type TypeAnnotation struct {
 	Type    string          \`json:"type"\`
 	Name    string          \`json:"name"\`
-	Generic *TypeAnnotation \`json:"generic,omitempty"\`
+	Generic *TypeAnnotation \`json:"generic"\`
 }
 
 // StructField represents a single field declaration within a Struct.
@@ -200,9 +203,7 @@ type MapEntry struct {
             code += `\tBaseNode\n`;
         }
 
-        if (name === 'Program') {
-            code += `\tVersion string \`json:"version,omitempty"\`\n`;
-        }
+
 
         for (const [propName, propSchema] of Object.entries(properties)) {
             if (propName === 'type' && embedsBaseNode) {
@@ -419,7 +420,7 @@ func (n *${name}) UnmarshalJSON(data []byte) error {
     // Add Program custom unmarshaler for version checking
     code += `
 // UnmarshalJSON implements json.Unmarshaler for Program.
-// It verifies that the JSON contains the required "version" field matching "1.0.0",
+// It verifies that the JSON contains the required "version" field matching "${schema.version}",
 // unless IgnoreVersionMismatch is set to true.
 func (p *Program) UnmarshalJSON(data []byte) error {
 	type Alias Program
@@ -435,8 +436,8 @@ func (p *Program) UnmarshalJSON(data []byte) error {
 		if p.Version == "" {
 			return fmt.Errorf("Schema Error: AST is missing version metadata")
 		}
-		if p.Version != "1.0.0" {
-			return fmt.Errorf("Schema Error: Unsupported AST schema version: '%s'. Expected '1.0.0'.", p.Version)
+		if p.Version != "${schema.version}" {
+			return fmt.Errorf("Schema Error: Unsupported AST schema version: '%s'. Expected '${schema.version}'.", p.Version)
 		}
 	}
 	return nil
@@ -682,6 +683,7 @@ Expressions represent computations that yield values.
         'JoinExpression': { syntax: '\`source: Expression\`, \`delimiter: Expression\`', desc: '\`arr joined with ","\`' },
         'ListLiteral': { syntax: '\`elements: []Expression\`', desc: '\`[1, 2, 3]\`' },
         'MapLiteral': { syntax: '\`entries: []MapEntry\`', desc: '\`["key": "value"]\`' },
+        'StructLiteral': { syntax: '\`structName: string\`, \`entries: []MapEntry\`', desc: '\`User ["name": "Tom"]\`' },
         'Grouping': { syntax: '\`expression: Expression\`', desc: '\`(x + y)\`' }
     };
 

@@ -13,8 +13,9 @@ const OUTPUT_FILE = path.join(ROOT_DIR, 'docs/index.html');
 try {
     // 1. Run standard library bundler for both standard and core distributions
     console.log('📦 Rebuilding engine standard and core distributions...');
-    execSync('node lib_bundler.js', { cwd: UTILS_DIR, stdio: 'inherit' });
-    execSync('node lib_bundler.js --core', { cwd: UTILS_DIR, stdio: 'inherit' });
+    const execOpts = { cwd: UTILS_DIR, stdio: 'inherit', shell: process.platform === 'win32' ? 'powershell.exe' : true };
+    execSync('node lib_bundler.js', execOpts);
+    execSync('node lib_bundler.js --core', execOpts);
 
     // 2. Format build date version string: Version YY.MM.DD.HHMM
     const now = new Date();
