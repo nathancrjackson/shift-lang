@@ -33,7 +33,6 @@ function main() number {
         map<User> my_users = process_user_list(share users_as_rawlist);
         
         // 2. Safely share my_users downward to modify its content in-place without copies.
-        // (Note: Removed from the pipeline since $pipe_value cannot be passed with 'share')
         update_user_logins(share my_users, login_data);
 
         // 3. Share collections down to read-only filters, transferring new results back up
