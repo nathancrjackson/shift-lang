@@ -52,6 +52,7 @@ const (
 	SignalBreak
 	SignalSkip
 	SignalReturn
+	SignalTransfer
 )
 
 // ShiftError represents a standard user-thrown runtime error exception.

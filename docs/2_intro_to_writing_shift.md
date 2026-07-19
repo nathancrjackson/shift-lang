@@ -209,18 +209,45 @@ for (name in names) {
 - skip; - Skip to the next iteration (like continue in other languages).
 
 ## 5. Functions
-Functions must declare their return type. Use none if they don't return anything. Arguments are passed by value (copied), so a function cannot modify your original variables.
+Functions must declare their return type. Use none if they don't return anything.
 
-```
-function add_numbers(number a, number b) number {
-    return a + b;
-}
+### Pass-by-Value (Default)
+By default, arguments are passed by value (copied), so a function cannot modify your original variables.
 
-
-function log_message(string msg) none {
-    print_line("LOG: " & msg);
+```shift
+function increment_count(number c) none {
+    c = c + 1; // This does not change the caller's variable
 }
 ```
+
+### Pass-by-Reference (Sharing and Transfer)
+To allow a function to modify structured arguments (lists, maps, structs) in-place without copying them, use the `shared` parameter modifier and `share` call-site keyword.
+
+#### Sharing Variables (`shared` and `share`)
+```shift
+function activate_user(shared User u) none {
+    u["is_active"] = true; // Modifies the original struct in-place!
+    // u = other_user;     // Error: shared parameter bindings are base-immutable
+}
+
+function main() number {
+    User my_user = ["name": "Alice", "is_active": false];
+    activate_user(share my_user); // Passed by reference using 'share'
+    print_line(my_user["is_active"] as string); // prints "1" (true)
+    return 0;
+}
+```
+*Note: Primitive types (`number`, `string`, `bool`) cannot be shared.*
+
+#### Reference Transfers (`transfer`)
+To pass ownership of a reference out of a function without copying, use the `transfer` statement instead of `return`.
+```shift
+function create_user_ref(string name) User {
+    User result = ["name": name, "is_active": true];
+    transfer result; // Bypasses deep-cloning on function return!
+}
+```
+*Constraints: You cannot mix standard `return` and `transfer` exits within the same function, and functions returning via `transfer` cannot return the type `any`.*
 
 ## 6. The Pipe Operator |
 

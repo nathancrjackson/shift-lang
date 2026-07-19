@@ -167,6 +167,7 @@ Error handling block: `try { ... } catch { ... } review { ... }`
 
 ### Other Statements
 - **ReturnStatement**: `{ "type": "ReturnStatement", `value: Expression` }`
+- **TransferStatement**: `{ "type": "TransferStatement", `argument: Expression` }`
 - **BreakStatement**: `{ "type": "BreakStatement" }`
 - **SkipStatement**: `{ "type": "SkipStatement" }`
 - **ThrowStatement**: `{ "type": "ThrowStatement", `severity: any`, `argument: Expression` }`
@@ -185,6 +186,7 @@ Expressions represent computations that yield values.
 | **Assignment** | `name: string`, `value: Expression` | `x = 5` |
 | **IndexAssignment** | `object: Expression`, `index: Expression`, `value: Expression` | `arr[0] = 5` |
 | **PipelineExpression** | `left: Expression`, `right: Expression` | `data \| process($pipe_value)` |
+| **ShareExpression** | `argument: Expression` | (Auto-generated entry) |
 | **BinaryExpression** | `operator: string`, `left: Expression`, `right: Expression` | `x + y`, `a and b` |
 | **UnaryExpression** | `operator: string`, `argument: Expression` | `not flag`, `-num` |
 | **CallExpression** | `callee: string`, `arguments: []Expression` | `print_line("hello")` |

@@ -54,7 +54,7 @@
       "patterns": [
         {
           "name": "keyword.control.shift",
-          "match": "\\b(function|struct|return|try|catch|review|throw|if|else|while|for|in|to|break|skip|delete|and|or|xor|not|as|split|with|joined|contains|has|matches|search|replace|size of|type of|inspect|pack|unpack|error|alert|critical)\\b"
+          "match": "\\b(function|struct|return|transfer|share|try|catch|review|throw|if|else|while|for|in|to|break|skip|delete|and|or|xor|not|as|split|with|joined|contains|has|matches|search|replace|size of|type of|inspect|pack|unpack|error|alert|critical)\\b"
         }
       ]
     },
@@ -62,7 +62,7 @@
       "patterns": [
         {
           "name": "storage.type.shift",
-          "match": "\\b(string|number|bool|null|any|nullable|list|map)\\b"
+          "match": "\\b(string|number|bool|null|any|nullable|list|map|shared)\\b"
         }
       ]
     },

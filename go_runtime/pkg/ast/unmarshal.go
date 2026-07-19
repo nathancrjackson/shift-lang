@@ -42,6 +42,12 @@ func (sw *StatementWrapper) UnmarshalJSON(data []byte) error {
 			return err
 		}
 		stmt = &v
+	case "TransferStatement":
+		var v TransferStatement
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		stmt = &v
 	case "IfStatement":
 		var v IfStatement
 		if err := json.Unmarshal(data, &v); err != nil {
@@ -151,6 +157,12 @@ func (ew *ExpressionWrapper) UnmarshalJSON(data []byte) error {
 		expr = &v
 	case "PipelineExpression":
 		var v PipelineExpression
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		expr = &v
+	case "ShareExpression":
+		var v ShareExpression
 		if err := json.Unmarshal(data, &v); err != nil {
 			return err
 		}
@@ -740,6 +752,36 @@ func (n *JoinExpression) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// UnmarshalJSON implements json.Unmarshaler for TransferStatement.
+func (n *TransferStatement) UnmarshalJSON(data []byte) error {
+	type Alias TransferStatement
+	var aux struct {
+		Argument ExpressionWrapper `json:"argument"`
+		*Alias
+	}
+	aux.Alias = (*Alias)(n)
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	n.Argument = aux.Argument.Expression
+	return nil
+}
+
+// UnmarshalJSON implements json.Unmarshaler for ShareExpression.
+func (n *ShareExpression) UnmarshalJSON(data []byte) error {
+	type Alias ShareExpression
+	var aux struct {
+		Argument ExpressionWrapper `json:"argument"`
+		*Alias
+	}
+	aux.Alias = (*Alias)(n)
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	n.Argument = aux.Argument.Expression
+	return nil
+}
+
 // UnmarshalJSON implements json.Unmarshaler for MapEntry.
 func (n *MapEntry) UnmarshalJSON(data []byte) error {
 	type Alias MapEntry
@@ -758,7 +800,7 @@ func (n *MapEntry) UnmarshalJSON(data []byte) error {
 }
 
 // UnmarshalJSON implements json.Unmarshaler for Program.
-// It verifies that the JSON contains the required "version" field matching "1.1.0",
+// It verifies that the JSON contains the required "version" field matching "1.2.0",
 // unless IgnoreVersionMismatch is set to true.
 func (p *Program) UnmarshalJSON(data []byte) error {
 	type Alias Program
@@ -774,8 +816,8 @@ func (p *Program) UnmarshalJSON(data []byte) error {
 		if p.Version == "" {
 			return fmt.Errorf("Schema Error: AST is missing version metadata")
 		}
-		if p.Version != "1.1.0" {
-			return fmt.Errorf("Schema Error: Unsupported AST schema version: '%s'. Expected '1.1.0'.", p.Version)
+		if p.Version != "1.2.0" {
+			return fmt.Errorf("Schema Error: Unsupported AST schema version: '%s'. Expected '1.2.0'.", p.Version)
 		}
 	}
 	return nil

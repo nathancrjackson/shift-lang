@@ -41,6 +41,10 @@ func (p *Parser) assignment() ast.Expression {
 				}
 			}
 
+			if varType.Shared {
+				p.addError(equalsToken, "Shared variable names cannot be reassigned.")
+			}
+
 			value = p.validateAssignment(*varType, value, equalsToken)
 
 			return &ast.Assignment{
@@ -122,6 +126,8 @@ func (p *Parser) pipeline() ast.Expression {
 
 	for p.match(token.PIPE) {
 		operatorToken := p.previous()
+		leftType := p.inferType(expr, false)
+		p.defineVariable("$pipe_value", TypeDef{Type: "Type", Name: leftType, Initialized: true}, false)
 		right := p.nullCoalescing()
 		expr = &ast.PipelineExpression{
 			BaseNode: ast.BaseNode{Type: "PipelineExpression", Start: expr.GetStart(), End: right.GetEnd(), Line: operatorToken.Line},
@@ -439,6 +445,25 @@ func (p *Parser) power() ast.Expression {
 }
 
 func (p *Parser) unary() ast.Expression {
+	if p.match(token.SHARE) {
+		startToken := p.previous()
+		right := p.unary()
+
+		if _, isMagic := right.(*ast.MagicVariable); isMagic {
+			p.addError(startToken, "Magic variables cannot be used for shared arguments.")
+		}
+
+		inferredType := p.inferType(right, false)
+		if inferredType == "number" || inferredType == "string" || inferredType == "bool" {
+			p.addError(startToken, "Primitive variables cannot be shared arguments.")
+		}
+
+		return &ast.ShareExpression{
+			BaseNode: ast.BaseNode{Type: "ShareExpression", Start: startToken.Position, End: right.GetEnd(), Line: startToken.Line},
+			Argument: right,
+		}
+	}
+
 	if p.match(token.NOT) || p.match(token.MINUS) {
 		operatorToken := p.previous()
 		right := p.unary()
@@ -740,6 +765,18 @@ func (p *Parser) finishCall(calleeName string, calleeToken token.Token) ast.Expr
 		} else {
 			for i, arg := range args {
 				param := calleeVar.Params[i]
+				_, isShare := arg.(*ast.ShareExpression)
+
+				if param.Shared {
+					if !isShare {
+						p.addError(calleeToken, "Function expects shared argument.")
+					}
+				} else {
+					if isShare {
+						p.addError(calleeToken, "Function does not expect shared argument.")
+					}
+				}
+
 				typeObj := TypeDef{Type: "Type", Name: param.DataType.Name, Generic: param.DataType.Generic}
 				args[i] = p.validateAssignment(typeObj, arg, calleeToken, fmt.Sprintf("Argument '%s' expects type '%s' in call to '%s'.", param.Name, param.DataType.Name, calleeName))
 			}

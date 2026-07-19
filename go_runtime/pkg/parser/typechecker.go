@@ -14,6 +14,14 @@ func (p *Parser) inferType(expr ast.Expression, resolveNullable bool) string {
 	}
 
 	switch e := expr.(type) {
+	case *ast.ShareExpression:
+		return p.inferType(e.Argument, resolveNullable)
+	case *ast.MagicVariable:
+		mv := p.getVariable("$pipe_value")
+		if mv != nil {
+			return mv.Name
+		}
+		return "any"
 	case *ast.ListLiteral:
 		return "list"
 	case *ast.MapLiteral:

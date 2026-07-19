@@ -175,6 +175,12 @@ func (r *Runtime) deepCopy(value any) any {
 }
 
 func (r *Runtime) deepCopyWithVisited(value any, visited map[uintptr]any) any {
+	if tv, ok := value.(TransferredValue); ok {
+		return tv.Value
+	}
+	if tv, ok := value.(*TransferredValue); ok {
+		return tv.Value
+	}
 	if value == nil {
 		return nil
 	}
@@ -362,7 +368,18 @@ func (r *Runtime) RunFunction(name string, args []any) (any, error) {
 
 	fnEnv := NewEnvironment(r.GlobalEnv)
 	for i, p := range fn.Params {
-		fnEnv.Define(p.Name, r.deepCopy(args[i]))
+		argVal := args[i]
+		var paramVal any
+		if tv, ok := argVal.(TransferredValue); ok {
+			paramVal = tv.Value
+		} else if tv, ok := argVal.(*TransferredValue); ok {
+			paramVal = tv.Value
+		} else if p.Shared {
+			paramVal = argVal
+		} else {
+			paramVal = r.deepCopy(argVal)
+		}
+		fnEnv.Define(p.Name, paramVal)
 	}
 
 	meta := &FunctionMeta{ReturnType: fn.ReturnType, FunctionName: name}
@@ -392,17 +409,33 @@ func (r *Runtime) RunFunction(name string, args []any) (any, error) {
 
 		frame := r.Stack[len(r.Stack)-1]
 
-		if currentSignal == SignalReturn {
+		if currentSignal == SignalReturn || currentSignal == SignalTransfer {
 			if frame.Type == "Function" {
-				finalResult = signalValue
+				if currentSignal == SignalTransfer {
+					finalResult = TransferredValue{Value: signalValue}
+				} else {
+					finalResult = signalValue
+				}
 				r.Stack = r.Stack[:len(r.Stack)-1] // pop
 				r.trace("RUNTIME", "Popped Function Frame", map[string]any{"functionName": frame.Meta.FunctionName, "return": finalResult})
 
-				if err := r.checkType(finalResult, frame.Meta.ReturnType); err != nil {
+				valToCheck := finalResult
+				if tv, ok := finalResult.(TransferredValue); ok {
+					valToCheck = tv.Value
+				} else if tv, ok := finalResult.(*TransferredValue); ok {
+					valToCheck = tv.Value
+				}
+				if err := r.checkType(valToCheck, frame.Meta.ReturnType); err != nil {
 					return nil, err
 				}
 
 				if len(r.Stack) == 0 {
+					if tv, ok := finalResult.(TransferredValue); ok {
+						return tv.Value, nil
+					}
+					if tv, ok := finalResult.(*TransferredValue); ok {
+						return tv.Value, nil
+					}
 					return finalResult, nil
 				}
 
@@ -631,6 +664,44 @@ func (r *Runtime) executeStatement(stmt ast.Statement, frame *StackFrame, signal
 		}
 		signalCallback(SignalReturn, retVal)
 
+	case *ast.TransferStatement:
+		var retVal any = nil
+		if s.Argument != nil {
+			v, err := r.evaluate(s.Argument, frame.Env)
+			if err != nil {
+				*errOut = err
+				return
+			}
+			retVal = v
+		}
+		// Perform runtime transfer checks:
+		if _, ok := retVal.(float64); ok {
+			*errOut = fmt.Errorf("Runtime Error: Transfer type mismatch.")
+			return
+		}
+		if _, ok := retVal.(string); ok {
+			*errOut = fmt.Errorf("Runtime Error: Transfer type mismatch.")
+			return
+		}
+		if _, ok := retVal.(bool); ok {
+			*errOut = fmt.Errorf("Runtime Error: Transfer type mismatch.")
+			return
+		}
+		if frame.Meta != nil && frame.Meta.ReturnType.Type == "StructType" {
+			valToCheck := retVal
+			if tv, ok := retVal.(TransferredValue); ok {
+				valToCheck = tv.Value
+			} else if tv, ok := retVal.(*TransferredValue); ok {
+				valToCheck = tv.Value
+			}
+			m, ok := valToCheck.(*ShiftMap)
+			if !ok || m.StructName != frame.Meta.ReturnType.Name {
+				*errOut = fmt.Errorf("Runtime Error: Transfer type mismatch.")
+				return
+			}
+		}
+		signalCallback(SignalTransfer, retVal)
+
 	case *ast.BreakStatement:
 		signalCallback(SignalBreak, nil)
 
@@ -778,6 +849,10 @@ func (r *Runtime) startLoop(stmt ast.Statement, env *Environment, lType string, 
 			parentSignal(SignalReturn, signalVal)
 			return true // exit completely
 		}
+		if currentSignal == SignalTransfer {
+			parentSignal(SignalTransfer, signalVal)
+			return true // exit completely
+		}
 		return false
 	}
 
@@ -915,4 +990,10 @@ func (r *Runtime) VerifySafeRegex(pattern string) bool {
 		return false
 	}
 	return true
+}
+
+// TransferredValue wraps a value that is returned using the transfer statement,
+// indicating that standard copy-on-assignment should be bypassed.
+type TransferredValue struct {
+	Value any
 }

@@ -71,6 +71,7 @@ func (r *Runtime) evaluate(expr ast.Expression, env *Environment) (any, error) {
 		return m, nil
 	case *ast.StructLiteral:
 		m := NewShiftMap()
+		m.StructName = e.StructName
 		for _, entry := range e.Entries {
 			k, err := r.evaluate(entry.Key, env)
 			if err != nil {
@@ -347,6 +348,9 @@ func (r *Runtime) evaluateRest(expr ast.Expression, env *Environment) (any, erro
 			strParts[i] = r.stringify(p)
 		}
 		return strings.Join(strParts, del), nil
+
+	case *ast.ShareExpression:
+		return r.evaluate(e.Argument, env)
 
 	default:
 		return nil, fmt.Errorf("Unknown expression %s", expr.NodeType())

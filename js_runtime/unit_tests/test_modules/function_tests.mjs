@@ -48,7 +48,7 @@ export const function_tests = {
     }
     `
     },
-    "Return type mismatch runtime error": {
+    "Return type mismatch list runtime error": {
         "tests": [
             { call: "main()", type: "runtime_error", expect: "Runtime Error: Return type mismatch." }
         ],
@@ -57,6 +57,18 @@ export const function_tests = {
         list<any> tricky_list;
         tricky_list[] = "Hello";
         return tricky_list[0];
+    }
+    `
+    },
+    "Return type mismatch map runtime error": {
+        "tests": [
+            { call: "main()", type: "runtime_error", expect: "Runtime Error: Return type mismatch." }
+        ],
+        "code": `
+    function main() number {
+        map<any> tricky_map;
+        tricky_map["Hello"] = "Hello";
+        return tricky_map["Hello"];
     }
     `
     }

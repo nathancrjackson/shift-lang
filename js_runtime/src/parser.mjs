@@ -215,9 +215,10 @@ export class Parser {
         // Parse parameters to advance the cursor past them correctly AND store them
         if (!this.check(TokenType.RPAREN)) {
             do {
+                const isShared = this.match(TokenType.SHARED);
                 const typeInfo = this.parseType(); // Parse type (handles generics)
                 const paramName = this.consume(TokenType.IDENTIFIER, "Expect parameter name.");
-                params.push({ name: paramName.v, type: typeInfo.name, generic: typeInfo.generic });
+                params.push({ name: paramName.v, type: typeInfo.name, generic: typeInfo.generic, shared: isShared });
             } while (this.match(TokenType.COMMA));
         }
 
@@ -267,6 +268,7 @@ export class Parser {
     inferType(expr, resolveNullable = false) {
         if (!expr) return "null";
         switch (expr.type) {
+            case "ShareExpression": return this.inferType(expr.argument, resolveNullable);
             case "ListLiteral": return "list";
             case "MapLiteral": return "map";
             case "StructLiteral": return expr.structName;
@@ -395,7 +397,7 @@ export class Parser {
         if (!expr) return null;
         if (expr.type === "Variable") {
             const t = this.getVariable(expr.name);
-            return t ? { type: t.type, name: t.name, generic: t.generic } : null;
+            return t ? { type: t.type, name: t.name, generic: t.generic, shared: t.shared } : null;
         }
         if (expr.type === "IndexExpression") {
             let parentType = this.resolveTypeAnnotation(expr.object);
@@ -540,9 +542,14 @@ export class Parser {
         const params = [];
         if (!this.check(TokenType.RPAREN)) {
             do {
+                const sharedToken = this.peek();
+                const isShared = this.match(TokenType.SHARED);
                 const typeInfo = this.parseType();
+                if (isShared && ["number", "string", "bool"].includes(typeInfo.name)) {
+                    this.addError(sharedToken, "Primitive variables cannot be shared arguments.");
+                }
                 const paramName = this.consume(TokenType.IDENTIFIER, "Expect parameter name.");
-                params.push({ type: "Parameter", dataType: typeInfo, name: paramName.v });
+                params.push({ type: "Parameter", dataType: typeInfo, name: paramName.v, shared: isShared });
             } while (this.match(TokenType.COMMA));
         }
 
@@ -554,6 +561,12 @@ export class Parser {
         this.defineVariable(nameToken.v, {
             type: "Type",
             name: returnType.name,
+            params: params.map(p => ({
+                name: p.name,
+                type: p.dataType.name,
+                generic: p.dataType.generic,
+                shared: p.shared
+            })),
             initialized: true
         });
 
@@ -562,7 +575,7 @@ export class Parser {
 
         params.forEach(p => {
             try {
-                this.defineVariable(p.name, p.dataType, true);
+                this.defineVariable(p.name, { ...p.dataType, shared: p.shared }, true);
             } catch (e) {
                 this.addError({ l: line, v: p.name }, "Duplicate parameter name.");
             }
@@ -579,6 +592,10 @@ export class Parser {
             if (!this.hasGuaranteedReturn(body)) {
                 this.addError({ l: line, v: nameToken.v }, "Not all code paths return a value.");
             }
+        }
+
+        if (!hasBodyErrors && this.hasMixedExits(body)) {
+            this.addError({ l: line, v: nameToken.v }, "Cannot Mix Return and Transfer in the same function.");
         }
 
         this.currentReturnType = previousReturnType;
@@ -606,7 +623,7 @@ export class Parser {
             return false;
         }
 
-        if (statement.type === "ReturnStatement" || statement.type === "ThrowStatement") {
+        if (statement.type === "ReturnStatement" || statement.type === "TransferStatement" || statement.type === "ThrowStatement") {
             return true;
         }
 
@@ -688,6 +705,7 @@ export class Parser {
     parseStatement() {
         try {
             if (this.match(TokenType.RETURN)) return this.returnStatement();
+            if (this.match(TokenType.TRANSFER)) return this.transferStatement();
             if (this.match(TokenType.IF)) return this.ifStatement();
             if (this.match(TokenType.FOR)) return this.forStatement();
             if (this.match(TokenType.WHILE)) return this.whileStatement();
@@ -924,6 +942,93 @@ export class Parser {
             line: startToken.l,
             value: value
         };
+    }
+
+    transferStatement() {
+        const startToken = this.previous(); // TRANSFER
+        const value = this.parseExpression();
+        const endToken = this.consume(TokenType.SEMICOLON, "Expect ';' after transfer value.");
+
+        if (this.currentReturnType === "any") {
+            this.addError(startToken, "Functions using transfer cannot declare any as return.");
+        }
+
+        const inferredType = this.inferType(value);
+        if (["number", "string", "bool"].includes(inferredType)) {
+            this.addError(startToken, "Primitive variables cannot be transferred.");
+        }
+
+        // Validate that we do not transfer a shared variable or its nested members first
+        let root = value;
+        while (root.type === "IndexExpression") {
+            root = root.object;
+        }
+        let isSharedTransfer = false;
+        if (root.type === "Variable") {
+            const varType = this.getVariable(root.name);
+            if (varType && varType.shared) {
+                this.addError(startToken, "Shared variables and their nested collections cannot be transferred.");
+                isSharedTransfer = true;
+            }
+        }
+
+        if (!isSharedTransfer && this.currentReturnType !== null && this.currentReturnType !== "any") {
+            let match = (inferredType === this.currentReturnType);
+            if (!match) {
+                if (this.currentReturnType === "nullable" && inferredType !== "null" && inferredType !== "none") {
+                    match = true;
+                }
+                if (inferredType === "any" || this.currentReturnType === "any") {
+                    match = true;
+                }
+            }
+
+            const isNull = inferredType === "null";
+            const isPrimitiveTarget = ["number", "bool"].includes(this.currentReturnType);
+            if (isNull && !isPrimitiveTarget) { match = true; }
+
+            if (!match) {
+                this.addError(startToken, "Transfer type mismatch.");
+            }
+        }
+
+        return {
+            type: "TransferStatement",
+            start: startToken.s,
+            end: endToken.e,
+            line: startToken.l,
+            argument: value
+        };
+    }
+
+    hasMixedExits(body) {
+        let hasReturn = false;
+        let hasTransfer = false;
+
+        const scan = (node) => {
+            if (!node) return;
+            if (node.type === "ReturnStatement") hasReturn = true;
+            if (node.type === "TransferStatement") hasTransfer = true;
+
+            if (node.type === "Block" && node.statements) {
+                node.statements.forEach(scan);
+            }
+            if (node.type === "IfStatement") {
+                scan(node.thenBranch);
+                scan(node.elseBranch);
+            }
+            if (node.type === "WhileStatement" || node.type === "ForInStatement" || node.type === "ForStatement") {
+                scan(node.body);
+            }
+            if (node.type === "TryStatement") {
+                scan(node.tryBlock);
+                scan(node.catchBlock);
+                scan(node.reviewBlock);
+            }
+        };
+
+        scan(body);
+        return hasReturn && hasTransfer;
     }
 
     ifStatement() {
@@ -1300,7 +1405,13 @@ export class Parser {
 
     check(expectedType) {
         if (this.isAtEnd()) return false;
-        return this.peek().t === expectedType;
+        const token = this.peek();
+        if (expectedType === TokenType.IDENTIFIER) {
+            if (token.t === TokenType.TRANSFER || token.t === TokenType.SHARE || token.t === TokenType.SHARED) {
+                token.t = TokenType.IDENTIFIER;
+            }
+        }
+        return token.t === expectedType;
     }
 
     advance() {

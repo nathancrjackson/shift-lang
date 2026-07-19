@@ -8,7 +8,7 @@ package ast
 var IgnoreVersionMismatch = false
 
 // SchemaVersion defines the authoritative version of the AST schema.
-const SchemaVersion = "1.1.0"
+const SchemaVersion = "1.2.0"
 
 // Node represents the base interface for all nodes in the Shift Abstract Syntax Tree (AST).
 type Node interface {
@@ -68,6 +68,7 @@ type Parameter struct {
 	Type     string         `json:"type"` // always "Parameter"
 	Name     string         `json:"name"`
 	DataType TypeAnnotation `json:"dataType"`
+	Shared   bool           `json:"shared"`
 }
 
 // MapEntry represents a single key-value mapping within a map.
@@ -352,9 +353,22 @@ type JoinExpression struct {
 	Delimiter Expression `json:"delimiter"`
 }
 
+// TransferStatement represents the AST node structure for TransferStatement.
+type TransferStatement struct {
+	BaseNode
+	Argument Expression `json:"argument"`
+}
+
+// ShareExpression represents the AST node structure for ShareExpression.
+type ShareExpression struct {
+	BaseNode
+	Argument Expression `json:"argument"`
+}
+
 // Marker methods for statements
 func (*VariableDeclaration) stmtNode() {}
 func (*ReturnStatement) stmtNode() {}
+func (*TransferStatement) stmtNode() {}
 func (*IfStatement) stmtNode() {}
 func (*WhileStatement) stmtNode() {}
 func (*ForRangeStatement) stmtNode() {}
@@ -371,6 +385,7 @@ func (*Block) stmtNode() {}
 func (*Assignment) exprNode() {}
 func (*IndexAssignment) exprNode() {}
 func (*PipelineExpression) exprNode() {}
+func (*ShareExpression) exprNode() {}
 func (*BinaryExpression) exprNode() {}
 func (*UnaryExpression) exprNode() {}
 func (*CallExpression) exprNode() {}

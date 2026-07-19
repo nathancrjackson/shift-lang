@@ -91,9 +91,14 @@ func (p *Parser) functionDeclaration() *ast.FunctionDeclaration {
 	params := []ast.Parameter{}
 	if !p.check(token.RPAREN) {
 		for {
+			sharedToken := p.peek()
+			isShared := p.match(token.SHARED)
 			typeInfo, tErr := p.parseType("Expect valid type name.", "Expect valid type name.")
 			if tErr != nil {
 				return nil
+			}
+			if isShared && (typeInfo.Name == "number" || typeInfo.Name == "string" || typeInfo.Name == "bool") {
+				p.addError(sharedToken, "Primitive variables cannot be shared arguments.")
 			}
 			paramName, nErr := p.consume(token.IDENTIFIER, "Expect parameter name.")
 			if nErr != nil {
@@ -103,6 +108,7 @@ func (p *Parser) functionDeclaration() *ast.FunctionDeclaration {
 				Type:     "Parameter",
 				Name:     paramName.Lexeme,
 				DataType: *typeInfo,
+				Shared:   isShared,
 			})
 			if !p.match(token.COMMA) {
 				break
@@ -123,6 +129,7 @@ func (p *Parser) functionDeclaration() *ast.FunctionDeclaration {
 	p.defineVariable(nameToken.Lexeme, TypeDef{
 		Type:        "Type",
 		Name:        returnType.Name,
+		Params:      params,
 		Initialized: true,
 	}, false)
 
@@ -133,7 +140,13 @@ func (p *Parser) functionDeclaration() *ast.FunctionDeclaration {
 	p.enterScope()
 
 	for _, param := range params {
-		dErr := p.defineVariable(param.Name, TypeDef{Type: "Type", Name: param.DataType.Name, Generic: param.DataType.Generic, Initialized: true}, true)
+		dErr := p.defineVariable(param.Name, TypeDef{
+			Type:        "Type",
+			Name:        param.DataType.Name,
+			Generic:     param.DataType.Generic,
+			Initialized: true,
+			Shared:      param.Shared,
+		}, true)
 		if dErr != nil {
 			p.addError(token.Token{Line: line, Lexeme: param.Name}, "Duplicate parameter name.")
 		}
@@ -151,6 +164,10 @@ func (p *Parser) functionDeclaration() *ast.FunctionDeclaration {
 		if !p.hasGuaranteedReturn(body) {
 			p.addError(token.Token{Line: line, Lexeme: nameToken.Lexeme}, "Not all code paths return a value.")
 		}
+	}
+
+	if !hasBodyErrors && p.hasMixedExits(body) {
+		p.addError(token.Token{Line: line, Lexeme: nameToken.Lexeme}, "Cannot Mix Return and Transfer in the same function.")
 	}
 
 	p.currentReturnType = previousReturnType
@@ -246,6 +263,9 @@ func (p *Parser) parseBlock() *ast.Block {
 func (p *Parser) parseStatement() ast.Statement {
 	if p.match(token.RETURN) {
 		return p.returnStatement()
+	}
+	if p.match(token.TRANSFER) {
+		return p.transferStatement()
 	}
 	if p.match(token.IF) {
 		return p.ifStatement()
@@ -661,6 +681,8 @@ func (p *Parser) hasGuaranteedReturn(stmt ast.Statement) bool {
 		return false
 	case *ast.ReturnStatement:
 		return true
+	case *ast.TransferStatement:
+		return true
 	case *ast.ThrowStatement:
 		return true
 	case *ast.IfStatement:
@@ -682,5 +704,119 @@ func (p *Parser) hasGuaranteedReturn(stmt ast.Statement) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+// scanExits recursively scans the AST of a statement to check if it contains return or transfer statements.
+// Parameters:
+//   - stmt ast.Statement: the statement to scan
+//   - hasReturn *bool: pointer to track if a return statement was found
+//   - hasTransfer *bool: pointer to track if a transfer statement was found
+func (p *Parser) scanExits(stmt ast.Statement, hasReturn *bool, hasTransfer *bool) {
+	if stmt == nil {
+		return
+	}
+	switch s := stmt.(type) {
+	case *ast.Block:
+		for _, bStmt := range s.Statements {
+			p.scanExits(bStmt, hasReturn, hasTransfer)
+		}
+	case *ast.ReturnStatement:
+		*hasReturn = true
+	case *ast.TransferStatement:
+		*hasTransfer = true
+	case *ast.IfStatement:
+		p.scanExits(s.ThenBranch, hasReturn, hasTransfer)
+		if s.ElseBranch != nil {
+			p.scanExits(s.ElseBranch, hasReturn, hasTransfer)
+		}
+	case *ast.TryStatement:
+		p.scanExits(s.TryBlock, hasReturn, hasTransfer)
+		if s.CatchBlock != nil {
+			p.scanExits(s.CatchBlock, hasReturn, hasTransfer)
+		}
+		if s.ReviewBlock != nil {
+			p.scanExits(s.ReviewBlock, hasReturn, hasTransfer)
+		}
+	case *ast.WhileStatement:
+		p.scanExits(s.Body, hasReturn, hasTransfer)
+	case *ast.ForRangeStatement:
+		p.scanExits(s.Body, hasReturn, hasTransfer)
+	case *ast.ForInStatement:
+		p.scanExits(s.Body, hasReturn, hasTransfer)
+	}
+}
+
+// hasMixedExits determines if the given body statement contains a mix of both return and transfer exits.
+// Parameters:
+//   - body ast.Statement: the body statement to scan
+// Return:
+//   - bool: true if the body contains both return and transfer statements, false otherwise
+func (p *Parser) hasMixedExits(body ast.Statement) bool {
+	var hasReturn, hasTransfer bool
+	p.scanExits(body, &hasReturn, &hasTransfer)
+	return hasReturn && hasTransfer
+}
+
+// transferStatement parses a transfer statement and validates its type alignment and reference constraints.
+// Return:
+//   - *ast.TransferStatement: the parsed transfer statement node, or nil if parsing failed
+func (p *Parser) transferStatement() *ast.TransferStatement {
+	startToken := p.previous() // TRANSFER token
+	value := p.parseExpression()
+	endToken, _ := p.consume(token.SEMICOLON, "Expect ';' after transfer value.")
+
+	if p.currentReturnType != nil && *p.currentReturnType == "any" {
+		p.addError(startToken, "Functions using transfer cannot declare any as return.")
+	}
+
+	inferredType := p.inferType(value, false)
+	if inferredType == "number" || inferredType == "string" || inferredType == "bool" {
+		p.addError(startToken, "Primitive variables cannot be transferred.")
+	}
+
+	// Validate shared constraints first
+	var root ast.Expression = value
+	for {
+		idxExpr, ok := root.(*ast.IndexExpression)
+		if !ok {
+			break
+		}
+		root = idxExpr.Object
+	}
+
+	isSharedTransfer := false
+	if varExpr, ok := root.(*ast.Variable); ok {
+		varDef := p.getVariable(varExpr.Name)
+		if varDef != nil && varDef.Shared {
+			p.addError(startToken, "Shared variables and their nested collections cannot be transferred.")
+			isSharedTransfer = true
+		}
+	}
+
+	if !isSharedTransfer && p.currentReturnType != nil && *p.currentReturnType != "any" {
+		match := inferredType == *p.currentReturnType
+		if !match {
+			if *p.currentReturnType == "nullable" && inferredType != "null" && inferredType != "none" {
+				match = true
+			}
+			if inferredType == "any" || *p.currentReturnType == "any" {
+				match = true
+			}
+		}
+
+		isPrimitive := *p.currentReturnType == "number" || *p.currentReturnType == "bool"
+		if inferredType == "null" && !isPrimitive {
+			match = true
+		}
+
+		if !match {
+			p.addError(startToken, "Transfer type mismatch.")
+		}
+	}
+
+	return &ast.TransferStatement{
+		BaseNode: ast.BaseNode{Type: "TransferStatement", Start: startToken.Position, End: endToken.Position, Line: startToken.Line},
+		Argument: value,
 	}
 }

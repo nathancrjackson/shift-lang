@@ -133,7 +133,10 @@ function main() number {
 ### Functions
 - **Definition:** `function name(type arg) return_type { ... }`
 - **Scope:** Global registration; parameters and body variables are locally scoped.
-- **Argument Passing:** Strictly Pass-by-Value. All data, including Collections (`list`, `map`) and Structs, is copied when passed to functions. Modifications inside a function do not affect the caller's data.
+- **Argument Passing:** By default, Shift uses **Pass-by-Value** semantics. All data, including Collections (`list`, `map`) and Structs, is copied when passed to functions, returned, or assigned. Modifications inside a function do not affect the caller's data.
+- **Reference Semantics (Sharing and Transfer):**
+  - **Shared Parameter Binding (`shared`):** Prefix a function parameter definition with `shared` (e.g. `shared User u`) to pass a collection or struct by reference. The call site must explicitly wrap the argument in a `share` expression (e.g. `update_user(share my_user)`). The shared parameter binding inside the function is base-immutable (it cannot be reassigned to another struct/map, but its elements/fields are fully mutable). Primitive variables cannot be shared.
+  - **Reference Transfers (`transfer`):** The `transfer` statement acts as a return variant that bypasses standard return and assignment cloning to pass a reference out of a function (e.g. `transfer result;`). Functions using `transfer` cannot declare `any` as their return type, and `shared` variables or their nested collections cannot be transferred. Mixing standard `return` and `transfer` exits in the same function is prohibited.
 - **Return:** Explicit return types required. `void` is rejected in favor of `none` (conceptually similar to null return).
 - **Hoisting:** Functions can be called before they are defined in the file.
 

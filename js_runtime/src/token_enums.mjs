@@ -22,6 +22,9 @@ LOGICAL_OR: "LOGICAL_OR",
     LOGICAL_XOR: "LOGICAL_XOR",
 NOT: "NOT",
     IMPORT: "IMPORT",
+    SHARE: "SHARE",
+    SHARED: "SHARED",
+    TRANSFER: "TRANSFER",
 
     // Casting & Checks
     AS: "AS",
@@ -142,6 +145,9 @@ export const KEYWORDS = {
 "xor": TokenType.LOGICAL_XOR,
 "not": TokenType.NOT,
     "import": TokenType.IMPORT,
+    "share": TokenType.SHARE,
+    "shared": TokenType.SHARED,
+    "transfer": TokenType.TRANSFER,
 
     "as": TokenType.AS,
     "has": TokenType.HAS,

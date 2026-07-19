@@ -17,7 +17,7 @@ func TestValidateAST(t *testing.T) {
 	}
 
 	// 2. Unsupported Version validation
-	badVersionJSON := `{"type":"Program","version":"2.0.0","structs":[],"functions":[]}`
+	badVersionJSON := `{"type":"Program","version":"` + ast.SchemaVersion + `.invalid","structs":[],"functions":[]}`
 	var badProg ast.Program
 	if err := json.Unmarshal([]byte(badVersionJSON), &badProg); err == nil {
 		t.Error("Expected version checking to fail on unmarshal, but got nil")
@@ -26,7 +26,7 @@ func TestValidateAST(t *testing.T) {
 	// 3. Structural validation - missing function body
 	missingBodyJSON := `{
 		"type": "Program",
-		"version": "1.1.0",
+		"version": "` + ast.SchemaVersion + `",
 		"structs": [],
 		"functions": [
 			{
@@ -53,7 +53,7 @@ func TestValidateAST(t *testing.T) {
 	// 4. Missing IfStatement Condition
 	missingCondJSON := `{
 		"type": "Program",
-		"version": "1.1.0",
+		"version": "` + ast.SchemaVersion + `",
 		"structs": [],
 		"functions": [
 			{
@@ -93,7 +93,7 @@ func TestValidateAST(t *testing.T) {
 	// 5. Block contains nil Statement
 	nilStmtJSON := `{
 		"type": "Program",
-		"version": "1.1.0",
+		"version": "` + ast.SchemaVersion + `",
 		"structs": [],
 		"functions": [
 			{
@@ -125,7 +125,7 @@ func TestValidateAST(t *testing.T) {
 	// 6. BinaryExpression with nil operand
 	nilOperandJSON := `{
 		"type": "Program",
-		"version": "1.1.0",
+		"version": "` + ast.SchemaVersion + `",
 		"structs": [],
 		"functions": [
 			{

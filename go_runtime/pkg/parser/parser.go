@@ -27,6 +27,7 @@ type TypeDef struct {
 	Generic     *ast.TypeAnnotation
 	Params      []ast.Parameter
 	Initialized bool
+	Shared      bool
 }
 
 // StructDef defines the layout and field specifications for structs.
@@ -344,6 +345,7 @@ func (p *Parser) preParseFunction() {
 	params := []ast.Parameter{}
 	if !p.check(token.RPAREN) {
 		for {
+			isShared := p.match(token.SHARED)
 			typeInfo, tErr := p.parseType("Expect parameter type.", "Invalid parameter type.")
 			if tErr != nil {
 				p.synchronize() // rough recovery
@@ -358,6 +360,7 @@ func (p *Parser) preParseFunction() {
 				Type:     "Parameter",
 				Name:     paramName.Lexeme,
 				DataType: *typeInfo,
+				Shared:   isShared,
 			})
 			if !p.match(token.COMMA) {
 				break
@@ -478,6 +481,15 @@ func (p *Parser) matchTypeKeyword() *token.TokenType {
 func (p *Parser) check(expectedType token.TokenType) bool {
 	if p.isAtEnd() {
 		return false
+	}
+	if expectedType == token.IDENTIFIER {
+		idx := p.current
+		if idx < len(p.tokens) {
+			t := p.tokens[idx].Type
+			if t == token.TRANSFER || t == token.SHARE || t == token.SHARED {
+				p.tokens[idx].Type = token.IDENTIFIER
+			}
+		}
 	}
 	return p.peek().Type == expectedType
 }

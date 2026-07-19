@@ -22,6 +22,9 @@ const (
 	TRUE     TokenType = "TRUE"
 	FALSE    TokenType = "FALSE"
 	IMPORT   TokenType = "IMPORT"
+	SHARE    TokenType = "SHARE"
+	SHARED   TokenType = "SHARED"
+	TRANSFER TokenType = "TRANSFER"
 
 	BREAK TokenType = "BREAK"
 	SKIP  TokenType = "SKIP"
@@ -111,6 +114,7 @@ const (
 // Keywords maps source string literals to their corresponding TokenTypes.
 var Keywords = map[string]TokenType{
 	"function": FUNCTION, "return": RETURN, "struct": STRUCT, "import": IMPORT,
+	"share": SHARE, "shared": SHARED, "transfer": TRANSFER,
 	"if": IF, "else": ELSE, "for": FOR, "in": IN, "to": TO, "while": WHILE,
 	"try": TRY, "catch": CATCH, "review": REVIEW, "throw": THROW,
 	"true": TRUE, "false": FALSE,

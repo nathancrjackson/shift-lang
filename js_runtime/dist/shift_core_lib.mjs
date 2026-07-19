@@ -1,6 +1,6 @@
 /**
  * Shift Script Library (Core Mode)
- * Bundled at: 2026-07-18T12:09:04.246Z
+ * Bundled at: 2026-07-19T07:28:25.528Z
  */
 
 // --- Source: token_enums.mjs ---
@@ -28,6 +28,9 @@ LOGICAL_OR: "LOGICAL_OR",
     LOGICAL_XOR: "LOGICAL_XOR",
 NOT: "NOT",
     IMPORT: "IMPORT",
+    SHARE: "SHARE",
+    SHARED: "SHARED",
+    TRANSFER: "TRANSFER",
 
     // Casting & Checks
     AS: "AS",
@@ -148,6 +151,9 @@ export const KEYWORDS = {
 "xor": TokenType.LOGICAL_XOR,
 "not": TokenType.NOT,
     "import": TokenType.IMPORT,
+    "share": TokenType.SHARE,
+    "shared": TokenType.SHARED,
+    "transfer": TokenType.TRANSFER,
 
     "as": TokenType.AS,
     "has": TokenType.HAS,
@@ -687,6 +693,10 @@ export class ExpressionParser {
                     throw this.parser.addError(equalsToken, "Undefined variable.");
                 }
 
+                if (varType.shared) {
+                    throw this.parser.addError(equalsToken, "Shared variable names cannot be reassigned.");
+                }
+
                 let updatedValue = value;
                 // USE CENTRALIZED VALIDATION
                 try {
@@ -1182,6 +1192,28 @@ export class ExpressionParser {
 
     // Level 8: Unary (not, -, inspect, pack, unpack, size of, type of)
     unary() {
+        if (this.parser.match(TokenType.SHARE)) {
+            const startToken = this.parser.previous();
+            const right = this.unary();
+
+            if (right.type === "MagicVariable") {
+                this.parser.addError(startToken, "Magic variables cannot be used for shared arguments.");
+            }
+
+            const inferredType = this.parser.inferType(right);
+            if (["number", "string", "bool"].includes(inferredType)) {
+                this.parser.addError(startToken, "Primitive variables cannot be shared arguments.");
+            }
+
+            return {
+                type: "ShareExpression",
+                start: startToken.s,
+                end: right.end,
+                line: startToken.l,
+                argument: right
+            };
+        }
+
         if (this.parser.match(TokenType.NOT) || this.parser.match(TokenType.MINUS)) {
             const operatorToken = this.parser.previous();
             const right = this.unary();
@@ -1532,6 +1564,17 @@ export class ExpressionParser {
                     const param = calleeVar.params[i];
                     const arg = args[i];
 
+                    // Check sharing expectations
+                    if (param.shared) {
+                        if (arg.type !== "ShareExpression") {
+                            this.parser.addError(calleeToken, "Function expects shared argument.");
+                        }
+                    } else {
+                        if (arg.type === "ShareExpression") {
+                            this.parser.addError(calleeToken, "Function does not expect shared argument.");
+                        }
+                    }
+
                     // Construct a type object compatible with validateAssignment
                     const typeObj = { type: "Type", name: param.type, generic: param.generic };
 
@@ -1577,7 +1620,7 @@ export class ExpressionParser {
 // --- Source: ast_schema.json ---
 const schema = {
 	"$schema": "http://json-schema.org/draft-07/schema#",
-	"version": "1.1.0",
+	"version": "1.2.0",
 	"title": "Shift Script AST",
 	"description": "Abstract Syntax Tree specification for the Shift Script language.",
 	"type": "object",
@@ -1718,6 +1761,9 @@ const schema = {
 									},
 									"dataType": {
 										"$ref": "#/definitions/TypeAnnotation"
+									},
+									"shared": {
+										"type": "boolean"
 									}
 								}
 							}
@@ -1759,6 +1805,9 @@ const schema = {
 				},
 				{
 					"$ref": "#/definitions/ReturnStatement"
+				},
+				{
+					"$ref": "#/definitions/TransferStatement"
 				},
 				{
 					"$ref": "#/definitions/IfStatement"
@@ -2083,6 +2132,9 @@ const schema = {
 				},
 				{
 					"$ref": "#/definitions/PipelineExpression"
+				},
+				{
+					"$ref": "#/definitions/ShareExpression"
 				},
 				{
 					"$ref": "#/definitions/BinaryExpression"
@@ -2647,6 +2699,48 @@ const schema = {
 					}
 				}
 			]
+		},
+		"TransferStatement": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "TransferStatement"
+						},
+						"argument": {
+							"$ref": "#/definitions/Expression"
+						}
+					},
+					"required": [
+						"type",
+						"argument"
+					]
+				}
+			]
+		},
+		"ShareExpression": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "ShareExpression"
+						},
+						"argument": {
+							"$ref": "#/definitions/Expression"
+						}
+					},
+					"required": [
+						"type",
+						"argument"
+					]
+				}
+			]
 		}
 	},
 	"$ref": "#/definitions/Program"
@@ -2864,9 +2958,10 @@ export class Parser {
         // Parse parameters to advance the cursor past them correctly AND store them
         if (!this.check(TokenType.RPAREN)) {
             do {
+                const isShared = this.match(TokenType.SHARED);
                 const typeInfo = this.parseType(); // Parse type (handles generics)
                 const paramName = this.consume(TokenType.IDENTIFIER, "Expect parameter name.");
-                params.push({ name: paramName.v, type: typeInfo.name, generic: typeInfo.generic });
+                params.push({ name: paramName.v, type: typeInfo.name, generic: typeInfo.generic, shared: isShared });
             } while (this.match(TokenType.COMMA));
         }
 
@@ -2916,6 +3011,7 @@ export class Parser {
     inferType(expr, resolveNullable = false) {
         if (!expr) return "null";
         switch (expr.type) {
+            case "ShareExpression": return this.inferType(expr.argument, resolveNullable);
             case "ListLiteral": return "list";
             case "MapLiteral": return "map";
             case "StructLiteral": return expr.structName;
@@ -3044,7 +3140,7 @@ export class Parser {
         if (!expr) return null;
         if (expr.type === "Variable") {
             const t = this.getVariable(expr.name);
-            return t ? { type: t.type, name: t.name, generic: t.generic } : null;
+            return t ? { type: t.type, name: t.name, generic: t.generic, shared: t.shared } : null;
         }
         if (expr.type === "IndexExpression") {
             let parentType = this.resolveTypeAnnotation(expr.object);
@@ -3189,9 +3285,14 @@ export class Parser {
         const params = [];
         if (!this.check(TokenType.RPAREN)) {
             do {
+                const sharedToken = this.peek();
+                const isShared = this.match(TokenType.SHARED);
                 const typeInfo = this.parseType();
+                if (isShared && ["number", "string", "bool"].includes(typeInfo.name)) {
+                    this.addError(sharedToken, "Primitive variables cannot be shared arguments.");
+                }
                 const paramName = this.consume(TokenType.IDENTIFIER, "Expect parameter name.");
-                params.push({ type: "Parameter", dataType: typeInfo, name: paramName.v });
+                params.push({ type: "Parameter", dataType: typeInfo, name: paramName.v, shared: isShared });
             } while (this.match(TokenType.COMMA));
         }
 
@@ -3203,6 +3304,12 @@ export class Parser {
         this.defineVariable(nameToken.v, {
             type: "Type",
             name: returnType.name,
+            params: params.map(p => ({
+                name: p.name,
+                type: p.dataType.name,
+                generic: p.dataType.generic,
+                shared: p.shared
+            })),
             initialized: true
         });
 
@@ -3211,7 +3318,7 @@ export class Parser {
 
         params.forEach(p => {
             try {
-                this.defineVariable(p.name, p.dataType, true);
+                this.defineVariable(p.name, { ...p.dataType, shared: p.shared }, true);
             } catch (e) {
                 this.addError({ l: line, v: p.name }, "Duplicate parameter name.");
             }
@@ -3228,6 +3335,10 @@ export class Parser {
             if (!this.hasGuaranteedReturn(body)) {
                 this.addError({ l: line, v: nameToken.v }, "Not all code paths return a value.");
             }
+        }
+
+        if (!hasBodyErrors && this.hasMixedExits(body)) {
+            this.addError({ l: line, v: nameToken.v }, "Cannot Mix Return and Transfer in the same function.");
         }
 
         this.currentReturnType = previousReturnType;
@@ -3255,7 +3366,7 @@ export class Parser {
             return false;
         }
 
-        if (statement.type === "ReturnStatement" || statement.type === "ThrowStatement") {
+        if (statement.type === "ReturnStatement" || statement.type === "TransferStatement" || statement.type === "ThrowStatement") {
             return true;
         }
 
@@ -3337,6 +3448,7 @@ export class Parser {
     parseStatement() {
         try {
             if (this.match(TokenType.RETURN)) return this.returnStatement();
+            if (this.match(TokenType.TRANSFER)) return this.transferStatement();
             if (this.match(TokenType.IF)) return this.ifStatement();
             if (this.match(TokenType.FOR)) return this.forStatement();
             if (this.match(TokenType.WHILE)) return this.whileStatement();
@@ -3573,6 +3685,93 @@ export class Parser {
             line: startToken.l,
             value: value
         };
+    }
+
+    transferStatement() {
+        const startToken = this.previous(); // TRANSFER
+        const value = this.parseExpression();
+        const endToken = this.consume(TokenType.SEMICOLON, "Expect ';' after transfer value.");
+
+        if (this.currentReturnType === "any") {
+            this.addError(startToken, "Functions using transfer cannot declare any as return.");
+        }
+
+        const inferredType = this.inferType(value);
+        if (["number", "string", "bool"].includes(inferredType)) {
+            this.addError(startToken, "Primitive variables cannot be transferred.");
+        }
+
+        // Validate that we do not transfer a shared variable or its nested members first
+        let root = value;
+        while (root.type === "IndexExpression") {
+            root = root.object;
+        }
+        let isSharedTransfer = false;
+        if (root.type === "Variable") {
+            const varType = this.getVariable(root.name);
+            if (varType && varType.shared) {
+                this.addError(startToken, "Shared variables and their nested collections cannot be transferred.");
+                isSharedTransfer = true;
+            }
+        }
+
+        if (!isSharedTransfer && this.currentReturnType !== null && this.currentReturnType !== "any") {
+            let match = (inferredType === this.currentReturnType);
+            if (!match) {
+                if (this.currentReturnType === "nullable" && inferredType !== "null" && inferredType !== "none") {
+                    match = true;
+                }
+                if (inferredType === "any" || this.currentReturnType === "any") {
+                    match = true;
+                }
+            }
+
+            const isNull = inferredType === "null";
+            const isPrimitiveTarget = ["number", "bool"].includes(this.currentReturnType);
+            if (isNull && !isPrimitiveTarget) { match = true; }
+
+            if (!match) {
+                this.addError(startToken, "Transfer type mismatch.");
+            }
+        }
+
+        return {
+            type: "TransferStatement",
+            start: startToken.s,
+            end: endToken.e,
+            line: startToken.l,
+            argument: value
+        };
+    }
+
+    hasMixedExits(body) {
+        let hasReturn = false;
+        let hasTransfer = false;
+
+        const scan = (node) => {
+            if (!node) return;
+            if (node.type === "ReturnStatement") hasReturn = true;
+            if (node.type === "TransferStatement") hasTransfer = true;
+
+            if (node.type === "Block" && node.statements) {
+                node.statements.forEach(scan);
+            }
+            if (node.type === "IfStatement") {
+                scan(node.thenBranch);
+                scan(node.elseBranch);
+            }
+            if (node.type === "WhileStatement" || node.type === "ForInStatement" || node.type === "ForStatement") {
+                scan(node.body);
+            }
+            if (node.type === "TryStatement") {
+                scan(node.tryBlock);
+                scan(node.catchBlock);
+                scan(node.reviewBlock);
+            }
+        };
+
+        scan(body);
+        return hasReturn && hasTransfer;
     }
 
     ifStatement() {
@@ -3949,7 +4148,13 @@ export class Parser {
 
     check(expectedType) {
         if (this.isAtEnd()) return false;
-        return this.peek().t === expectedType;
+        const token = this.peek();
+        if (expectedType === TokenType.IDENTIFIER) {
+            if (token.t === TokenType.TRANSFER || token.t === TokenType.SHARE || token.t === TokenType.SHARED) {
+                token.t = TokenType.IDENTIFIER;
+            }
+        }
+        return token.t === expectedType;
     }
 
     advance() {
@@ -4028,6 +4233,10 @@ const SIGNAL_NONE = 0;
 const SIGNAL_BREAK = 1;
 const SIGNAL_SKIP = 2;
 const SIGNAL_RETURN = 3;
+
+export class TransferredValue {
+    constructor(value) { this.value = value; }
+}
 
 export class Environment {
     constructor(parent = null) {
@@ -4129,6 +4338,7 @@ export class Runtime {
     }
 
     deepCopy(value, visited = new Set()) {
+        if (value instanceof TransferredValue) return value.value;
         if (value === null) return null;
         if (typeof value !== 'object') return value;
         if (visited.has(value)) {
@@ -4173,6 +4383,9 @@ export class Runtime {
         }
         if (typeInfo.type === 'StructType') {
             if (!(value instanceof Map)) throw new Error(`Runtime Error: Return type mismatch.`);
+            if (value.__shift_type && value.__shift_type !== "map" && value.__shift_type !== typeInfo.name) {
+                throw new Error(`Runtime Error: Return type mismatch.`);
+            }
             value.__shift_type = typeInfo.name;
             return;
         }
@@ -4244,9 +4457,17 @@ export class Runtime {
 
             const fnEnv = new Environment(this.globalEnv);
             for (let i = 0; i < func.params.length; i++) {
-                const paramName = func.params[i].name;
-                const paramValue = this.deepCopy(args[i]);
-                fnEnv.define(paramName, paramValue);
+                const param = func.params[i];
+                const argVal = args[i];
+                let paramValue;
+                if (argVal instanceof TransferredValue) {
+                    paramValue = argVal.value;
+                } else if (param.shared) {
+                    paramValue = argVal;
+                } else {
+                    paramValue = this.deepCopy(argVal);
+                }
+                fnEnv.define(param.name, paramValue);
             }
 
             const initialFrame = new StackFrame("Function", fnEnv, func.body.statements);
@@ -4274,10 +4495,13 @@ export class Runtime {
                         this.logDebug(`Popped Function Frame: ${frame.meta?.functionName} (Return: ${this.stringify(finalResult)})`);
 
                         if (frame.meta && frame.meta.returnType) {
-                            this.checkType(finalResult, frame.meta.returnType);
+                            const valToCheck = finalResult instanceof TransferredValue ? finalResult.value : finalResult;
+                            this.checkType(valToCheck, frame.meta.returnType);
                         }
 
-                        if (this.stack.length === 0) return finalResult;
+                        if (this.stack.length === 0) {
+                            return finalResult instanceof TransferredValue ? finalResult.value : finalResult;
+                        }
 
                         const callerFrame = this.stack[this.stack.length - 1];
                         callerFrame.exprResult = finalResult;
@@ -4383,6 +4607,19 @@ export class Runtime {
                 let retVal = null;
                 if (stmt.value) retVal = this.evaluate(stmt.value, frame.env);
                 signalCallback(SIGNAL_RETURN, retVal);
+                break;
+            }
+
+            case "TransferStatement": {
+                const retVal = this.evaluate(stmt.argument, frame.env);
+                if (frame.meta && frame.meta.returnType) {
+                    try {
+                        this.checkType(retVal, frame.meta.returnType);
+                    } catch (e) {
+                        throw new ShiftRuntimeError("Runtime Error: Transfer type mismatch.");
+                    }
+                }
+                signalCallback(SIGNAL_RETURN, new TransferredValue(retVal));
                 break;
             }
 
@@ -4614,6 +4851,7 @@ export class Runtime {
                 if (expr.name === "$pipe_value") return env.get("$pipe_value");
                 return env.get(expr.name);
             case "Variable": return env.get(expr.name);
+            case "ShareExpression": return this.evaluate(expr.argument, env);
             case "ListLiteral": return expr.elements.map(e => this.evaluate(e, env));
             case "StructLiteral":
             case "MapLiteral": {
@@ -4624,6 +4862,12 @@ export class Runtime {
             case "Assignment": {
                 if (expr.name.startsWith('$')) throw new Error(`Runtime Error: Cannot assign to magic variable '${expr.name}'.`);
                 const value = this.deepCopy(this.evaluate(expr.value, env));
+                try {
+                    const existingVal = env.get(expr.name);
+                    if (existingVal && existingVal.__shift_type && value instanceof Map) {
+                        value.__shift_type = existingVal.__shift_type;
+                    }
+                } catch (e) {}
                 env.assign(expr.name, value);
                 return value;
             }
@@ -5649,8 +5893,8 @@ export function validateAST(node) {
     if (!schema.version) {
         throw new ShiftValidationError("Schema Error: AST schema is missing version metadata.");
     }
-    if (schema.version !== "1.1.0") {
-        throw new ShiftValidationError(`Schema Error: Unsupported AST schema version: '${schema.version}'. Expected '1.1.0'.`);
+    if (node.version !== schema.version) {
+        throw new ShiftValidationError(`Schema Error: Unsupported AST schema version: '${node.version}'. Expected '${schema.version}'.`);
     }
 
     // 3. Structured Logging Checkpoint

@@ -25,6 +25,7 @@ import { regex_tests } from './test_modules/regex_tests.mjs';
 import { syntax_tests } from './test_modules/syntax_tests.mjs';
 import { strict_intrinsics_tests } from './test_modules/strict_intrinsics_tests.mjs';
 import { import_tests } from './test_modules/import_tests.mjs';
+import { reference_tests } from './test_modules/reference_tests.mjs';
 import { complex_tests } from './test_modules/complex_tests.mjs';
 import { file_tests } from './test_modules/file_tests.mjs';
 
@@ -59,6 +60,7 @@ test_suite.addgroup('Regex', regex_tests);
 test_suite.addgroup('Syntax', syntax_tests);
 test_suite.addgroup('Strict Intrinsics', strict_intrinsics_tests);
 test_suite.addgroup('Imports', import_tests);
+test_suite.addgroup('Share/Transfer References', reference_tests);
 test_suite.addgroup('Complex', complex_tests);
 test_suite.addgroup('Filesystem', file_tests);
 
@@ -66,26 +68,22 @@ const debugData = test_suite.run();
 
 const showAllDebug = false;
 
-if (showAllDebug)
-{
+if (showAllDebug) {
     const value = debugData.get('String Manipulation: Slice End Out of bounds');
     console.log(value);
     console.log("--- The AST- --")
     console.log(JSON.stringify(value.ast, null, 4));
     console.log(`\n`);
 }
-else
-{
+else {
     let anyFailed = false;
     debugData.forEach((value, key) => {
-        if (value.success == false)
-        {
+        if (value.success == false) {
             anyFailed = true;
             console.warn(`\n--- FAILED TEST [${key}] ---`)
             console.log("Token Count:", value.tokens.length);
-            if (value.ast)
-            {
-                console.log("AST Function Nodes:",  value.ast.functions.length);
+            if (value.ast) {
+                console.log("AST Function Nodes:", value.ast.functions.length);
                 console.log("AST Struct Nodes:", value.ast.structs.length);
             }
             else { console.log("No AST"); }

@@ -503,6 +503,22 @@ func validateNode(node Node) error {
 			return err
 		}
 
+	case *ShareExpression:
+		if n.Argument == nil {
+			return fmt.Errorf("AST Validation Error at line %d: ShareExpression has nil Argument", n.Line)
+		}
+		if err := validateNode(n.Argument); err != nil {
+			return err
+		}
+
+	case *TransferStatement:
+		if n.Argument == nil {
+			return fmt.Errorf("AST Validation Error at line %d: TransferStatement has nil Argument", n.Line)
+		}
+		if err := validateNode(n.Argument); err != nil {
+			return err
+		}
+
 	default:
 		return fmt.Errorf("AST Validation Error: Unknown AST node type: %T", node)
 	}

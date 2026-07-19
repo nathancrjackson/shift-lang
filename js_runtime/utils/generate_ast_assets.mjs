@@ -168,6 +168,7 @@ type Parameter struct {
 	Type     string         \`json:"type"\` // always "Parameter"
 	Name     string         \`json:"name"\`
 	DataType TypeAnnotation \`json:"dataType"\`
+	Shared   bool           \`json:"shared"\`
 }
 
 // MapEntry represents a single key-value mapping within a map.

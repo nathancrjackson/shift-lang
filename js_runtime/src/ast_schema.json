@@ -1,6 +1,6 @@
 {
 	"$schema": "http://json-schema.org/draft-07/schema#",
-	"version": "1.1.0",
+	"version": "1.2.0",
 	"title": "Shift Script AST",
 	"description": "Abstract Syntax Tree specification for the Shift Script language.",
 	"type": "object",
@@ -141,6 +141,9 @@
 									},
 									"dataType": {
 										"$ref": "#/definitions/TypeAnnotation"
+									},
+									"shared": {
+										"type": "boolean"
 									}
 								}
 							}
@@ -182,6 +185,9 @@
 				},
 				{
 					"$ref": "#/definitions/ReturnStatement"
+				},
+				{
+					"$ref": "#/definitions/TransferStatement"
 				},
 				{
 					"$ref": "#/definitions/IfStatement"
@@ -506,6 +512,9 @@
 				},
 				{
 					"$ref": "#/definitions/PipelineExpression"
+				},
+				{
+					"$ref": "#/definitions/ShareExpression"
 				},
 				{
 					"$ref": "#/definitions/BinaryExpression"
@@ -1068,6 +1077,48 @@
 							"$ref": "#/definitions/Expression"
 						}
 					}
+				}
+			]
+		},
+		"TransferStatement": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "TransferStatement"
+						},
+						"argument": {
+							"$ref": "#/definitions/Expression"
+						}
+					},
+					"required": [
+						"type",
+						"argument"
+					]
+				}
+			]
+		},
+		"ShareExpression": {
+			"allOf": [
+				{
+					"$ref": "#/definitions/Node"
+				},
+				{
+					"properties": {
+						"type": {
+							"const": "ShareExpression"
+						},
+						"argument": {
+							"$ref": "#/definitions/Expression"
+						}
+					},
+					"required": [
+						"type",
+						"argument"
+					]
 				}
 			]
 		}

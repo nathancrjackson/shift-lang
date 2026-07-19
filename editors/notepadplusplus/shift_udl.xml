@@ -8,8 +8,8 @@
         <KeywordLists>
             <Keywords name="Folder+">{</Keywords>
             <Keywords name="Folder-">}</Keywords>
-            <Keywords name="Keywords1">function struct return try catch review throw if else while for in to break skip delete and or xor not as split with joined contains has matches search replace error alert critical size of type of inspect pack unpack</Keywords>
-            <Keywords name="Keywords2">string number bool null any nullable list map</Keywords>
+            <Keywords name="Keywords1">function struct return transfer share try catch review throw if else while for in to break skip delete and or xor not as split with joined contains has matches search replace error alert critical size of type of inspect pack unpack</Keywords>
+            <Keywords name="Keywords2">string number bool null any nullable list map shared</Keywords>
             <Keywords name="Keywords3">$pipe_value $thrown_message $line_num</Keywords>
         </KeywordLists>
         <Styles>

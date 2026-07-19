@@ -18,6 +18,7 @@
 3. **Robust Collections:** First-class generic lists (`list<T>`), maps (`map<T>`), and schemas/structures (`struct`) with literal syntax.
 4. **Error & Validation Separation:** Distinct code pathways for runtime faults (`catch`) and soft validation failures (`review`).
 5. **Secure Sandboxing (Core Mode):** Standard execution blocks imports and filesystem access. Filesystem packages can be omitted entirely at compilation/build time for lightweight browser or host environment safety.
+6. **Reference Semantics (Sharing & Transfer):** Opt-in to reference passing for objects using the `shared` parameter modifier and `transfer` statement. Bypasses standard copy-on-write/assignment memory copy behavior, enabling high-performance reference pipelines and safe data ownership rules.
 
 ---
 

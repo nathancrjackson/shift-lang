@@ -7,6 +7,10 @@ const SIGNAL_BREAK = 1;
 const SIGNAL_SKIP = 2;
 const SIGNAL_RETURN = 3;
 
+export class TransferredValue {
+    constructor(value) { this.value = value; }
+}
+
 export class Environment {
     constructor(parent = null) {
         this.parent = parent;
@@ -107,6 +111,7 @@ export class Runtime {
     }
 
     deepCopy(value, visited = new Set()) {
+        if (value instanceof TransferredValue) return value.value;
         if (value === null) return null;
         if (typeof value !== 'object') return value;
         if (visited.has(value)) {
@@ -151,6 +156,9 @@ export class Runtime {
         }
         if (typeInfo.type === 'StructType') {
             if (!(value instanceof Map)) throw new Error(`Runtime Error: Return type mismatch.`);
+            if (value.__shift_type && value.__shift_type !== "map" && value.__shift_type !== typeInfo.name) {
+                throw new Error(`Runtime Error: Return type mismatch.`);
+            }
             value.__shift_type = typeInfo.name;
             return;
         }
@@ -222,9 +230,17 @@ export class Runtime {
 
             const fnEnv = new Environment(this.globalEnv);
             for (let i = 0; i < func.params.length; i++) {
-                const paramName = func.params[i].name;
-                const paramValue = this.deepCopy(args[i]);
-                fnEnv.define(paramName, paramValue);
+                const param = func.params[i];
+                const argVal = args[i];
+                let paramValue;
+                if (argVal instanceof TransferredValue) {
+                    paramValue = argVal.value;
+                } else if (param.shared) {
+                    paramValue = argVal;
+                } else {
+                    paramValue = this.deepCopy(argVal);
+                }
+                fnEnv.define(param.name, paramValue);
             }
 
             const initialFrame = new StackFrame("Function", fnEnv, func.body.statements);
@@ -252,10 +268,13 @@ export class Runtime {
                         this.logDebug(`Popped Function Frame: ${frame.meta?.functionName} (Return: ${this.stringify(finalResult)})`);
 
                         if (frame.meta && frame.meta.returnType) {
-                            this.checkType(finalResult, frame.meta.returnType);
+                            const valToCheck = finalResult instanceof TransferredValue ? finalResult.value : finalResult;
+                            this.checkType(valToCheck, frame.meta.returnType);
                         }
 
-                        if (this.stack.length === 0) return finalResult;
+                        if (this.stack.length === 0) {
+                            return finalResult instanceof TransferredValue ? finalResult.value : finalResult;
+                        }
 
                         const callerFrame = this.stack[this.stack.length - 1];
                         callerFrame.exprResult = finalResult;
@@ -361,6 +380,19 @@ export class Runtime {
                 let retVal = null;
                 if (stmt.value) retVal = this.evaluate(stmt.value, frame.env);
                 signalCallback(SIGNAL_RETURN, retVal);
+                break;
+            }
+
+            case "TransferStatement": {
+                const retVal = this.evaluate(stmt.argument, frame.env);
+                if (frame.meta && frame.meta.returnType) {
+                    try {
+                        this.checkType(retVal, frame.meta.returnType);
+                    } catch (e) {
+                        throw new ShiftRuntimeError("Runtime Error: Transfer type mismatch.");
+                    }
+                }
+                signalCallback(SIGNAL_RETURN, new TransferredValue(retVal));
                 break;
             }
 
@@ -592,6 +624,7 @@ export class Runtime {
                 if (expr.name === "$pipe_value") return env.get("$pipe_value");
                 return env.get(expr.name);
             case "Variable": return env.get(expr.name);
+            case "ShareExpression": return this.evaluate(expr.argument, env);
             case "ListLiteral": return expr.elements.map(e => this.evaluate(e, env));
             case "StructLiteral":
             case "MapLiteral": {
@@ -602,6 +635,12 @@ export class Runtime {
             case "Assignment": {
                 if (expr.name.startsWith('$')) throw new Error(`Runtime Error: Cannot assign to magic variable '${expr.name}'.`);
                 const value = this.deepCopy(this.evaluate(expr.value, env));
+                try {
+                    const existingVal = env.get(expr.name);
+                    if (existingVal && existingVal.__shift_type && value instanceof Map) {
+                        value.__shift_type = existingVal.__shift_type;
+                    }
+                } catch (e) {}
                 env.assign(expr.name, value);
                 return value;
             }

@@ -25,6 +25,10 @@ export class ExpressionParser {
                     throw this.parser.addError(equalsToken, "Undefined variable.");
                 }
 
+                if (varType.shared) {
+                    throw this.parser.addError(equalsToken, "Shared variable names cannot be reassigned.");
+                }
+
                 let updatedValue = value;
                 // USE CENTRALIZED VALIDATION
                 try {
@@ -520,6 +524,28 @@ export class ExpressionParser {
 
     // Level 8: Unary (not, -, inspect, pack, unpack, size of, type of)
     unary() {
+        if (this.parser.match(TokenType.SHARE)) {
+            const startToken = this.parser.previous();
+            const right = this.unary();
+
+            if (right.type === "MagicVariable") {
+                this.parser.addError(startToken, "Magic variables cannot be used for shared arguments.");
+            }
+
+            const inferredType = this.parser.inferType(right);
+            if (["number", "string", "bool"].includes(inferredType)) {
+                this.parser.addError(startToken, "Primitive variables cannot be shared arguments.");
+            }
+
+            return {
+                type: "ShareExpression",
+                start: startToken.s,
+                end: right.end,
+                line: startToken.l,
+                argument: right
+            };
+        }
+
         if (this.parser.match(TokenType.NOT) || this.parser.match(TokenType.MINUS)) {
             const operatorToken = this.parser.previous();
             const right = this.unary();
@@ -869,6 +895,17 @@ export class ExpressionParser {
                 for (let i = 0; i < args.length; i++) {
                     const param = calleeVar.params[i];
                     const arg = args[i];
+
+                    // Check sharing expectations
+                    if (param.shared) {
+                        if (arg.type !== "ShareExpression") {
+                            this.parser.addError(calleeToken, "Function expects shared argument.");
+                        }
+                    } else {
+                        if (arg.type === "ShareExpression") {
+                            this.parser.addError(calleeToken, "Function does not expect shared argument.");
+                        }
+                    }
 
                     // Construct a type object compatible with validateAssignment
                     const typeObj = { type: "Type", name: param.type, generic: param.generic };
