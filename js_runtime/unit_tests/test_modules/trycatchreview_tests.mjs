@@ -290,5 +290,84 @@ return "All okay here";
 
 return "All okay here";
 }`
+    },
+    "Local error introspection magic variables": {
+        "tests": [
+            { call: "start()", type: "number", expect: 26 },
+            { call: "get_source()", type: "string", expect: "main.shift" },
+            { call: "get_stack()", type: "string", expect: "  at divide_number() (Line 26)\n  at get_stack() (Line 18)" }
+        ],
+        "code":
+`function start() number {
+    try {
+        divide_number(0, 0);
+    } catch {
+        return $error_line;
+    }
+    return 0;
+}
+function get_source() string {
+    try {
+        divide_number(0, 0);
+    } catch {
+        return $error_source;
+    }
+    return "";
+}
+function get_stack() string {
+    try {
+        divide_number(0, 0);
+    } catch {
+        return $error_stack;
+    }
+    return "";
+}
+function divide_number(number a, number b) number {
+    return a / b;
+}`
+    },
+    "Introspection in review block": {
+        "tests": [
+            { call: "start()", type: "number", expect: 3 },
+            { call: "get_source()", type: "string", expect: "main.shift" },
+            { call: "get_stack()", type: "string", expect: "  at get_stack() (Line 19)" }
+        ],
+        "code":
+`function start() number {
+    try {
+        throw alert "warning!";
+    } review {
+        return $error_line;
+    }
+    return 0;
+}
+function get_source() string {
+    try {
+        throw alert "warning!";
+    } review {
+        return $error_source;
+    }
+    return "";
+}
+function get_stack() string {
+    try {
+        throw alert "warning!";
+    } review {
+        return $error_stack;
+    }
+    return "";
+}`
+    },
+    "Uncaught runtime exception traceback": {
+        "tests": [
+            { call: "start()", type: "runtime_error", expect: "[Runtime] Division by zero.\nStack trace:\n  at divide_number() (Line 5)\n  at start() (Line 2)" }
+        ],
+        "code":
+`function start() number {
+    return divide_number(10, 0);
+}
+function divide_number(number a, number b) number {
+    return a / b;
+}`
     }
 }

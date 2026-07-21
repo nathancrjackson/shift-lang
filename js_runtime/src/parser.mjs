@@ -32,7 +32,7 @@ export class Parser {
 
         this.importResolver = importResolver;
         this.importedFiles = importedFiles;
-        this.currentFilePath = currentFilePath; // <-- NEW: Track where this parser is located
+        this.currentFilePath = currentFilePath || "main.shift"; // <-- NEW: Track where this parser is located
         
         this.importedStructs = [];
         this.importedFunctions = [];
@@ -305,6 +305,7 @@ export class Parser {
                 if (funcType) return funcType.name;
                 return "any";
             case "Variable":
+            case "MagicVariable":
                 const varType = this.getVariable(expr.name);
                 if (varType) return varType.name;
                 return "any";
@@ -395,7 +396,7 @@ export class Parser {
 
     resolveTypeAnnotation(expr) {
         if (!expr) return null;
-        if (expr.type === "Variable") {
+        if (expr.type === "Variable" || expr.type === "MagicVariable") {
             const t = this.getVariable(expr.name);
             return t ? { type: t.type, name: t.name, generic: t.generic, shared: t.shared } : null;
         }
@@ -609,7 +610,8 @@ export class Parser {
             name: nameToken.v,
             params: params,
             returnType: returnType,
-            body: body
+            body: body,
+            filePath: this.currentFilePath
         };
     }
 
@@ -791,6 +793,9 @@ export class Parser {
 
             this.enterScope();
             this.defineVariable("$thrown_message", { type: "Type", name: "string", initialized: true });
+            this.defineVariable("$error_line", { type: "Type", name: "number", initialized: true });
+            this.defineVariable("$error_source", { type: "Type", name: "string", initialized: true });
+            this.defineVariable("$error_stack", { type: "Type", name: "string", initialized: true });
             catchBlock = this.parseBlock();
             this.exitScope();
 
@@ -805,6 +810,9 @@ export class Parser {
 
             this.enterScope();
             this.defineVariable("$thrown_message", { type: "Type", name: "string", initialized: true });
+            this.defineVariable("$error_line", { type: "Type", name: "number", initialized: true });
+            this.defineVariable("$error_source", { type: "Type", name: "string", initialized: true });
+            this.defineVariable("$error_stack", { type: "Type", name: "string", initialized: true });
             reviewBlock = this.parseBlock();
             this.exitScope();
 

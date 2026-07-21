@@ -74,7 +74,7 @@ func main() {
 	if len(lexErrors) > 0 {
 		fmt.Println("Syntax Errors:")
 		for _, e := range lexErrors {
-			fmt.Printf("Line %d: %s\n", e.StartLine, e.Message)
+			fmt.Printf("%s\n", e.Message)
 		}
 		os.Exit(1)
 	}

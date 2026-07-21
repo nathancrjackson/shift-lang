@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 
-const WORKSPACE_DIR = '.';
+const WORKSPACE_DIR = '..';
 const SCHEMA_PATH = path.join(WORKSPACE_DIR, 'js_runtime/src/ast_schema.json');
 const AST_GO_PATH = path.join(WORKSPACE_DIR, 'go_runtime/pkg/ast/ast.go');
 const UNMARSHAL_GO_PATH = path.join(WORKSPACE_DIR, 'go_runtime/pkg/ast/unmarshal.go');

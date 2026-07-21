@@ -268,8 +268,14 @@ func TestJSONSuite(t *testing.T) {
 						if check.Type == "runtime_error" {
 							if runErr == nil {
 								t.Errorf("Check #%d: Expected runtime error '%s' but got none.", i+1, expectStr)
-							} else if !strings.Contains(runErr.Error(), expectStr) {
-								t.Errorf("Check #%d: Expected runtime error '%s' but got '%s'", i+1, expectStr, runErr.Error())
+							} else {
+								cleanActual := strings.ReplaceAll(strings.ReplaceAll(runErr.Error(), "Runtime Error: ", ""), "[Runtime] ", "")
+								cleanExpected := strings.ReplaceAll(strings.ReplaceAll(expectStr, "Runtime Error: ", ""), "[Runtime] ", "")
+								cleanActual = strings.TrimSpace(cleanActual)
+								cleanExpected = strings.TrimSpace(cleanExpected)
+								if !strings.Contains(cleanActual, cleanExpected) {
+									t.Errorf("Check #%d: Expected runtime error '%s' but got '%s'", i+1, expectStr, runErr.Error())
+								}
 							}
 						} else {
 							if runErr != nil {

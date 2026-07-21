@@ -349,7 +349,9 @@ export class UnitTestHandler {
                             logEntry.actual = e.message;
 
                             if (check.type === "runtime_error") {
-                                if (!e.message.includes(check.expect)) {
+                                const cleanActual = e.message.replaceAll("Runtime Error: ", "").replaceAll("[Runtime] ", "").trim();
+                                const cleanExpected = check.expect.replaceAll("Runtime Error: ", "").replaceAll("[Runtime] ", "").trim();
+                                if (!cleanActual.includes(cleanExpected)) {
                                     testFailures.push(`${checkName}: Expected error "${check.expect}", got "${e.message}".`);
                                     logEntry.result_type = "FAIL_WRONG_ERROR";
                                 } else {

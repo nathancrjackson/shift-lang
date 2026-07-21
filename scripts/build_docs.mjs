@@ -1,21 +1,28 @@
-const fs = require('fs');
-const path = require('path');
-const { execSync } = require('child_process');
+// ./scripts/build_docs.mjs
+import fs from 'node:fs';
+import path from 'node:path';
+import { execSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+
+// Recreate __dirname for ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 console.log('🏁 Starting Shift Playground Document Bundler...');
 
-const ROOT_DIR = path.resolve(__dirname, '../..');
+const ROOT_DIR = path.resolve(__dirname, '..');
 const UTILS_DIR = __dirname;
 const WORKFLOWS_DIR = path.join(ROOT_DIR, '.github/workflows');
-const DIST_DIR = path.join(ROOT_DIR, 'js_runtime/dist');
+const DIST_DIR = path.join(ROOT_DIR, 'dist');
 const OUTPUT_FILE = path.join(ROOT_DIR, 'docs/index.html');
+const EXAMPLE_SCRIPT_DIR = path.join(ROOT_DIR, 'example_script');
 
 try {
     // 1. Run standard library bundler for both standard and core distributions
     console.log('📦 Rebuilding engine standard and core distributions...');
     const execOpts = { cwd: UTILS_DIR, stdio: 'inherit', shell: process.platform === 'win32' ? 'powershell.exe' : true };
-    execSync('node lib_bundler.js', execOpts);
-    execSync('node lib_bundler.js --core', execOpts);
+    execSync('node build_js_lib.mjs', execOpts);
+    execSync('node build_js_lib.mjs --core', execOpts);
 
     // 2. Format build date version string: Version YY.MM.DD.HHMM
     const now = new Date();
@@ -43,8 +50,7 @@ try {
     let appContent = fs.readFileSync(appTemplatePath, 'utf8');
 
     // Read and populate files array from demo_script folder
-    const demoScriptDir = path.join(ROOT_DIR, 'js_runtime/unit_tests/demo_script');
-    const demoFiles = fs.readdirSync(demoScriptDir);
+    const demoFiles = fs.readdirSync(EXAMPLE_SCRIPT_DIR);
     const filesArray = [];
     
     // Sort files to put .shift first
@@ -56,7 +62,7 @@ try {
 
     let idCounter = 1;
     for (const filename of demoFiles) {
-        const filePath = path.join(demoScriptDir, filename);
+        const filePath = path.join(EXAMPLE_SCRIPT_DIR, filename);
         if (fs.statSync(filePath).isDirectory()) continue;
         // Do not include temp stree files or gitignores
         if (filename.startsWith('.') || filename.endsWith('.stree.json') || filename === 'ast_stree.json') continue;

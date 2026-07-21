@@ -20,7 +20,12 @@ export class ShiftLexerError extends ShiftEngineError {
      * @param {number} line - The line number where the error occurred.
      */
     constructor(message, line) {
-        super(message);
+        let msg = message;
+        if (msg.startsWith("[Lexer]")) {
+            msg = msg.replace(/^\[Lexer\]\s*(Line\s+\d+:\s*)?/, "");
+        }
+        const formatted = `[Lexer] Line ${line}: ${msg}`;
+        super(formatted);
         this.line = line;
     }
 }
@@ -35,7 +40,12 @@ export class ShiftParserError extends ShiftEngineError {
      * @param {string} [token] - The token value where the error occurred.
      */
     constructor(message, line, token) {
-        super(message);
+        let msg = message;
+        if (msg.startsWith("[Parser]")) {
+            msg = msg.replace(/^\[Parser\]\s*(Line\s+\d+\s+)?Error\s+at\s+'[^']*':\s*/, "");
+        }
+        const formatted = `[Parser] Line ${line} Error at '${token || ""}': ${msg}`;
+        super(formatted);
         this.line = line;
         this.token = token;
     }
@@ -99,6 +109,7 @@ export class ShiftRuntimeError extends ShiftEngineError {
      * @param {string} message - The error message.
      */
     constructor(message) {
-        super(message);
+        const msg = message.startsWith("[Runtime]") ? message : `[Runtime] ${message}`;
+        super(msg);
     }
 }

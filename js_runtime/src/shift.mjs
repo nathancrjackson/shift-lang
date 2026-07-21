@@ -76,7 +76,7 @@ export class Shift {
         // Compile the Standard Library (Shift code part) once during initialization
         const stdLexer = new Lexer(source);
         const stdTokens = stdLexer.tokenize().tokens;
-        const stdParser = new Parser(stdTokens, this.importResolver);
+        const stdParser = new Parser(stdTokens, this.importResolver, new Set(), "stdlib.shift");
 
         // Load Definitions manually (Structs + Active Intrinsics)
         this._loadStructs(stdParser);
@@ -159,7 +159,7 @@ export class Shift {
      * @throws {ShiftLexerError} If lexing fails.
      * @throws {ShiftParserError} If parsing fails.
      */
-    run(sourceCode, entryPoint = "main", args = []) {
+    run(sourceCode, entryPoint = "main", args = [], filePath = null) {
         // Guard clauses
         if (typeof sourceCode !== 'string') {
             throw new ShiftEngineError("sourceCode must be a string.");
@@ -184,11 +184,11 @@ export class Shift {
         if (lexResult.errors.length > 0) {
             const firstError = lexResult.errors[0];
             const line = firstError.line || firstError.endline || firstError.startline;
-            throw new ShiftLexerError(`Lexer Error: ${firstError.message}`, line);
+            throw new ShiftLexerError(firstError.message, line);
         }
 
         // 2. Parser
-        const parser = new Parser(lexResult.tokens, this.importResolver);
+        const parser = new Parser(lexResult.tokens, this.importResolver, new Set(), filePath);
 
         // A. Load Definitions
         this._loadStructs(parser);
@@ -211,7 +211,7 @@ export class Shift {
 
         if (parseResult.errors.length > 0) {
             const firstError = parseResult.errors[0];
-            throw new ShiftParserError(`Parser Error: ${firstError.message}`, firstError.line, firstError.token);
+            throw new ShiftParserError(firstError.message, firstError.line, firstError.token);
         }
 
         // 3. Tree Shaking / Linking
@@ -298,8 +298,30 @@ export class Shift {
             logger.trace("SHIFT", "executeAST completed successfully");
             return result;
         } catch (e) {
-            // Ensure runtime errors are propagated cleanly
-            throw e;
+            if (e instanceof ShiftEngineError) {
+                let msg = e.message || "";
+                if (!msg.startsWith("[Runtime]") && !msg.startsWith("[Lexer]") && !msg.startsWith("[Parser]")) {
+                    msg = `[Runtime] ${msg}`;
+                }
+                const trace = runtime.getStackTrace();
+                if (trace) {
+                    msg = `${msg}\nStack trace:\n${trace}`;
+                }
+                e.message = msg;
+                throw e;
+            } else {
+                let msg = e.message || String(e);
+                if (!msg.startsWith("[Runtime]")) {
+                    msg = `[Runtime] ${msg}`;
+                }
+                const trace = runtime.getStackTrace();
+                if (trace) {
+                    msg = `${msg}\nStack trace:\n${trace}`;
+                }
+                const newErr = new ShiftRuntimeError(msg);
+                newErr.stack = e.stack;
+                throw newErr;
+            }
         }
     }
 }

@@ -28,8 +28,8 @@ function getArg(flag, fallback = undefined) {
   return args[idx + 1] && !args[idx + 1].startsWith('--') ? args[idx + 1] : true;
 }
 
-const dir = getArg('--dir', '../unit_tests/test_modules');
-const outDir = getArg('--out', '../../go_runtime/unit_tests/tests_json');
+const dir = getArg('--dir', '../js_runtime/unit_tests/test_modules');
+const outDir = getArg('--out', '../go_runtime/unit_tests/tests_json');
 const writeAll = args.includes('--all-exports');
 const pretty = args.includes('--min') ? 0 : 2;
 

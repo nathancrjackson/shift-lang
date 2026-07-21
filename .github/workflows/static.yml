@@ -31,29 +31,30 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version: '1.21'
           cache: false
+      - name: Prepare Go runtime AST files
+        working-directory: scripts
+        run: node generate_ast_assets.mjs
       - name: Build Go binaries
-        working-directory: go_runtime
-        run: |
-          mkdir -p dist
-          GOOS=linux GOARCH=amd64 go build -o dist/shift ./cmd/shift
-          GOOS=windows GOARCH=amd64 go build -o dist/shift.exe ./cmd/shift
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
+        working-directory: scripts
+        run: node build_go_binary.mjs
       - name: Build JS and Docs
-        run: node js_runtime/utils/build_docs.js
+        working-directory: scripts
+        run: node build_docs.mjs
       - name: Commit and Push built runtimes
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f js_runtime/dist/*.mjs go_runtime/dist/shift go_runtime/dist/shift.exe
-          git diff --quiet && git diff --staged --quiet || (git commit -m "chore: auto-compile runtimes [skip ci]" && git push)
+          git add -f dist/*.mjs dist/shift dist/shift.exe
+          git diff --quiet && git diff --staged --quiet || (git commit -m "build artifacts" && git push)
       - name: Setup Pages
         uses: actions/configure-pages@v5
       - name: Upload artifact

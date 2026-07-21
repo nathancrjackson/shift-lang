@@ -17,7 +17,7 @@ func (p *Parser) inferType(expr ast.Expression, resolveNullable bool) string {
 	case *ast.ShareExpression:
 		return p.inferType(e.Argument, resolveNullable)
 	case *ast.MagicVariable:
-		mv := p.getVariable("$pipe_value")
+		mv := p.getVariable(e.Name)
 		if mv != nil {
 			return mv.Name
 		}
@@ -226,8 +226,14 @@ func (p *Parser) resolveTypeAnnotation(expr ast.Expression) *ast.TypeAnnotation 
 		return nil
 	}
 	switch e := expr.(type) {
-	case *ast.Variable:
-		t := p.getVariable(e.Name)
+	case *ast.Variable, *ast.MagicVariable:
+		var name string
+		if v, ok := e.(*ast.Variable); ok {
+			name = v.Name
+		} else if mv, ok := e.(*ast.MagicVariable); ok {
+			name = mv.Name
+		}
+		t := p.getVariable(name)
 		if t == nil {
 			return nil
 		}

@@ -506,6 +506,427 @@ export const StandardLibrary = {
 			returnType: "none",
 			params: [{ name: "source", type: "string" }, { name: "dest", type: "string" }],
 			func: (args) => { throw new Error("Runtime Error: move_folder is disabled in core mode."); }
+		},
+		"get_substring": {
+			returnType: "string",
+			params: [
+				{ name: "input_str", type: "string" },
+				{ name: "start_index", type: "number" },
+				{ name: "end_index", type: "nullable", generic: "number" }
+			],
+			func: (args) => {
+				const input_str = args[0];
+				const start_index = args[1];
+				const end_index = args[2];
+				if (typeof input_str !== "string") throw new Error("Runtime Error: get_substring expects a string.");
+				if (!Number.isInteger(start_index)) throw new Error("Runtime Error: start_index must be an integer.");
+				if (start_index < 0 || start_index > input_str.length) throw new Error("Runtime Error: start_index out of bounds.");
+				let true_end = input_str.length;
+				if (end_index !== null && end_index !== undefined) {
+					if (!Number.isInteger(end_index)) throw new Error("Runtime Error: end_index must be an integer.");
+					if (end_index < 0 || end_index > input_str.length) throw new Error("Runtime Error: end_index out of bounds.");
+					if (end_index < start_index) throw new Error("Runtime Error: end_index cannot be less than start_index.");
+					true_end = end_index;
+				}
+				return input_str.substring(start_index, true_end);
+			}
+		},
+		"transform_ansistring_to_uppercase": {
+			returnType: "string",
+			params: [{ name: "input_str", type: "string" }],
+			func: (args) => {
+				const s = args[0];
+				if (typeof s !== "string") throw new Error("Runtime Error: transform_ansistring_to_uppercase expects a string.");
+				return s.replace(/[a-z]/g, c => String.fromCharCode(c.charCodeAt(0) - 32));
+			}
+		},
+		"transform_ansistring_to_lowercase": {
+			returnType: "string",
+			params: [{ name: "input_str", type: "string" }],
+			func: (args) => {
+				const s = args[0];
+				if (typeof s !== "string") throw new Error("Runtime Error: transform_ansistring_to_lowercase expects a string.");
+				return s.replace(/[A-Z]/g, c => String.fromCharCode(c.charCodeAt(0) + 32));
+			}
+		},
+		"trim_string": {
+			returnType: "string",
+			params: [{ name: "input_str", type: "string" }],
+			func: (args) => {
+				const s = args[0];
+				if (typeof s !== "string") throw new Error("Runtime Error: trim_string expects a string.");
+				return s.replace(/^[ \r\n\t]+|[ \r\n\t]+$/g, '');
+			}
+		},
+		"trim_string_left": {
+			returnType: "string",
+			params: [{ name: "input_str", type: "string" }],
+			func: (args) => {
+				const s = args[0];
+				if (typeof s !== "string") throw new Error("Runtime Error: trim_string_left expects a string.");
+				return s.replace(/^[ \r\n\t]+/g, '');
+			}
+		},
+		"trim_string_right": {
+			returnType: "string",
+			params: [{ name: "input_str", type: "string" }],
+			func: (args) => {
+				const s = args[0];
+				if (typeof s !== "string") throw new Error("Runtime Error: trim_string_right expects a string.");
+				return s.replace(/[ \r\n\t]+$/g, '');
+			}
+		},
+		"get_sublist": {
+			returnType: "list",
+			generic: "any",
+			params: [
+				{ name: "items", type: "list", generic: "any", shared: true },
+				{ name: "start_index", type: "number" },
+				{ name: "end_index", type: "nullable", generic: "number" }
+			],
+			func: (args) => {
+				const items = args[0];
+				const start_index = args[1];
+				const end_index = args[2];
+				if (!Array.isArray(items)) throw new Error("Runtime Error: get_sublist expects a list.");
+				if (!Number.isInteger(start_index)) throw new Error("Runtime Error: start_index must be an integer.");
+				if (start_index < 0 || start_index > items.length) throw new Error("Runtime Error: start_index out of bounds.");
+				let true_end = items.length;
+				if (end_index !== null && end_index !== undefined) {
+					if (!Number.isInteger(end_index)) throw new Error("Runtime Error: end_index must be an integer.");
+					if (end_index < 0 || end_index > items.length) throw new Error("Runtime Error: end_index out of bounds.");
+					if (end_index < start_index) throw new Error("Runtime Error: end_index cannot be less than start_index.");
+					true_end = end_index;
+				}
+				return items.slice(start_index, true_end);
+			}
+		},
+		"trim_shared_string": {
+			returnType: "none",
+			params: [{ name: "target", type: "nullable", generic: "string", shared: true }],
+			func: (args) => {
+				const box = args[0];
+				if (box === null || (Array.isArray(box) && box[0] === null)) return;
+				if (!Array.isArray(box) || !box.__is_nullable_box) throw new Error("Runtime Error: trim_shared_string expects a shared nullable string box.");
+				const s = box[0];
+				if (typeof s !== "string") throw new Error("Runtime Error: trim_shared_string expects a string.");
+				box[0] = s.replace(/^[ \r\n\t]+|[ \r\n\t]+$/g, '');
+			}
+		},
+		"trim_shared_string_left": {
+			returnType: "none",
+			params: [{ name: "target", type: "nullable", generic: "string", shared: true }],
+			func: (args) => {
+				const box = args[0];
+				if (box === null || (Array.isArray(box) && box[0] === null)) return;
+				if (!Array.isArray(box) || !box.__is_nullable_box) throw new Error("Runtime Error: trim_shared_string_left expects a shared nullable string box.");
+				const s = box[0];
+				if (typeof s !== "string") throw new Error("Runtime Error: trim_shared_string_left expects a string.");
+				box[0] = s.replace(/^[ \r\n\t]+/g, '');
+			}
+		},
+		"trim_shared_string_right": {
+			returnType: "none",
+			params: [{ name: "target", type: "nullable", generic: "string", shared: true }],
+			func: (args) => {
+				const box = args[0];
+				if (box === null || (Array.isArray(box) && box[0] === null)) return;
+				if (!Array.isArray(box) || !box.__is_nullable_box) throw new Error("Runtime Error: trim_shared_string_right expects a shared nullable string box.");
+				const s = box[0];
+				if (typeof s !== "string") throw new Error("Runtime Error: trim_shared_string_right expects a string.");
+				box[0] = s.replace(/[ \r\n\t]+$/g, '');
+			}
+		},
+		"transform_shared_ansistring_to_uppercase": {
+			returnType: "none",
+			params: [{ name: "target", type: "nullable", generic: "string", shared: true }],
+			func: (args) => {
+				const box = args[0];
+				if (box === null || (Array.isArray(box) && box[0] === null)) return;
+				if (!Array.isArray(box) || !box.__is_nullable_box) throw new Error("Runtime Error: transform_shared_ansistring_to_uppercase expects a shared nullable string box.");
+				const s = box[0];
+				if (typeof s !== "string") throw new Error("Runtime Error: transform_shared_ansistring_to_uppercase expects a string.");
+				box[0] = s.replace(/[a-z]/g, c => String.fromCharCode(c.charCodeAt(0) - 32));
+			}
+		},
+		"transform_shared_ansistring_to_lowercase": {
+			returnType: "none",
+			params: [{ name: "target", type: "nullable", generic: "string", shared: true }],
+			func: (args) => {
+				const box = args[0];
+				if (box === null || (Array.isArray(box) && box[0] === null)) return;
+				if (!Array.isArray(box) || !box.__is_nullable_box) throw new Error("Runtime Error: transform_shared_ansistring_to_lowercase expects a shared nullable string box.");
+				const s = box[0];
+				if (typeof s !== "string") throw new Error("Runtime Error: transform_shared_ansistring_to_lowercase expects a string.");
+				box[0] = s.replace(/[A-Z]/g, c => String.fromCharCode(c.charCodeAt(0) + 32));
+			}
+		},
+		"get_shared_substring": {
+			returnType: "none",
+			params: [
+				{ name: "target", type: "nullable", generic: "string", shared: true },
+				{ name: "start_index", type: "number" },
+				{ name: "end_index", type: "nullable", generic: "number" }
+			],
+			func: (args) => {
+				const box = args[0];
+				const start_index = args[1];
+				const end_index = args[2];
+				if (box === null || (Array.isArray(box) && box[0] === null)) return;
+				if (!Array.isArray(box) || !box.__is_nullable_box) throw new Error("Runtime Error: get_shared_substring expects a shared nullable string box.");
+				const s = box[0];
+				if (typeof s !== "string") throw new Error("Runtime Error: get_shared_substring expects a string.");
+				if (!Number.isInteger(start_index)) throw new Error("Runtime Error: start_index must be an integer.");
+				if (start_index < 0 || start_index > s.length) throw new Error("Runtime Error: start_index out of bounds.");
+				let true_end = s.length;
+				if (end_index !== null && end_index !== undefined) {
+					if (!Number.isInteger(end_index)) throw new Error("Runtime Error: end_index must be an integer.");
+					if (end_index < 0 || end_index > s.length) throw new Error("Runtime Error: end_index out of bounds.");
+					if (end_index < start_index) throw new Error("Runtime Error: end_index cannot be less than start_index.");
+					true_end = end_index;
+				}
+				box[0] = s.substring(start_index, true_end);
+			}
+		},
+		"clear_shared_list": {
+			returnType: "none",
+			params: [{ name: "target", type: "list", generic: "any", shared: true }],
+			func: (args) => {
+				const list = args[0];
+				if (!Array.isArray(list)) throw new Error("Runtime Error: clear_shared_list expects a list.");
+				list.length = 0;
+			}
+		},
+		"clear_shared_map": {
+			returnType: "none",
+			params: [{ name: "target", type: "map", generic: "any", shared: true }],
+			func: (args) => {
+				const map = args[0];
+				if (!(map instanceof Map)) throw new Error("Runtime Error: clear_shared_map expects a map.");
+				map.clear();
+			}
+		},
+		"reserve_shared_list_capacity": {
+			returnType: "none",
+			params: [
+				{ name: "target", type: "list", generic: "any", shared: true },
+				{ name: "extra_capacity", type: "number" }
+			],
+			func: (args) => {
+				const list = args[0];
+				const cap = args[1];
+				if (!Array.isArray(list)) throw new Error("Runtime Error: reserve_shared_list_capacity expects a list.");
+				if (!Number.isInteger(cap)) throw new Error("Runtime Error: extra_capacity must be an integer.");
+				if (cap < 0) throw new Error("Runtime Error: extra_capacity must be non-negative.");
+			}
+		},
+		"append_shared_list": {
+			returnType: "none",
+			params: [
+				{ name: "target", type: "list", generic: "any", shared: true },
+				{ name: "source", type: "list", generic: "any", shared: true }
+			],
+			func: (args) => {
+				const target = args[0];
+				const source = args[1];
+				if (!Array.isArray(target) || !Array.isArray(source)) throw new Error("Runtime Error: append_shared_list expects lists.");
+				target.push(...source);
+			}
+		},
+		"merge_shared_map": {
+			returnType: "none",
+			params: [
+				{ name: "target", type: "map", generic: "any", shared: true },
+				{ name: "source", type: "map", generic: "any", shared: true }
+			],
+			func: (args) => {
+				const target = args[0];
+				const source = args[1];
+				if (!(target instanceof Map) || !(source instanceof Map)) throw new Error("Runtime Error: merge_shared_map expects maps.");
+				for (const [k, v] of source.entries()) {
+					target.set(k, v);
+				}
+			}
+		},
+		"find_next_byte": {
+			returnType: "number",
+			params: [
+				{ name: "bytes", type: "list", generic: "number", shared: true },
+				{ name: "start_index", type: "number" },
+				{ name: "target_bytes", type: "list", generic: "number" }
+			],
+			func: (args) => {
+				const bytes = args[0];
+				const start_index = args[1];
+				const target_bytes = args[2];
+				if (!Array.isArray(bytes) || !Array.isArray(target_bytes)) {
+					throw new Error("Runtime Error: find_next_byte expects lists.");
+				}
+				if (!Number.isInteger(start_index)) {
+					throw new Error("Runtime Error: start_index must be an integer.");
+				}
+				if (start_index < 0 || start_index > bytes.length) {
+					throw new Error("Runtime Error: start_index out of bounds.");
+				}
+				const targets = new Set(target_bytes);
+				for (let i = start_index; i < bytes.length; i++) {
+					if (targets.has(bytes[i])) {
+						return i;
+					}
+				}
+				return -1;
+			}
+		},
+		"find_next_non_matching_byte": {
+			returnType: "number",
+			params: [
+				{ name: "bytes", type: "list", generic: "number", shared: true },
+				{ name: "start_index", type: "number" },
+				{ name: "ignore_bytes", type: "list", generic: "number" }
+			],
+			func: (args) => {
+				const bytes = args[0];
+				const start_index = args[1];
+				const ignore_bytes = args[2];
+				if (!Array.isArray(bytes) || !Array.isArray(ignore_bytes)) {
+					throw new Error("Runtime Error: find_next_non_matching_byte expects lists.");
+				}
+				if (!Number.isInteger(start_index)) {
+					throw new Error("Runtime Error: start_index must be an integer.");
+				}
+				if (start_index < 0 || start_index > bytes.length) {
+					throw new Error("Runtime Error: start_index out of bounds.");
+				}
+				const ignores = new Set(ignore_bytes);
+				for (let i = start_index; i < bytes.length; i++) {
+					if (!ignores.has(bytes[i])) {
+						return i;
+					}
+				}
+				return -1;
+			}
+		},
+		"find_next_sequence": {
+			returnType: "number",
+			params: [
+				{ name: "bytes", type: "list", generic: "number", shared: true },
+				{ name: "start_index", type: "number" },
+				{ name: "sequence", type: "list", generic: "number" }
+			],
+			func: (args) => {
+				const bytes = args[0];
+				const start_index = args[1];
+				const seq = args[2];
+				if (!Array.isArray(bytes) || !Array.isArray(seq)) {
+					throw new Error("Runtime Error: find_next_sequence expects lists.");
+				}
+				if (!Number.isInteger(start_index)) {
+					throw new Error("Runtime Error: start_index must be an integer.");
+				}
+				if (start_index < 0 || start_index > bytes.length) {
+					throw new Error("Runtime Error: start_index out of bounds.");
+				}
+				if (seq.length === 0) return start_index;
+				outer: for (let i = start_index; i <= bytes.length - seq.length; i++) {
+					for (let j = 0; j < seq.length; j++) {
+						if (bytes[i + j] !== seq[j]) {
+							continue outer;
+						}
+					}
+					return i;
+				}
+				return -1;
+			}
+		},
+		"count_byte_occurrences": {
+			returnType: "number",
+			params: [
+				{ name: "bytes", type: "list", generic: "number", shared: true },
+				{ name: "start_index", type: "number" },
+				{ name: "end_index", type: "nullable", generic: "number" },
+				{ name: "byte_code", type: "number" }
+			],
+			func: (args) => {
+				const bytes = args[0];
+				const start_index = args[1];
+				const end_index = args[2];
+				const byte_code = args[3];
+				if (!Array.isArray(bytes)) {
+					throw new Error("Runtime Error: count_byte_occurrences expects bytes list.");
+				}
+				if (!Number.isInteger(start_index)) {
+					throw new Error("Runtime Error: start_index must be an integer.");
+				}
+				if (start_index < 0 || start_index > bytes.length) {
+					throw new Error("Runtime Error: start_index out of bounds.");
+				}
+				let true_end = bytes.length;
+				if (end_index !== null && end_index !== undefined) {
+					if (!Number.isInteger(end_index)) {
+						throw new Error("Runtime Error: end_index must be an integer.");
+					}
+					if (end_index < start_index || end_index > bytes.length) {
+						throw new Error("Runtime Error: end_index out of bounds.");
+					}
+					true_end = end_index;
+				}
+				if (!Number.isInteger(byte_code)) {
+					throw new Error("Runtime Error: byte_code must be an integer.");
+				}
+				let count = 0;
+				for (let i = start_index; i < true_end; i++) {
+					if (bytes[i] === byte_code) {
+						count++;
+					}
+				}
+				return count;
+			}
+		},
+		"copy_shared_list_slice": {
+			returnType: "none",
+			params: [
+				{ name: "target", type: "list", generic: "any", shared: true },
+				{ name: "dest_index", type: "number" },
+				{ name: "source", type: "list", generic: "any", shared: true },
+				{ name: "source_start", type: "number" },
+				{ name: "source_end", type: "nullable", generic: "number" }
+			],
+			func: (args) => {
+				const target = args[0];
+				const dest_index = args[1];
+				const source = args[2];
+				const source_start = args[3];
+				const source_end = args[4];
+				if (!Array.isArray(target) || !Array.isArray(source)) {
+					throw new Error("Runtime Error: copy_shared_list_slice expects lists.");
+				}
+				if (!Number.isInteger(dest_index)) {
+					throw new Error("Runtime Error: dest_index must be an integer.");
+				}
+				if (dest_index < 0 || dest_index > target.length) {
+					throw new Error("Runtime Error: dest_index out of bounds.");
+				}
+				if (!Number.isInteger(source_start)) {
+					throw new Error("Runtime Error: source_start must be an integer.");
+				}
+				if (source_start < 0 || source_start > source.length) {
+					throw new Error("Runtime Error: source_start out of bounds.");
+				}
+				let true_source_end = source.length;
+				if (source_end !== null && source_end !== undefined) {
+					if (!Number.isInteger(source_end)) {
+						throw new Error("Runtime Error: source_end must be an integer.");
+					}
+					if (source_end < source_start || source_end > source.length) {
+						throw new Error("Runtime Error: source_end out of bounds.");
+					}
+					true_source_end = source_end;
+				}
+				const itemsToCopy = source.slice(source_start, true_source_end);
+				for (let i = 0; i < itemsToCopy.length; i++) {
+					target[dest_index + i] = itemsToCopy[i];
+				}
+			}
 		}
 	},
 
@@ -533,7 +954,23 @@ export const StandardLibrary = {
 		});
 
 		for (const [name, def] of Object.entries(this.intrinsics)) {
-			let typeObj = { type: "Type", name: def.returnType, generic: null, initialized: true, params: def.params || [] };
+			const mappedParams = (def.params || []).map(p => {
+				let paramGeneric = null;
+				if (p.generic) {
+					if (typeof p.generic === 'string') {
+						paramGeneric = { type: "Type", name: p.generic, generic: null };
+					} else {
+						paramGeneric = p.generic;
+					}
+				}
+				return {
+					name: p.name,
+					type: p.type,
+					generic: paramGeneric,
+					shared: p.shared
+				};
+			});
+			let typeObj = { type: "Type", name: def.returnType, generic: null, initialized: true, params: mappedParams };
 			if (def.generic) {
 				typeObj.generic = { type: "Type", name: def.generic, generic: null };
 			}

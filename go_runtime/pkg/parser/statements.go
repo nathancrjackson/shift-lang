@@ -186,6 +186,7 @@ func (p *Parser) functionDeclaration() *ast.FunctionDeclaration {
 			Line:  line,
 		},
 		Name:       nameToken.Lexeme,
+		FilePath:   p.currentFilePath,
 		Params:     params,
 		ReturnType: *returnType,
 		Body:       body,
@@ -355,6 +356,9 @@ func (p *Parser) tryStatement() *ast.TryStatement {
 		p.consume(token.LBRACE, "Expect '{' before catch block.")
 		p.enterScope()
 		p.defineVariable("$thrown_message", TypeDef{Type: "Type", Name: "string", Initialized: true}, false)
+		p.defineVariable("$error_line", TypeDef{Type: "Type", Name: "number", Initialized: true}, false)
+		p.defineVariable("$error_source", TypeDef{Type: "Type", Name: "string", Initialized: true}, false)
+		p.defineVariable("$error_stack", TypeDef{Type: "Type", Name: "string", Initialized: true}, false)
 		catchBlock = p.parseBlock()
 		p.exitScope()
 
@@ -368,6 +372,9 @@ func (p *Parser) tryStatement() *ast.TryStatement {
 
 		p.enterScope()
 		p.defineVariable("$thrown_message", TypeDef{Type: "Type", Name: "string", Initialized: true}, false)
+		p.defineVariable("$error_line", TypeDef{Type: "Type", Name: "number", Initialized: true}, false)
+		p.defineVariable("$error_source", TypeDef{Type: "Type", Name: "string", Initialized: true}, false)
+		p.defineVariable("$error_stack", TypeDef{Type: "Type", Name: "string", Initialized: true}, false)
 		reviewBlock = p.parseBlock()
 		p.exitScope()
 

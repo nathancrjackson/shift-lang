@@ -22,6 +22,7 @@ var overlappingQuantifiersRegex = regexp.MustCompile(`\([^)]*[\*\+\?\}].*\|.*[\*
 type FunctionMeta struct {
 	ReturnType   ast.TypeAnnotation
 	FunctionName string
+	FilePath     string
 }
 
 // IterState maintains progress and collection info during loop executions.
@@ -51,6 +52,7 @@ type StackFrame struct {
 	ExprResult     any
 	Meta           *FunctionMeta
 	Iter           *IterState
+	ParentFrame    *StackFrame
 }
 
 // Runtime is the execution engine that interprets the program AST.
@@ -63,6 +65,7 @@ type Runtime struct {
 	Functions                   map[string]ast.FunctionDeclaration
 	Intrinsics                  map[string]func([]any, *Runtime) any
 	Stack                       []*StackFrame
+	CurrentFrame                *StackFrame
 	instructionCount            int
 	maxInstructions             int
 	AllowUnsafeRegexFallback    bool
@@ -100,6 +103,60 @@ func NewRuntime(prog *ast.Program, debugMode bool) *Runtime {
 	r.GlobalEnv.Define("$e", math.E)
 
 	return r
+}
+
+func (r *Runtime) pushFrame(frame *StackFrame) {
+	frame.ParentFrame = r.CurrentFrame
+	r.CurrentFrame = frame
+	r.Stack = append(r.Stack, frame)
+}
+
+func (r *Runtime) popFrame() *StackFrame {
+	if len(r.Stack) == 0 {
+		return nil
+	}
+	frame := r.Stack[len(r.Stack)-1]
+	r.Stack = r.Stack[:len(r.Stack)-1]
+	r.CurrentFrame = frame.ParentFrame
+	return frame
+}
+
+func (r *Runtime) GetStackTrace() string {
+	var lines []string
+	curr := r.CurrentFrame
+	for curr != nil {
+		if curr.Type == "Function" && curr.Meta != nil {
+			line := "unknown"
+			if curr == r.CurrentFrame {
+				gLine, _ := r.GlobalEnv.Get("$line_num")
+				if gl, ok := gLine.(float64); ok {
+					line = fmt.Sprintf("%d", int(gl))
+				}
+			} else {
+				activePc := curr.PC - 1
+				if activePc >= 0 && activePc < len(curr.Statements) {
+					stmt := curr.Statements[activePc]
+					if stmt.GetLine() != 0 {
+						line = fmt.Sprintf("%d", stmt.GetLine())
+					}
+				}
+			}
+			lines = append(lines, fmt.Sprintf("  at %s() (Line %s)", curr.Meta.FunctionName, line))
+		}
+		curr = curr.ParentFrame
+	}
+	return strings.Join(lines, "\n")
+}
+
+func (r *Runtime) getActiveFilePath() string {
+	curr := r.CurrentFrame
+	for curr != nil {
+		if curr.Type == "Function" && curr.Meta != nil && curr.Meta.FilePath != "" {
+			return curr.Meta.FilePath
+		}
+		curr = curr.ParentFrame
+	}
+	return ""
 }
 
 // AddIntrinsic registers a new Go-native function in the Shift execution context.
@@ -325,15 +382,56 @@ func (r *Runtime) checkType(value any, typeInfo ast.TypeAnnotation) error {
 
 // RunFunction executes a Shift function by name with the provided arguments and returns the result or an error.
 func (r *Runtime) RunFunction(name string, args []any) (any, error) {
+	res, err := r.runFunctionImpl(name, args)
+	if err != nil {
+		return nil, r.wrapRuntimeError(err)
+	}
+	return res, nil
+}
+
+func (r *Runtime) wrapRuntimeError(err error) error {
+	if err == nil {
+		return nil
+	}
+	msg := err.Error()
+	if strings.Contains(msg, "[Runtime]") || strings.Contains(msg, "[Lexer]") || strings.Contains(msg, "[Parser]") {
+		return err
+	}
+	cleanMsg := msg
+	if strings.HasPrefix(cleanMsg, "Runtime Error: ") {
+		cleanMsg = strings.TrimPrefix(cleanMsg, "Runtime Error: ")
+	}
+	
+	formatted := fmt.Sprintf("[Runtime] %s", cleanMsg)
+	trace := r.GetStackTrace()
+	if trace != "" {
+		formatted = fmt.Sprintf("%s\nStack trace:\n%s", formatted, trace)
+	}
+	return fmt.Errorf("%s", formatted)
+}
+
+func (r *Runtime) runFunctionImpl(name string, args []any) (res any, err error) {
 	if !ast.IgnoreVersionMismatch && !r.IgnoreASTVersionMismatch && r.AST.Version != ast.SchemaVersion {
 		return nil, fmt.Errorf("Schema Error: Unsupported AST schema version: '%s'. Expected '%s'.", r.AST.Version, ast.SchemaVersion)
 	}
 
 	previousStack := r.Stack
+	previousCurrentFrame := r.CurrentFrame
 	r.Stack = []*StackFrame{}
 
 	defer func() {
+		if rec := recover(); rec != nil {
+			if e, ok := rec.(error); ok {
+				err = e
+			} else {
+				err = fmt.Errorf("panic: %v", rec)
+			}
+		}
+		if len(previousStack) == 0 && err != nil {
+			err = r.wrapRuntimeError(err)
+		}
 		r.Stack = previousStack
+		r.CurrentFrame = previousCurrentFrame
 	}()
 
 	if fn, ok := r.Intrinsics[name]; ok {
@@ -379,10 +477,15 @@ func (r *Runtime) RunFunction(name string, args []any) (any, error) {
 		} else {
 			paramVal = r.deepCopy(argVal)
 		}
+		if p.DataType.Name == "nullable" {
+			if _, already := paramVal.(*NullableBox); !already {
+				paramVal = &NullableBox{Value: paramVal}
+			}
+		}
 		fnEnv.Define(p.Name, paramVal)
 	}
 
-	meta := &FunctionMeta{ReturnType: fn.ReturnType, FunctionName: name}
+	meta := &FunctionMeta{ReturnType: fn.ReturnType, FunctionName: name, FilePath: fn.FilePath}
 
 	statements := []ast.Statement{}
 	if fn.Body != nil {
@@ -394,7 +497,7 @@ func (r *Runtime) RunFunction(name string, args []any) (any, error) {
 		Statements: statements,
 		Meta:       meta,
 	}
-	r.Stack = append(r.Stack, initialFrame)
+	r.pushFrame(initialFrame)
 	r.trace("RUNTIME", "Pushed Function Frame", map[string]any{"functionName": name})
 
 	var finalResult any = nil
@@ -416,7 +519,7 @@ func (r *Runtime) RunFunction(name string, args []any) (any, error) {
 				} else {
 					finalResult = signalValue
 				}
-				r.Stack = r.Stack[:len(r.Stack)-1] // pop
+				r.popFrame() // pop
 				r.trace("RUNTIME", "Popped Function Frame", map[string]any{"functionName": frame.Meta.FunctionName, "return": finalResult})
 
 				valToCheck := finalResult
@@ -447,7 +550,7 @@ func (r *Runtime) RunFunction(name string, args []any) (any, error) {
 				signalValue = nil
 				continue
 			} else {
-				r.Stack = r.Stack[:len(r.Stack)-1]
+				r.popFrame()
 				r.trace("RUNTIME", "Popped Frame", map[string]any{"frameType": frame.Type, "signal": "Propagating Return"})
 				continue
 			}
@@ -456,7 +559,7 @@ func (r *Runtime) RunFunction(name string, args []any) (any, error) {
 		if currentSignal == SignalBreak || currentSignal == SignalSkip {
 			if frame.Type == "Loop" {
 				if currentSignal == SignalBreak {
-					r.Stack = r.Stack[:len(r.Stack)-1]
+					r.popFrame()
 					r.trace("RUNTIME", "Loop Terminated", map[string]any{"action": "break"})
 					currentSignal = SignalNone
 				} else {
@@ -467,13 +570,13 @@ func (r *Runtime) RunFunction(name string, args []any) (any, error) {
 			} else if frame.Type == "Function" {
 				return nil, fmt.Errorf("Runtime Error: 'break' or 'skip' used outside of loop.")
 			} else {
-				r.Stack = r.Stack[:len(r.Stack)-1]
+				r.popFrame()
 				continue
 			}
 		}
 
 		if frame.PC >= len(frame.Statements) {
-			r.Stack = r.Stack[:len(r.Stack)-1]
+			r.popFrame()
 			r.trace("RUNTIME", "Popped Frame", map[string]any{"frameType": frame.Type, "status": "Finished"})
 
 			if frame.Type == "Function" {
@@ -536,6 +639,9 @@ func (r *Runtime) executeVariableDeclaration(s *ast.VariableDeclaration, env *En
 			m.StructName = s.VarType.Name
 		}
 	}
+	if s.VarType.Name == "nullable" {
+		val = &NullableBox{Value: val}
+	}
 	env.Define(s.Name, val)
 	return nil
 }
@@ -573,12 +679,23 @@ func (r *Runtime) executeThrowStatement(s *ast.ThrowStatement, env *Environment)
 		return err
 	}
 	msgStr := r.stringify(msgVal)
+	
+	line := s.GetLine()
+	if line == 0 {
+		gLine, _ := r.GlobalEnv.Get("$line_num")
+		if gl, ok := gLine.(float64); ok {
+			line = int(gl)
+		}
+	}
+	source := r.getActiveFilePath()
+	stack := r.GetStackTrace()
+
 	if s.Severity == "alert" {
-		return ShiftAlert{Message: msgStr}
+		return ShiftAlert{Message: msgStr, Line: line, Source: source, Stack: stack}
 	} else if s.Severity == "critical" {
-		return ShiftCritical{Message: msgStr}
+		return ShiftCritical{Message: msgStr, Line: line, Source: source, Stack: stack}
 	} else {
-		return ShiftError{Message: msgStr}
+		return ShiftError{Message: msgStr, Line: line, Source: source, Stack: stack}
 	}
 }
 
@@ -591,6 +708,26 @@ func (r *Runtime) executeTryStatement(s *ast.TryStatement, frame *StackFrame, si
 			if s.ReviewBlock != nil {
 				revEnv := NewEnvironment(frame.Env)
 				revEnv.Define(s.CatchIdentifier, alert.Message)
+
+				lineNum := alert.Line
+				source := alert.Source
+				stackTrace := alert.Stack
+				if lineNum == 0 {
+					gLine, _ := r.GlobalEnv.Get("$line_num")
+					if gl, ok := gLine.(float64); ok {
+						lineNum = int(gl)
+					}
+				}
+				if source == "" {
+					source = r.getActiveFilePath()
+				}
+				if stackTrace == "" {
+					stackTrace = r.GetStackTrace()
+				}
+				revEnv.Define("$error_line", float64(lineNum))
+				revEnv.Define("$error_source", source)
+				revEnv.Define("$error_stack", stackTrace)
+
 				err2 := r.runProtectedBlock(s.ReviewBlock, revEnv, signalCallback)
 				if err2 != nil {
 					return err2
@@ -603,10 +740,32 @@ func (r *Runtime) executeTryStatement(s *ast.TryStatement, frame *StackFrame, si
 			if s.CatchBlock != nil {
 				catchEnv := NewEnvironment(frame.Env)
 				errMsg := err.Error()
+				lineNum := 0
+				source := ""
+				stackTrace := ""
 				if se, ok := err.(ShiftError); ok {
 					errMsg = se.Message
+					lineNum = se.Line
+					source = se.Source
+					stackTrace = se.Stack
+				}
+				if lineNum == 0 {
+					gLine, _ := r.GlobalEnv.Get("$line_num")
+					if gl, ok := gLine.(float64); ok {
+						lineNum = int(gl)
+					}
+				}
+				if source == "" {
+					source = r.getActiveFilePath()
+				}
+				if stackTrace == "" {
+					stackTrace = r.GetStackTrace()
 				}
 				catchEnv.Define(s.CatchIdentifier, errMsg)
+				catchEnv.Define("$error_line", float64(lineNum))
+				catchEnv.Define("$error_source", source)
+				catchEnv.Define("$error_stack", stackTrace)
+
 				err2 := r.runProtectedBlock(s.CatchBlock, catchEnv, signalCallback)
 				if err2 != nil {
 					return err2
@@ -739,7 +898,7 @@ func (r *Runtime) pushBlock(blockNode *ast.Block, parentEnv *Environment) {
 		return
 	}
 	blockEnv := NewEnvironment(parentEnv)
-	r.Stack = append(r.Stack, &StackFrame{Type: "Block", Env: blockEnv, Statements: blockNode.Statements})
+	r.pushFrame(&StackFrame{Type: "Block", Env: blockEnv, Statements: blockNode.Statements})
 }
 
 func (r *Runtime) runProtectedBlock(blockNode *ast.Block, env *Environment, parentSignal func(int, any)) error {

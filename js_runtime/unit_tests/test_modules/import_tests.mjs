@@ -7,9 +7,9 @@ Import tests
 export const import_tests = {
     "Simple import":
     {
-        "tests": [{ call:"main(99)", type: "number", expect: 99 }],
+        "tests": [{ call: "main(99)", type: "number", expect: 99 }],
         "code":
-`import "test_imports/simple.shift";
+            `import "../js_runtime/unit_tests/test_imports/simple.shift";
 
 function main(number result) number
 {
@@ -23,7 +23,7 @@ function main(number result) number
     {
         "tests": [{ type: "parser_error_cascading", expect: "Failed to resolve import: test_imports/doesnotexist.shift" }],
         "code":
-`import "test_imports/doesnotexist.shift";
+            `import "test_imports/doesnotexist.shift";
 
 function main(number result) number
 {
@@ -35,9 +35,9 @@ function main(number result) number
 
     "Two levels of import":
     {
-        "tests": [{ call:"main(99)", type: "number", expect: 99 }],
+        "tests": [{ call: "main(99)", type: "number", expect: 99 }],
         "code":
-`import "test_imports/has_import.shift";
+            `import "../js_runtime/unit_tests/test_imports/has_import.shift";
 
 function main(number result) number
 {
@@ -49,9 +49,9 @@ function main(number result) number
 
     "Import imports self":
     {
-        "tests": [{ call:"main(99)", type: "number", expect: 99 }],
+        "tests": [{ call: "main(99)", type: "number", expect: 99 }],
         "code":
-`import "test_imports/imports_self.shift";
+            `import "../js_runtime/unit_tests/test_imports/imports_self.shift";
 
 function main(number result) number
 {

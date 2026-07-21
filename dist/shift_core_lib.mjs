@@ -1,6 +1,6 @@
 /**
  * Shift Script Library (Core Mode)
- * Bundled at: 2026-07-19T07:34:31.784Z
+ * Bundled at: 2026-07-21T12:02:56.329Z
  */
 
 // --- Source: token_enums.mjs ---
@@ -214,7 +214,12 @@ export class ShiftLexerError extends ShiftEngineError {
      * @param {number} line - The line number where the error occurred.
      */
     constructor(message, line) {
-        super(message);
+        let msg = message;
+        if (msg.startsWith("[Lexer]")) {
+            msg = msg.replace(/^\[Lexer\]\s*(Line\s+\d+:\s*)?/, "");
+        }
+        const formatted = `[Lexer] Line ${line}: ${msg}`;
+        super(formatted);
         this.line = line;
     }
 }
@@ -229,7 +234,12 @@ export class ShiftParserError extends ShiftEngineError {
      * @param {string} [token] - The token value where the error occurred.
      */
     constructor(message, line, token) {
-        super(message);
+        let msg = message;
+        if (msg.startsWith("[Parser]")) {
+            msg = msg.replace(/^\[Parser\]\s*(Line\s+\d+\s+)?Error\s+at\s+'[^']*':\s*/, "");
+        }
+        const formatted = `[Parser] Line ${line} Error at '${token || ""}': ${msg}`;
+        super(formatted);
         this.line = line;
         this.token = token;
     }
@@ -293,7 +303,8 @@ export class ShiftRuntimeError extends ShiftEngineError {
      * @param {string} message - The error message.
      */
     constructor(message) {
-        super(message);
+        const msg = message.startsWith("[Runtime]") ? message : `[Runtime] ${message}`;
+        super(msg);
     }
 }
 
@@ -2775,7 +2786,7 @@ export class Parser {
 
         this.importResolver = importResolver;
         this.importedFiles = importedFiles;
-        this.currentFilePath = currentFilePath; // <-- NEW: Track where this parser is located
+        this.currentFilePath = currentFilePath || "main.shift"; // <-- NEW: Track where this parser is located
         
         this.importedStructs = [];
         this.importedFunctions = [];
@@ -3048,6 +3059,7 @@ export class Parser {
                 if (funcType) return funcType.name;
                 return "any";
             case "Variable":
+            case "MagicVariable":
                 const varType = this.getVariable(expr.name);
                 if (varType) return varType.name;
                 return "any";
@@ -3138,7 +3150,7 @@ export class Parser {
 
     resolveTypeAnnotation(expr) {
         if (!expr) return null;
-        if (expr.type === "Variable") {
+        if (expr.type === "Variable" || expr.type === "MagicVariable") {
             const t = this.getVariable(expr.name);
             return t ? { type: t.type, name: t.name, generic: t.generic, shared: t.shared } : null;
         }
@@ -3352,7 +3364,8 @@ export class Parser {
             name: nameToken.v,
             params: params,
             returnType: returnType,
-            body: body
+            body: body,
+            filePath: this.currentFilePath
         };
     }
 
@@ -3534,6 +3547,9 @@ export class Parser {
 
             this.enterScope();
             this.defineVariable("$thrown_message", { type: "Type", name: "string", initialized: true });
+            this.defineVariable("$error_line", { type: "Type", name: "number", initialized: true });
+            this.defineVariable("$error_source", { type: "Type", name: "string", initialized: true });
+            this.defineVariable("$error_stack", { type: "Type", name: "string", initialized: true });
             catchBlock = this.parseBlock();
             this.exitScope();
 
@@ -3548,6 +3564,9 @@ export class Parser {
 
             this.enterScope();
             this.defineVariable("$thrown_message", { type: "Type", name: "string", initialized: true });
+            this.defineVariable("$error_line", { type: "Type", name: "number", initialized: true });
+            this.defineVariable("$error_source", { type: "Type", name: "string", initialized: true });
+            this.defineVariable("$error_stack", { type: "Type", name: "string", initialized: true });
             reviewBlock = this.parseBlock();
             this.exitScope();
 
@@ -4256,7 +4275,12 @@ export class Environment {
 
     assign(name, value) {
         if (this.values.has(name)) {
-            this.values.set(name, value);
+            const existing = this.values.get(name);
+            if (existing && existing.__is_nullable_box) {
+                existing[0] = value;
+            } else {
+                this.values.set(name, value);
+            }
             return;
         }
         if (this.parent) {
@@ -4427,6 +4451,55 @@ export class Runtime {
 
     // --- The Stack Machine Core ---
 
+    pushFrame(frame) {
+        frame.parentFrame = this.currentFrame;
+        this.currentFrame = frame;
+        this.stack.push(frame);
+    }
+
+    popFrame() {
+        const frame = this.stack.pop();
+        if (frame) {
+            this.currentFrame = frame.parentFrame;
+        }
+        return frame;
+    }
+
+    getStackTrace() {
+        const lines = [];
+        let curr = this.currentFrame;
+        while (curr) {
+            if (curr.type === "Function" && curr.meta && curr.meta.functionName) {
+                let line = "unknown";
+                if (curr === this.currentFrame) {
+                    line = this.globalEnv.get("$line_num") || "unknown";
+                } else {
+                    const activePc = curr.pc - 1;
+                    if (curr.statements && activePc >= 0 && activePc < curr.statements.length) {
+                        const stmt = curr.statements[activePc];
+                        if (stmt && stmt.line) {
+                            line = stmt.line;
+                        }
+                    }
+                }
+                lines.push(`  at ${curr.meta.functionName}() (Line ${line})`);
+            }
+            curr = curr.parentFrame;
+        }
+        return lines.join("\n");
+    }
+
+    getActiveFilePath() {
+        let curr = this.currentFrame;
+        while (curr) {
+            if (curr.type === "Function" && curr.meta && curr.meta.filePath) {
+                return curr.meta.filePath;
+            }
+            curr = curr.parentFrame;
+        }
+        return "";
+    }
+
     runFunction(name, args = []) {
         if (typeof name !== 'string') {
             throw new ShiftRuntimeError("Function callee name must be a string.");
@@ -4438,6 +4511,7 @@ export class Runtime {
         logger.trace("RUNTIME", `Executing function call: ${name}`, { argsCount: args.length });
 
         const previousStack = this.stack;
+        const previousCurrentFrame = this.currentFrame;
         this.stack = [];
 
         try {
@@ -4467,13 +4541,22 @@ export class Runtime {
                 } else {
                     paramValue = this.deepCopy(argVal);
                 }
+                if (param.type === "nullable") {
+                    if (paramValue && paramValue.__is_nullable_box) {
+                        // Already boxed
+                    } else {
+                        const box = [paramValue];
+                        box.__is_nullable_box = true;
+                        paramValue = box;
+                    }
+                }
                 fnEnv.define(param.name, paramValue);
             }
 
             const initialFrame = new StackFrame("Function", fnEnv, func.body.statements);
-            initialFrame.meta = { returnType: func.returnType, functionName: name };
+            initialFrame.meta = { returnType: func.returnType, functionName: name, filePath: func.filePath || "" };
 
-            this.stack.push(initialFrame);
+            this.pushFrame(initialFrame);
             this.logDebug(`Pushed Function Frame: ${name} (Args: ${args.length})`);
 
             let finalResult = null;
@@ -4491,7 +4574,7 @@ export class Runtime {
                 if (currentSignal === SIGNAL_RETURN) {
                     if (frame.type === "Function") {
                         finalResult = signalValue;
-                        this.stack.pop();
+                        this.popFrame();
                         this.logDebug(`Popped Function Frame: ${frame.meta?.functionName} (Return: ${this.stringify(finalResult)})`);
 
                         if (frame.meta && frame.meta.returnType) {
@@ -4512,7 +4595,7 @@ export class Runtime {
                         continue;
                     }
                     else {
-                        this.stack.pop();
+                        this.popFrame();
                         this.logDebug(`Popped Frame: ${frame.type} (Propagating Return)`);
                         continue;
                     }
@@ -4521,7 +4604,7 @@ export class Runtime {
                 if (currentSignal === SIGNAL_BREAK || currentSignal === SIGNAL_SKIP) {
                     if (frame.type === "Loop") {
                         if (currentSignal === SIGNAL_BREAK) {
-                            this.stack.pop();
+                            this.popFrame();
                             this.logDebug(`Loop Terminated (Break)`);
                             currentSignal = SIGNAL_NONE;
                         } else {
@@ -4532,13 +4615,13 @@ export class Runtime {
                     } else if (frame.type === "Function") {
                         throw new Error("Runtime Error: 'break' or 'skip' used outside of loop.");
                     } else {
-                        this.stack.pop();
+                        this.popFrame();
                         continue;
                     }
                 }
 
                 if (frame.pc >= frame.statements.length) {
-                    this.stack.pop();
+                    this.popFrame();
                     this.logDebug(`Popped Frame: ${frame.type} (Finished)`);
 
                     if (frame.type === "Function") {
@@ -4579,8 +4662,47 @@ export class Runtime {
 
             return finalResult;
 
+        } catch (e) {
+            if (e && !e.stackTrace) {
+                try {
+                    e.stackTrace = this.getStackTrace();
+                } catch (err) {}
+            }
+            if (previousStack.length === 0) {
+                if (e instanceof ShiftEngineError) {
+                    let msg = e.message || "";
+                    if (!msg.startsWith("[Runtime]") && !msg.startsWith("[Lexer]") && !msg.startsWith("[Parser]")) {
+                        msg = `[Runtime] ${msg}`;
+                    }
+                    const trace = e.stackTrace || this.getStackTrace();
+                    if (trace) {
+                        msg = `${msg}\nStack trace:\n${trace}`;
+                    }
+                    e.message = msg;
+                    throw e;
+                } else {
+                    let msg = e.message || String(e);
+                    if (msg.startsWith("Runtime Error: ")) {
+                        msg = msg.slice("Runtime Error: ".length);
+                    }
+                    if (!msg.startsWith("[Runtime]")) {
+                        msg = `[Runtime] ${msg}`;
+                    }
+                    const trace = e.stackTrace || this.getStackTrace();
+                    if (trace) {
+                        msg = `${msg}\nStack trace:\n${trace}`;
+                    }
+                    const newErr = new ShiftRuntimeError(msg);
+                    newErr.stack = e.stack;
+                    newErr.stackTrace = trace;
+                    throw newErr;
+                }
+            } else {
+                throw e;
+            }
         } finally {
             this.stack = previousStack;
+            this.currentFrame = previousCurrentFrame;
         }
     }
 
@@ -4596,6 +4718,11 @@ export class Runtime {
                 if (stmt.name.startsWith('$')) throw new Error(`Runtime Error: Cannot declare magic variable '${stmt.name}'.`);
                 let val = stmt.initializer ? this.deepCopy(this.evaluate(stmt.initializer, frame.env)) : this.getDefaultValue(stmt.varType);
                 if (stmt.varType.type === "StructType" && val instanceof Map) val.__shift_type = stmt.varType.name;
+                if (stmt.varType.name === "nullable") {
+                    const box = [val];
+                    box.__is_nullable_box = true;
+                    val = box;
+                }
                 frame.env.define(stmt.name, val);
                 break;
             }
@@ -4636,7 +4763,7 @@ export class Runtime {
                     this.pushBlock(stmt.thenBranch, frame.env);
                 } else if (stmt.elseBranch) {
                     if (stmt.elseBranch.type === "IfStatement") {
-                        this.stack.push(new StackFrame("Block", new Environment(frame.env), [stmt.elseBranch]));
+                        this.pushFrame(new StackFrame("Block", new Environment(frame.env), [stmt.elseBranch]));
                     } else {
                         this.pushBlock(stmt.elseBranch, frame.env);
                     }
@@ -4671,9 +4798,19 @@ export class Runtime {
 
             case "ThrowStatement": {
                 const message = this.evaluate(stmt.argument, frame.env);
-                if (stmt.severity === "alert") throw new ShiftAlert(message);
-                if (stmt.severity === "critical") throw new ShiftCritical(message);
-                throw new ShiftError(message);
+                const line = stmt.line || this.globalEnv.get("$line_num") || 0;
+                const filePath = this.getActiveFilePath() || "";
+                const stackTrace = this.getStackTrace() || "";
+
+                let err;
+                if (stmt.severity === "alert") err = new ShiftAlert(message);
+                else if (stmt.severity === "critical") err = new ShiftCritical(message);
+                else err = new ShiftError(message);
+
+                err.line = line;
+                err.filePath = filePath;
+                err.stackTrace = stackTrace;
+                throw err;
             }
 
             case "TryStatement": {
@@ -4687,6 +4824,15 @@ export class Runtime {
                         if (stmt.reviewBlock) {
                             const reviewEnv = new Environment(frame.env);
                             reviewEnv.define(stmt.catchIdentifier, e.message);
+
+                            const lineNum = e.line || this.globalEnv.get("$line_num") || 0;
+                            const filePath = e.filePath || this.getActiveFilePath() || "";
+                            const stackTrace = e.stackTrace || this.getStackTrace() || "";
+
+                            reviewEnv.define("$error_line", lineNum);
+                            reviewEnv.define("$error_source", filePath);
+                            reviewEnv.define("$error_stack", stackTrace);
+
                             this.runProtectedBlock(stmt.reviewBlock, reviewEnv, signalCallback);
                         } else {
                             throw e;
@@ -4696,6 +4842,15 @@ export class Runtime {
                         if (stmt.catchBlock) {
                             const catchEnv = new Environment(frame.env);
                             catchEnv.define(stmt.catchIdentifier, e.message);
+
+                            const lineNum = e.line || this.globalEnv.get("$line_num") || 0;
+                            const filePath = e.filePath || this.getActiveFilePath() || "";
+                            const stackTrace = e.stackTrace || this.getStackTrace() || "";
+
+                            catchEnv.define("$error_line", lineNum);
+                            catchEnv.define("$error_source", filePath);
+                            catchEnv.define("$error_stack", stackTrace);
+
                             this.runProtectedBlock(stmt.catchBlock, catchEnv, signalCallback);
                         } else {
                             throw e;
@@ -4713,7 +4868,7 @@ export class Runtime {
 
     pushBlock(blockNode, parentEnv) {
         const blockEnv = new Environment(parentEnv);
-        this.stack.push(new StackFrame("Block", blockEnv, blockNode.statements));
+        this.pushFrame(new StackFrame("Block", blockEnv, blockNode.statements));
     }
 
     runProtectedBlock(blockNode, env, parentSignalCallback) {
@@ -4785,7 +4940,7 @@ export class Runtime {
         }
 
         loopFrame.statements = [{ type: "LoopStep" }];
-        this.stack.push(loopFrame);
+        this.pushFrame(loopFrame);
         this.logDebug(`Started Loop (${type})`);
     }
 
@@ -4834,7 +4989,7 @@ export class Runtime {
             this.logDebug(`Loop Step: Running Body`);
             this.pushBlock(state.body, loopEnv);
         } else {
-            this.stack.pop();
+            this.popFrame();
             this.logDebug(`Loop Finished`);
         }
     }
@@ -4850,8 +5005,17 @@ export class Runtime {
                 }
                 if (expr.name === "$pipe_value") return env.get("$pipe_value");
                 return env.get(expr.name);
-            case "Variable": return env.get(expr.name);
-            case "ShareExpression": return this.evaluate(expr.argument, env);
+            case "Variable": {
+                const val = env.get(expr.name);
+                if (val && val.__is_nullable_box) return val[0];
+                return val;
+            }
+            case "ShareExpression": {
+                if (expr.argument.type === "Variable") {
+                    return env.get(expr.argument.name);
+                }
+                return this.evaluate(expr.argument, env);
+            }
             case "ListLiteral": return expr.elements.map(e => this.evaluate(e, env));
             case "StructLiteral":
             case "MapLiteral": {
@@ -5253,84 +5417,7 @@ export class Runtime {
 }
 
 // --- Source: standard_library.mjs ---
-let stdlibSource = `function get_substring(string input_str, number start_index, nullable<number> end_index) string {
-	list<number> unpacked_str = unpack input_str;
-	list<number> substring_list;
-	number true_end = size of input_str;
-	if (end_index != null)
-	{
-		true_end = end_index as number;
-	}
-
-	for ( index in start_index to (true_end - 1))
-	{
-		substring_list[] = unpacked_str[index];
-	}
-
-	return pack substring_list;
-}
-
-function transform_ansistring_to_uppercase(string input_str) string {
-	list<number> charnum_list = unpack input_str;
-
-	for (index in 0 to (size of charnum_list - 1))
-	{
-		if (charnum_list[index] >= 97 and charnum_list[index] <= 122)
-		{
-			charnum_list[index] = charnum_list[index] - 32;
-		}
-	}
-
-	return pack charnum_list;
-}
-
-function transform_ansistring_to_lowercase(string input_str) string {
-	list<number> charnum_list = unpack input_str;
-
-	for (index in 0 to (size of charnum_list - 1))
-	{
-		if (charnum_list[index] >= 65 and charnum_list[index] <= 90)
-		{
-			charnum_list[index] = charnum_list[index] + 32;
-		}
-	}
-
-	return pack charnum_list;
-}
-
-function trim_string(string input_str) string {
-	if (size of input_str == 0) {
-		return "";
-	}
-	list<string> exploded_input = input_str as list<string>;
-	bool do_loop = true;
-
-	while(do_loop)
-	{
-		if (exploded_input[0] == " ") { delete exploded_input[0]; }
-		else if (exploded_input[0] == "\\r") { delete exploded_input[0]; }
-		else if (exploded_input[0] == "\\n") { delete exploded_input[0]; }
-		else if (exploded_input[0] == "\\t") { delete exploded_input[0]; }
-		else { do_loop = false; }
-	}
-
-	do_loop = true;
-	number reverse_cursor = size of exploded_input - 1;
-	while(do_loop)
-	{
-		if (exploded_input[reverse_cursor] == " ")
-			{ delete exploded_input[reverse_cursor]; reverse_cursor = reverse_cursor - 1; }
-		else if (exploded_input[reverse_cursor] == "\\r")
-			{ delete exploded_input[reverse_cursor]; reverse_cursor = reverse_cursor - 1; }
-		else if (exploded_input[reverse_cursor] == "\\n")
-			{ delete exploded_input[reverse_cursor]; reverse_cursor = reverse_cursor - 1; }
-		else if (exploded_input[reverse_cursor] == "\\t")
-			{ delete exploded_input[reverse_cursor]; reverse_cursor = reverse_cursor - 1; }
-		else { do_loop = false; }
-	}
-
-	return exploded_input as string;
-}
+let stdlibSource = `// Empty Standard Library (Shift portion)
 `;
 // Helper to convert JS structure (Object/Array) to Shift structure (Map/List)
 function toShift(val) {
@@ -5824,6 +5911,427 @@ export const StandardLibrary = {
 			returnType: "none",
 			params: [{ name: "source", type: "string" }, { name: "dest", type: "string" }],
 			func: (args) => { throw new Error("Runtime Error: move_folder is disabled in core mode."); }
+		},
+		"get_substring": {
+			returnType: "string",
+			params: [
+				{ name: "input_str", type: "string" },
+				{ name: "start_index", type: "number" },
+				{ name: "end_index", type: "nullable", generic: "number" }
+			],
+			func: (args) => {
+				const input_str = args[0];
+				const start_index = args[1];
+				const end_index = args[2];
+				if (typeof input_str !== "string") throw new Error("Runtime Error: get_substring expects a string.");
+				if (!Number.isInteger(start_index)) throw new Error("Runtime Error: start_index must be an integer.");
+				if (start_index < 0 || start_index > input_str.length) throw new Error("Runtime Error: start_index out of bounds.");
+				let true_end = input_str.length;
+				if (end_index !== null && end_index !== undefined) {
+					if (!Number.isInteger(end_index)) throw new Error("Runtime Error: end_index must be an integer.");
+					if (end_index < 0 || end_index > input_str.length) throw new Error("Runtime Error: end_index out of bounds.");
+					if (end_index < start_index) throw new Error("Runtime Error: end_index cannot be less than start_index.");
+					true_end = end_index;
+				}
+				return input_str.substring(start_index, true_end);
+			}
+		},
+		"transform_ansistring_to_uppercase": {
+			returnType: "string",
+			params: [{ name: "input_str", type: "string" }],
+			func: (args) => {
+				const s = args[0];
+				if (typeof s !== "string") throw new Error("Runtime Error: transform_ansistring_to_uppercase expects a string.");
+				return s.replace(/[a-z]/g, c => String.fromCharCode(c.charCodeAt(0) - 32));
+			}
+		},
+		"transform_ansistring_to_lowercase": {
+			returnType: "string",
+			params: [{ name: "input_str", type: "string" }],
+			func: (args) => {
+				const s = args[0];
+				if (typeof s !== "string") throw new Error("Runtime Error: transform_ansistring_to_lowercase expects a string.");
+				return s.replace(/[A-Z]/g, c => String.fromCharCode(c.charCodeAt(0) + 32));
+			}
+		},
+		"trim_string": {
+			returnType: "string",
+			params: [{ name: "input_str", type: "string" }],
+			func: (args) => {
+				const s = args[0];
+				if (typeof s !== "string") throw new Error("Runtime Error: trim_string expects a string.");
+				return s.replace(/^[ \r\n\t]+|[ \r\n\t]+$/g, '');
+			}
+		},
+		"trim_string_left": {
+			returnType: "string",
+			params: [{ name: "input_str", type: "string" }],
+			func: (args) => {
+				const s = args[0];
+				if (typeof s !== "string") throw new Error("Runtime Error: trim_string_left expects a string.");
+				return s.replace(/^[ \r\n\t]+/g, '');
+			}
+		},
+		"trim_string_right": {
+			returnType: "string",
+			params: [{ name: "input_str", type: "string" }],
+			func: (args) => {
+				const s = args[0];
+				if (typeof s !== "string") throw new Error("Runtime Error: trim_string_right expects a string.");
+				return s.replace(/[ \r\n\t]+$/g, '');
+			}
+		},
+		"get_sublist": {
+			returnType: "list",
+			generic: "any",
+			params: [
+				{ name: "items", type: "list", generic: "any", shared: true },
+				{ name: "start_index", type: "number" },
+				{ name: "end_index", type: "nullable", generic: "number" }
+			],
+			func: (args) => {
+				const items = args[0];
+				const start_index = args[1];
+				const end_index = args[2];
+				if (!Array.isArray(items)) throw new Error("Runtime Error: get_sublist expects a list.");
+				if (!Number.isInteger(start_index)) throw new Error("Runtime Error: start_index must be an integer.");
+				if (start_index < 0 || start_index > items.length) throw new Error("Runtime Error: start_index out of bounds.");
+				let true_end = items.length;
+				if (end_index !== null && end_index !== undefined) {
+					if (!Number.isInteger(end_index)) throw new Error("Runtime Error: end_index must be an integer.");
+					if (end_index < 0 || end_index > items.length) throw new Error("Runtime Error: end_index out of bounds.");
+					if (end_index < start_index) throw new Error("Runtime Error: end_index cannot be less than start_index.");
+					true_end = end_index;
+				}
+				return items.slice(start_index, true_end);
+			}
+		},
+		"trim_shared_string": {
+			returnType: "none",
+			params: [{ name: "target", type: "nullable", generic: "string", shared: true }],
+			func: (args) => {
+				const box = args[0];
+				if (box === null || (Array.isArray(box) && box[0] === null)) return;
+				if (!Array.isArray(box) || !box.__is_nullable_box) throw new Error("Runtime Error: trim_shared_string expects a shared nullable string box.");
+				const s = box[0];
+				if (typeof s !== "string") throw new Error("Runtime Error: trim_shared_string expects a string.");
+				box[0] = s.replace(/^[ \r\n\t]+|[ \r\n\t]+$/g, '');
+			}
+		},
+		"trim_shared_string_left": {
+			returnType: "none",
+			params: [{ name: "target", type: "nullable", generic: "string", shared: true }],
+			func: (args) => {
+				const box = args[0];
+				if (box === null || (Array.isArray(box) && box[0] === null)) return;
+				if (!Array.isArray(box) || !box.__is_nullable_box) throw new Error("Runtime Error: trim_shared_string_left expects a shared nullable string box.");
+				const s = box[0];
+				if (typeof s !== "string") throw new Error("Runtime Error: trim_shared_string_left expects a string.");
+				box[0] = s.replace(/^[ \r\n\t]+/g, '');
+			}
+		},
+		"trim_shared_string_right": {
+			returnType: "none",
+			params: [{ name: "target", type: "nullable", generic: "string", shared: true }],
+			func: (args) => {
+				const box = args[0];
+				if (box === null || (Array.isArray(box) && box[0] === null)) return;
+				if (!Array.isArray(box) || !box.__is_nullable_box) throw new Error("Runtime Error: trim_shared_string_right expects a shared nullable string box.");
+				const s = box[0];
+				if (typeof s !== "string") throw new Error("Runtime Error: trim_shared_string_right expects a string.");
+				box[0] = s.replace(/[ \r\n\t]+$/g, '');
+			}
+		},
+		"transform_shared_ansistring_to_uppercase": {
+			returnType: "none",
+			params: [{ name: "target", type: "nullable", generic: "string", shared: true }],
+			func: (args) => {
+				const box = args[0];
+				if (box === null || (Array.isArray(box) && box[0] === null)) return;
+				if (!Array.isArray(box) || !box.__is_nullable_box) throw new Error("Runtime Error: transform_shared_ansistring_to_uppercase expects a shared nullable string box.");
+				const s = box[0];
+				if (typeof s !== "string") throw new Error("Runtime Error: transform_shared_ansistring_to_uppercase expects a string.");
+				box[0] = s.replace(/[a-z]/g, c => String.fromCharCode(c.charCodeAt(0) - 32));
+			}
+		},
+		"transform_shared_ansistring_to_lowercase": {
+			returnType: "none",
+			params: [{ name: "target", type: "nullable", generic: "string", shared: true }],
+			func: (args) => {
+				const box = args[0];
+				if (box === null || (Array.isArray(box) && box[0] === null)) return;
+				if (!Array.isArray(box) || !box.__is_nullable_box) throw new Error("Runtime Error: transform_shared_ansistring_to_lowercase expects a shared nullable string box.");
+				const s = box[0];
+				if (typeof s !== "string") throw new Error("Runtime Error: transform_shared_ansistring_to_lowercase expects a string.");
+				box[0] = s.replace(/[A-Z]/g, c => String.fromCharCode(c.charCodeAt(0) + 32));
+			}
+		},
+		"get_shared_substring": {
+			returnType: "none",
+			params: [
+				{ name: "target", type: "nullable", generic: "string", shared: true },
+				{ name: "start_index", type: "number" },
+				{ name: "end_index", type: "nullable", generic: "number" }
+			],
+			func: (args) => {
+				const box = args[0];
+				const start_index = args[1];
+				const end_index = args[2];
+				if (box === null || (Array.isArray(box) && box[0] === null)) return;
+				if (!Array.isArray(box) || !box.__is_nullable_box) throw new Error("Runtime Error: get_shared_substring expects a shared nullable string box.");
+				const s = box[0];
+				if (typeof s !== "string") throw new Error("Runtime Error: get_shared_substring expects a string.");
+				if (!Number.isInteger(start_index)) throw new Error("Runtime Error: start_index must be an integer.");
+				if (start_index < 0 || start_index > s.length) throw new Error("Runtime Error: start_index out of bounds.");
+				let true_end = s.length;
+				if (end_index !== null && end_index !== undefined) {
+					if (!Number.isInteger(end_index)) throw new Error("Runtime Error: end_index must be an integer.");
+					if (end_index < 0 || end_index > s.length) throw new Error("Runtime Error: end_index out of bounds.");
+					if (end_index < start_index) throw new Error("Runtime Error: end_index cannot be less than start_index.");
+					true_end = end_index;
+				}
+				box[0] = s.substring(start_index, true_end);
+			}
+		},
+		"clear_shared_list": {
+			returnType: "none",
+			params: [{ name: "target", type: "list", generic: "any", shared: true }],
+			func: (args) => {
+				const list = args[0];
+				if (!Array.isArray(list)) throw new Error("Runtime Error: clear_shared_list expects a list.");
+				list.length = 0;
+			}
+		},
+		"clear_shared_map": {
+			returnType: "none",
+			params: [{ name: "target", type: "map", generic: "any", shared: true }],
+			func: (args) => {
+				const map = args[0];
+				if (!(map instanceof Map)) throw new Error("Runtime Error: clear_shared_map expects a map.");
+				map.clear();
+			}
+		},
+		"reserve_shared_list_capacity": {
+			returnType: "none",
+			params: [
+				{ name: "target", type: "list", generic: "any", shared: true },
+				{ name: "extra_capacity", type: "number" }
+			],
+			func: (args) => {
+				const list = args[0];
+				const cap = args[1];
+				if (!Array.isArray(list)) throw new Error("Runtime Error: reserve_shared_list_capacity expects a list.");
+				if (!Number.isInteger(cap)) throw new Error("Runtime Error: extra_capacity must be an integer.");
+				if (cap < 0) throw new Error("Runtime Error: extra_capacity must be non-negative.");
+			}
+		},
+		"append_shared_list": {
+			returnType: "none",
+			params: [
+				{ name: "target", type: "list", generic: "any", shared: true },
+				{ name: "source", type: "list", generic: "any", shared: true }
+			],
+			func: (args) => {
+				const target = args[0];
+				const source = args[1];
+				if (!Array.isArray(target) || !Array.isArray(source)) throw new Error("Runtime Error: append_shared_list expects lists.");
+				target.push(...source);
+			}
+		},
+		"merge_shared_map": {
+			returnType: "none",
+			params: [
+				{ name: "target", type: "map", generic: "any", shared: true },
+				{ name: "source", type: "map", generic: "any", shared: true }
+			],
+			func: (args) => {
+				const target = args[0];
+				const source = args[1];
+				if (!(target instanceof Map) || !(source instanceof Map)) throw new Error("Runtime Error: merge_shared_map expects maps.");
+				for (const [k, v] of source.entries()) {
+					target.set(k, v);
+				}
+			}
+		},
+		"find_next_byte": {
+			returnType: "number",
+			params: [
+				{ name: "bytes", type: "list", generic: "number", shared: true },
+				{ name: "start_index", type: "number" },
+				{ name: "target_bytes", type: "list", generic: "number" }
+			],
+			func: (args) => {
+				const bytes = args[0];
+				const start_index = args[1];
+				const target_bytes = args[2];
+				if (!Array.isArray(bytes) || !Array.isArray(target_bytes)) {
+					throw new Error("Runtime Error: find_next_byte expects lists.");
+				}
+				if (!Number.isInteger(start_index)) {
+					throw new Error("Runtime Error: start_index must be an integer.");
+				}
+				if (start_index < 0 || start_index > bytes.length) {
+					throw new Error("Runtime Error: start_index out of bounds.");
+				}
+				const targets = new Set(target_bytes);
+				for (let i = start_index; i < bytes.length; i++) {
+					if (targets.has(bytes[i])) {
+						return i;
+					}
+				}
+				return -1;
+			}
+		},
+		"find_next_non_matching_byte": {
+			returnType: "number",
+			params: [
+				{ name: "bytes", type: "list", generic: "number", shared: true },
+				{ name: "start_index", type: "number" },
+				{ name: "ignore_bytes", type: "list", generic: "number" }
+			],
+			func: (args) => {
+				const bytes = args[0];
+				const start_index = args[1];
+				const ignore_bytes = args[2];
+				if (!Array.isArray(bytes) || !Array.isArray(ignore_bytes)) {
+					throw new Error("Runtime Error: find_next_non_matching_byte expects lists.");
+				}
+				if (!Number.isInteger(start_index)) {
+					throw new Error("Runtime Error: start_index must be an integer.");
+				}
+				if (start_index < 0 || start_index > bytes.length) {
+					throw new Error("Runtime Error: start_index out of bounds.");
+				}
+				const ignores = new Set(ignore_bytes);
+				for (let i = start_index; i < bytes.length; i++) {
+					if (!ignores.has(bytes[i])) {
+						return i;
+					}
+				}
+				return -1;
+			}
+		},
+		"find_next_sequence": {
+			returnType: "number",
+			params: [
+				{ name: "bytes", type: "list", generic: "number", shared: true },
+				{ name: "start_index", type: "number" },
+				{ name: "sequence", type: "list", generic: "number" }
+			],
+			func: (args) => {
+				const bytes = args[0];
+				const start_index = args[1];
+				const seq = args[2];
+				if (!Array.isArray(bytes) || !Array.isArray(seq)) {
+					throw new Error("Runtime Error: find_next_sequence expects lists.");
+				}
+				if (!Number.isInteger(start_index)) {
+					throw new Error("Runtime Error: start_index must be an integer.");
+				}
+				if (start_index < 0 || start_index > bytes.length) {
+					throw new Error("Runtime Error: start_index out of bounds.");
+				}
+				if (seq.length === 0) return start_index;
+				outer: for (let i = start_index; i <= bytes.length - seq.length; i++) {
+					for (let j = 0; j < seq.length; j++) {
+						if (bytes[i + j] !== seq[j]) {
+							continue outer;
+						}
+					}
+					return i;
+				}
+				return -1;
+			}
+		},
+		"count_byte_occurrences": {
+			returnType: "number",
+			params: [
+				{ name: "bytes", type: "list", generic: "number", shared: true },
+				{ name: "start_index", type: "number" },
+				{ name: "end_index", type: "nullable", generic: "number" },
+				{ name: "byte_code", type: "number" }
+			],
+			func: (args) => {
+				const bytes = args[0];
+				const start_index = args[1];
+				const end_index = args[2];
+				const byte_code = args[3];
+				if (!Array.isArray(bytes)) {
+					throw new Error("Runtime Error: count_byte_occurrences expects bytes list.");
+				}
+				if (!Number.isInteger(start_index)) {
+					throw new Error("Runtime Error: start_index must be an integer.");
+				}
+				if (start_index < 0 || start_index > bytes.length) {
+					throw new Error("Runtime Error: start_index out of bounds.");
+				}
+				let true_end = bytes.length;
+				if (end_index !== null && end_index !== undefined) {
+					if (!Number.isInteger(end_index)) {
+						throw new Error("Runtime Error: end_index must be an integer.");
+					}
+					if (end_index < start_index || end_index > bytes.length) {
+						throw new Error("Runtime Error: end_index out of bounds.");
+					}
+					true_end = end_index;
+				}
+				if (!Number.isInteger(byte_code)) {
+					throw new Error("Runtime Error: byte_code must be an integer.");
+				}
+				let count = 0;
+				for (let i = start_index; i < true_end; i++) {
+					if (bytes[i] === byte_code) {
+						count++;
+					}
+				}
+				return count;
+			}
+		},
+		"copy_shared_list_slice": {
+			returnType: "none",
+			params: [
+				{ name: "target", type: "list", generic: "any", shared: true },
+				{ name: "dest_index", type: "number" },
+				{ name: "source", type: "list", generic: "any", shared: true },
+				{ name: "source_start", type: "number" },
+				{ name: "source_end", type: "nullable", generic: "number" }
+			],
+			func: (args) => {
+				const target = args[0];
+				const dest_index = args[1];
+				const source = args[2];
+				const source_start = args[3];
+				const source_end = args[4];
+				if (!Array.isArray(target) || !Array.isArray(source)) {
+					throw new Error("Runtime Error: copy_shared_list_slice expects lists.");
+				}
+				if (!Number.isInteger(dest_index)) {
+					throw new Error("Runtime Error: dest_index must be an integer.");
+				}
+				if (dest_index < 0 || dest_index > target.length) {
+					throw new Error("Runtime Error: dest_index out of bounds.");
+				}
+				if (!Number.isInteger(source_start)) {
+					throw new Error("Runtime Error: source_start must be an integer.");
+				}
+				if (source_start < 0 || source_start > source.length) {
+					throw new Error("Runtime Error: source_start out of bounds.");
+				}
+				let true_source_end = source.length;
+				if (source_end !== null && source_end !== undefined) {
+					if (!Number.isInteger(source_end)) {
+						throw new Error("Runtime Error: source_end must be an integer.");
+					}
+					if (source_end < source_start || source_end > source.length) {
+						throw new Error("Runtime Error: source_end out of bounds.");
+					}
+					true_source_end = source_end;
+				}
+				const itemsToCopy = source.slice(source_start, true_source_end);
+				for (let i = 0; i < itemsToCopy.length; i++) {
+					target[dest_index + i] = itemsToCopy[i];
+				}
+			}
 		}
 	},
 
@@ -5851,7 +6359,23 @@ export const StandardLibrary = {
 		});
 
 		for (const [name, def] of Object.entries(this.intrinsics)) {
-			let typeObj = { type: "Type", name: def.returnType, generic: null, initialized: true, params: def.params || [] };
+			const mappedParams = (def.params || []).map(p => {
+				let paramGeneric = null;
+				if (p.generic) {
+					if (typeof p.generic === 'string') {
+						paramGeneric = { type: "Type", name: p.generic, generic: null };
+					} else {
+						paramGeneric = p.generic;
+					}
+				}
+				return {
+					name: p.name,
+					type: p.type,
+					generic: paramGeneric,
+					shared: p.shared
+				};
+			});
+			let typeObj = { type: "Type", name: def.returnType, generic: null, initialized: true, params: mappedParams };
 			if (def.generic) {
 				typeObj.generic = { type: "Type", name: def.generic, generic: null };
 			}
@@ -6176,7 +6700,7 @@ export class Shift {
         // Compile the Standard Library (Shift code part) once during initialization
         const stdLexer = new Lexer(source);
         const stdTokens = stdLexer.tokenize().tokens;
-        const stdParser = new Parser(stdTokens, this.importResolver);
+        const stdParser = new Parser(stdTokens, this.importResolver, new Set(), "stdlib.shift");
 
         // Load Definitions manually (Structs + Active Intrinsics)
         this._loadStructs(stdParser);
@@ -6259,7 +6783,7 @@ export class Shift {
      * @throws {ShiftLexerError} If lexing fails.
      * @throws {ShiftParserError} If parsing fails.
      */
-    run(sourceCode, entryPoint = "main", args = []) {
+    run(sourceCode, entryPoint = "main", args = [], filePath = null) {
         // Guard clauses
         if (typeof sourceCode !== 'string') {
             throw new ShiftEngineError("sourceCode must be a string.");
@@ -6284,11 +6808,11 @@ export class Shift {
         if (lexResult.errors.length > 0) {
             const firstError = lexResult.errors[0];
             const line = firstError.line || firstError.endline || firstError.startline;
-            throw new ShiftLexerError(`Lexer Error: ${firstError.message}`, line);
+            throw new ShiftLexerError(firstError.message, line);
         }
 
         // 2. Parser
-        const parser = new Parser(lexResult.tokens, this.importResolver);
+        const parser = new Parser(lexResult.tokens, this.importResolver, new Set(), filePath);
 
         // A. Load Definitions
         this._loadStructs(parser);
@@ -6311,7 +6835,7 @@ export class Shift {
 
         if (parseResult.errors.length > 0) {
             const firstError = parseResult.errors[0];
-            throw new ShiftParserError(`Parser Error: ${firstError.message}`, firstError.line, firstError.token);
+            throw new ShiftParserError(firstError.message, firstError.line, firstError.token);
         }
 
         // 3. Tree Shaking / Linking
@@ -6398,8 +6922,30 @@ export class Shift {
             logger.trace("SHIFT", "executeAST completed successfully");
             return result;
         } catch (e) {
-            // Ensure runtime errors are propagated cleanly
-            throw e;
+            if (e instanceof ShiftEngineError) {
+                let msg = e.message || "";
+                if (!msg.startsWith("[Runtime]") && !msg.startsWith("[Lexer]") && !msg.startsWith("[Parser]")) {
+                    msg = `[Runtime] ${msg}`;
+                }
+                const trace = runtime.getStackTrace();
+                if (trace) {
+                    msg = `${msg}\nStack trace:\n${trace}`;
+                }
+                e.message = msg;
+                throw e;
+            } else {
+                let msg = e.message || String(e);
+                if (!msg.startsWith("[Runtime]")) {
+                    msg = `[Runtime] ${msg}`;
+                }
+                const trace = runtime.getStackTrace();
+                if (trace) {
+                    msg = `${msg}\nStack trace:\n${trace}`;
+                }
+                const newErr = new ShiftRuntimeError(msg);
+                newErr.stack = e.stack;
+                throw newErr;
+            }
         }
     }
 }

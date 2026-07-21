@@ -2,6 +2,7 @@ package lexer
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/nathancrjackson/shift-lang/go_runtime/pkg/token"
 )
@@ -66,10 +67,14 @@ func (l *Lexer) Tokenize() TokenizeResult {
 }
 
 func (l *Lexer) addError(message string) {
+	prefixMsg := message
+	if !strings.HasPrefix(prefixMsg, "[Lexer]") {
+		prefixMsg = fmt.Sprintf("[Lexer] Line %d: %s", l.startLine, prefixMsg)
+	}
 	l.errors = append(l.errors, LexerError{
 		StartLine: l.startLine,
 		EndLine:   l.currentLine,
-		Message:   message,
+		Message:   prefixMsg,
 	})
 }
 

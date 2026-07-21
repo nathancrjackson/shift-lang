@@ -96,6 +96,7 @@ type StructDeclaration struct {
 type FunctionDeclaration struct {
 	BaseNode
 	Name string `json:"name"`
+	FilePath string `json:"filePath"`
 	Params []Parameter `json:"params"`
 	ReturnType TypeAnnotation `json:"returnType"`
 	Body *Block `json:"body"`

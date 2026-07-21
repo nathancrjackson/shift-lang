@@ -1,12 +1,18 @@
-const fs = require('fs');
-const path = require('path');
+// ./scripts/build_js_lib.mjs
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// Recreate __dirname for ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Configuration
 const isCore = process.argv.includes('--core') || process.env.SHIFT_BUILD_CORE === 'true';
 
 const ENTRY_FILE = isCore 
-    ? path.join(__dirname, '../src', 'shift.mjs')
-    : path.join(__dirname, '../src', 'node_fs.mjs');
+    ? path.join(__dirname, '../js_runtime/src', 'shift.mjs')
+    : path.join(__dirname, '../js_runtime/src', 'node_fs.mjs');
 const OUTPUT_DIR = path.join(__dirname, '../dist');
 const OUTPUT_FILE = isCore
     ? path.join(OUTPUT_DIR, 'shift_core_lib.mjs')
@@ -235,7 +241,7 @@ function bundle() {
     });
 
     // 5. Inline the Shift stdlib source code
-    const stdlibPath = path.join(__dirname, '../../go_runtime/pkg/stdlib/stdlib.shift');
+    const stdlibPath = path.join(__dirname, '../go_runtime/pkg/stdlib/stdlib.shift');
     try {
         bundleContent = inlineStdLib(bundleContent, stdlibPath);
     } catch (err) {

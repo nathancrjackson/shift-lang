@@ -36,8 +36,15 @@ func (e *Environment) Get(name string) (any, error) {
 
 // Assign updates the value of an existing variable in the closest scope where it is defined.
 func (e *Environment) Assign(name string, value any) error {
-	if _, ok := e.Values[name]; ok {
-		e.Values[name] = value
+	if existing, ok := e.Values[name]; ok {
+		if ref, ok := existing.(VariableRef); ok {
+			return ref.Env.Assign(ref.Name, value)
+		}
+		if box, ok := existing.(*NullableBox); ok {
+			box.Value = value
+		} else {
+			e.Values[name] = value
+		}
 		return nil
 	}
 	if e.Parent != nil {
@@ -56,22 +63,48 @@ const (
 )
 
 // ShiftError represents a standard user-thrown runtime error exception.
-type ShiftError struct{ Message string }
+type ShiftError struct {
+	Message string
+	Line    int
+	Source  string
+	Stack   string
+}
 
 // Error implements the error interface for ShiftError.
 func (e ShiftError) Error() string { return e.Message }
 
 // ShiftAlert represents a warning or non-fatal exceptional state.
-type ShiftAlert struct{ Message string }
+type ShiftAlert struct {
+	Message string
+	Line    int
+	Source  string
+	Stack   string
+}
 
 // Error implements the error interface for ShiftAlert.
 func (e ShiftAlert) Error() string { return e.Message }
 
 // ShiftCritical represents a fatal exceptional state that aborts execution.
-type ShiftCritical struct{ Message string }
+type ShiftCritical struct {
+	Message string
+	Line    int
+	Source  string
+	Stack   string
+}
 
 // Error implements the error interface for ShiftCritical.
 func (e ShiftCritical) Error() string { return e.Message }
+
+// VariableRef represents a reference to a variable in a specific environment.
+type VariableRef struct {
+	Env  *Environment
+	Name string
+}
+
+// NullableBox represents a boxed nullable wrapper to enable in-place updates for shared primitives.
+type NullableBox struct {
+	Value any
+}
 
 // ShiftMap represents a dynamic dictionary with insertion-ordered keys and support for strict type labeling.
 type ShiftMap struct {

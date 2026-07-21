@@ -17,7 +17,7 @@ type ParserError struct {
 
 // Error formats the ParserError as a readable error string.
 func (e ParserError) Error() string {
-	return fmt.Sprintf("Line %d Error at '%s': %s", e.Line, e.Token, e.Message)
+	return fmt.Sprintf("[Parser] Line %d Error at '%s': %s", e.Line, e.Token, e.Message)
 }
 
 // TypeDef stores type checking information for variables, parameters, and return types.
@@ -91,6 +91,7 @@ func NewParser(tokens []token.Token) *Parser {
 		usedFunctions:     make(map[string]bool),
 		depth:             0,
 		importedFiles:     make(map[string]bool),
+		currentFilePath:   "main.shift",
 	}
 	p.enterScope()
 	return p
@@ -110,7 +111,11 @@ func (p *Parser) WithImportedFiles(files map[string]bool) *Parser {
 
 // WithCurrentFilePath registers the source path of the code currently being parsed.
 func (p *Parser) WithCurrentFilePath(path string) *Parser {
-	p.currentFilePath = path
+	if path == "" {
+		p.currentFilePath = "main.shift"
+	} else {
+		p.currentFilePath = path
+	}
 	return p
 }
 

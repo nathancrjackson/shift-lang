@@ -1,17 +1,18 @@
 # Custom
 private/
 local/
+scripts/private_*
+scripts/local_*
 
 # Excluded generated content
 docs/*.html
 docs/*.json
 docs/*.css
 docs/*.js
-go_runtime/dist/*.shift
-go_runtime/dist/shift
-go_runtime/dist/shift.exe
-js_runtime/dist/*.mjs
-js_runtime/unit_tests/demo_ast_stree.json
+dist/*.shift
+dist/*.csv
+dist/*.tsv
+dist/*.json
 go_runtime/unit_tests/tests_json/
 
 # Random outputs

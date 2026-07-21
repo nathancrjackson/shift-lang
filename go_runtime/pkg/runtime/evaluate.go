@@ -40,7 +40,24 @@ func (r *Runtime) evaluate(expr ast.Expression, env *Environment) (any, error) {
 		v, err := env.Get(e.Name)
 		return v, err
 	case *ast.Variable:
-		return env.Get(e.Name)
+		val, err := env.Get(e.Name)
+		if err != nil {
+			return nil, err
+		}
+		for {
+			if ref, ok := val.(VariableRef); ok {
+				val, err = ref.Env.Get(ref.Name)
+				if err != nil {
+					return nil, err
+				}
+			} else {
+				break
+			}
+		}
+		if box, ok := val.(*NullableBox); ok {
+			return box.Value, nil
+		}
+		return val, nil
 	case *ast.ListLiteral:
 		list := make([]any, 0, len(e.Elements))
 		for _, el := range e.Elements {
@@ -350,6 +367,9 @@ func (r *Runtime) evaluateRest(expr ast.Expression, env *Environment) (any, erro
 		return strings.Join(strParts, del), nil
 
 	case *ast.ShareExpression:
+		if varExpr, ok := e.Argument.(*ast.Variable); ok {
+			return VariableRef{Env: env, Name: varExpr.Name}, nil
+		}
 		return r.evaluate(e.Argument, env)
 
 	default:
