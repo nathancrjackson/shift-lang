@@ -40,9 +40,9 @@ jobs:
         with:
           go-version: '1.21'
           cache: false
-      - name: Prepare Go runtime AST files
-        working-directory: scripts
-        run: node generate_ast_assets.mjs
+      #- name: Prepare Go runtime AST files
+      #  working-directory: scripts
+      #  run: node generate_ast_assets.mjs
       - name: Build Go binaries
         working-directory: scripts
         run: node build_go_binary.mjs
